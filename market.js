@@ -11,10 +11,10 @@
   };
 
   const MARKETS = [
-    { id: "dji", name: "道瓊", region: "美股", secid: "100.DJIA", color: "#e0a100" },
+    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#3dbe7a" },
     { id: "spx", name: "標普", region: "美股", secid: "100.SPX", color: "#6cb6ff" },
     { id: "ndx", name: "那斯達克", region: "美股", secid: "100.NDX", color: "#d38bff" },
-    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#3dbe7a" },
+    { id: "dji", name: "道瓊", region: "美股", secid: "100.DJIA", color: "#e0a100" },
     { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#ff7a8a" },
     { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#4fd2e0" },
     { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#f2c14e" },
