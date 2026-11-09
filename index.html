@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=1">
+  <link rel="stylesheet" href="app.css?v=2">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -69,9 +69,30 @@
       <section id="view-watch" hidden>
         <h2>自選股</h2>
         <p id="watch-note" class="note"></p>
-        <label for="watch-q">搜尋美股、台股、日股、韓股</label>
-        <input id="watch-q" type="search" placeholder="代號或名稱，例如 2330、AAPL" enterkeyhint="search" autocomplete="off">
-        <div id="watch-hits"></div>
+        <div class="card">
+          <label for="watch-q">台股代號或名稱</label>
+          <input id="watch-q" type="search" placeholder="例如 2330、廣達、00985A" enterkeyhint="search" autocomplete="off">
+          <div id="watch-hits"></div>
+          <p id="watch-pick" class="note">點選搜尋結果後，填買進價格與股數。</p>
+          <div class="grid2">
+            <div>
+              <label for="watch-cost">買進價格</label>
+              <input id="watch-cost" inputmode="decimal" placeholder="平均成本" autocomplete="off">
+            </div>
+            <div>
+              <label for="watch-shares">股數</label>
+              <input id="watch-shares" inputmode="numeric" placeholder="1000" autocomplete="off">
+            </div>
+          </div>
+          <div class="row">
+            <button id="watch-add" class="primary" type="button">加入</button>
+            <button id="watch-photo-btn" class="secondary" type="button">上傳庫存圖</button>
+          </div>
+          <input id="watch-photo" class="sr" type="file" accept="image/*">
+          <p class="fine">庫存圖若只有損益、沒有成本，會用現價回推平均買價。確認後才寫入。</p>
+          <p id="watch-status" class="status" role="status"></p>
+          <div id="import-box"></div>
+        </div>
         <div id="watch-list"></div>
       </section>
 
@@ -211,9 +232,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="google_config.js?v=1"></script>
-  <script src="drive.js?v=1"></script>
-  <script src="market.js?v=1"></script>
-  <script src="app.js?v=1"></script>
+  <script src="google_config.js?v=2"></script>
+  <script src="drive.js?v=2"></script>
+  <script src="market.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

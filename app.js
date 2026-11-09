@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 1;
+  const PAGE_BUILD = 2;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -18,6 +18,7 @@
 
   let book = emptyBook();
   let saveTimer = 0;
+  let importRows = [];
 
   function emptyBook() {
     return { watch: [], holdings: [], journal: [], capital: 1000000, riskPct: 1, profile: "穩健" };
@@ -409,12 +410,16 @@
   function renderWatch() {
     const box = $("watch-list");
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">自選股還是空的。搜尋後點名稱加入。</p>';
+      box.innerHTML = '<p class="note">自選股還是空的。用代號或庫存圖加入。</p>';
       return;
     }
     box.innerHTML = book.watch.map(function (item, idx) {
-      return '<div class="item"><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
+      const shares = item.shares == null ? "" : item.shares;
+      const cost = item.cost == null ? "" : item.cost;
+      return '<div class="item"><div><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
         esc(item.name) + "</strong> " + esc(item.code) + "<small>" + esc(item.market || "") + "</small></button>" +
+        '<div class="grid2"><input data-watch-shares="' + idx + '" inputmode="numeric" value="' + esc(shares) + '" placeholder="股數" aria-label="股數">' +
+        '<input data-watch-cost="' + idx + '" inputmode="decimal" value="' + esc(cost) + '" placeholder="買價" aria-label="買價"></div></div>' +
         '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button></div>';
     }).join("");
     const ids = book.watch.map(function (item) { return item.secid; });
@@ -431,7 +436,7 @@
     }).catch(function () {});
   }
 
-  function bindSearch(inputId, hitId, key) {
+  function bindSearch(inputId, hitId, key, prefer) {
     let timer = 0;
     $(inputId).addEventListener("input", function () {
       clearTimeout(timer);
@@ -439,12 +444,16 @@
       timer = setTimeout(async function () {
         if (q.length < 1) { $(hitId).innerHTML = ""; return; }
         try {
-          const rows = await M.search(q);
+          let rows = await M.search(q);
+          if (prefer) {
+            const hit = rows.filter(function (row) { return row.market === prefer; });
+            if (hit.length) rows = hit;
+          }
           $(hitId).innerHTML = rows.map(function (row) {
             return '<button type="button" class="hit" data-pick="' + key + '" data-secid="' + esc(row.secid) +
               '" data-code="' + esc(row.code) + '" data-name="' + esc(row.name) + '" data-market="' + esc(row.market) +
               '"><strong>' + esc(row.name) + "</strong> " + esc(row.code) + "<small>" + esc(row.market) + "</small></button>";
-          }).join("") || '<p class="note">找不到美股、台股、日股或韓股。</p>';
+          }).join("") || '<p class="note">' + (prefer ? "找不到這個台股。" : "找不到美股、台股、日股或韓股。") + "</p>";
         } catch (err) {
           $(hitId).innerHTML = '<p class="note">' + esc(err.message || "搜尋失敗") + "</p>";
         }
@@ -452,9 +461,45 @@
     });
   }
 
-  function addWatch(row) {
-    if (book.watch.some(function (item) { return item.secid === row.secid; })) return;
-    book.watch.push(row);
+  function syncHolding(item) {
+    if (item.shares === "" || item.shares == null) return;
+    const hold = book.holdings.find(function (row) { return row.secid === item.secid; });
+    if (hold) {
+      hold.shares = item.shares;
+      hold.cost = item.cost;
+      hold.name = item.name;
+      hold.code = item.code;
+      hold.market = item.market;
+      return;
+    }
+    book.holdings.push({
+      secid: item.secid,
+      code: item.code,
+      name: item.name,
+      market: item.market,
+      shares: item.shares,
+      cost: item.cost
+    });
+  }
+
+  function savePosition(row) {
+    const item = {
+      secid: row.secid,
+      code: row.code,
+      name: row.name,
+      market: row.market || "",
+      shares: row.shares == null ? "" : String(row.shares).trim(),
+      cost: row.cost == null ? "" : String(row.cost).trim()
+    };
+    const found = book.watch.find(function (entry) { return entry.secid === item.secid; });
+    if (found) {
+      found.shares = item.shares;
+      found.cost = item.cost;
+      found.name = item.name;
+      found.code = item.code;
+      found.market = item.market;
+    } else book.watch.push(item);
+    syncHolding(found || item);
     scheduleSave();
     renderWatch();
   }
@@ -462,6 +507,172 @@
   function openSymbol(row) {
     state.focus = row;
     setView("chart");
+  }
+
+  function addFromForm() {
+    const row = state.picks.watch;
+    if (!row) {
+      $("watch-status").textContent = "先點一個搜尋結果。";
+      return;
+    }
+    savePosition({
+      secid: row.secid,
+      code: row.code,
+      name: row.name,
+      market: row.market,
+      shares: $("watch-shares").value,
+      cost: $("watch-cost").value
+    });
+    state.picks.watch = null;
+    $("watch-pick").textContent = "已加入。可以再搜下一個。";
+    $("watch-q").value = "";
+    $("watch-shares").value = "";
+    $("watch-cost").value = "";
+    $("watch-hits").innerHTML = "";
+    $("watch-status").textContent = "";
+  }
+
+  function renderImport() {
+    const box = $("import-box");
+    if (!importRows.length) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = importRows.map(function (row, idx) {
+      const note = row.note ? "<small>" + esc(row.note) + "</small>" : "";
+      const miss = row.secid ? "" : "<small>找不到這個代號，這列會略過。</small>";
+      return '<div class="item"><div><strong>' + esc(row.name || row.code) + "</strong> " + esc(row.code) +
+        miss + note +
+        '<div class="grid2"><input data-import-shares="' + idx + '" inputmode="numeric" value="' + esc(row.shares) + '" aria-label="股數">' +
+        '<input data-import-cost="' + idx + '" inputmode="decimal" value="' + esc(row.cost) + '" aria-label="買價"></div></div></div>';
+    }).join("") + '<button id="import-ok" class="primary" type="button">匯入這些持股</button>';
+  }
+
+  function commitImport() {
+    let n = 0;
+    importRows.forEach(function (row) {
+      if (!row.secid) return;
+      savePosition(row);
+      n += 1;
+    });
+    importRows = [];
+    renderImport();
+    $("watch-status").textContent = n ? "已匯入 " + n + " 檔。" : "沒有可匯入的代號。";
+  }
+
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      script.onload = function () { resolve(); };
+      script.onerror = function () { reject(new Error("辨識程式載入失敗")); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function prepImage(file) {
+    return new Promise(function (resolve, reject) {
+      const img = new Image();
+      img.onload = function () {
+        const scale = img.width < 1400 ? 1400 / img.width : 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = frame.data;
+        for (let i = 0; i < px.length; i += 4) {
+          let L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          L = (L - 128) * 1.8 + 128;
+          L = L < 0 ? 0 : L > 255 ? 255 : L;
+          px[i] = px[i + 1] = px[i + 2] = L;
+        }
+        ctx.putImageData(frame, 0, 0);
+        URL.revokeObjectURL(img.src);
+        resolve(canvas);
+      };
+      img.onerror = function () { reject(new Error("這張圖讀不起來")); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function resolveParsed(parsed) {
+    const out = [];
+    for (let i = 0; i < parsed.length; i++) {
+      const row = parsed[i];
+      let hit = null;
+      try {
+        const found = await M.search(row.code);
+        hit = found.find(function (item) { return String(item.code).toUpperCase() === row.code && item.market === "台股"; })
+          || found.find(function (item) { return String(item.code).toUpperCase() === row.code; })
+          || null;
+      } catch (err) { /* 單一代號失敗就留白，讓使用者改 */ }
+      const item = {
+        code: row.code,
+        name: hit ? hit.name : (row.name || row.code),
+        secid: hit ? hit.secid : "",
+        market: hit ? hit.market : "台股",
+        shares: row.shares,
+        cost: "",
+        note: ""
+      };
+      if (item.secid && row.pnl != null) {
+        try {
+          const map = await M.quoteMap([item.secid]);
+          const quote = map[item.secid];
+          if (quote && quote.price > 0 && row.shares > 0) {
+            const cost = quote.price - row.pnl / row.shares;
+            if (cost > 0) {
+              item.cost = (Math.round(cost * 100) / 100).toFixed(2);
+              item.note = "現價 " + fmt(quote.price) + "，損益 " + row.pnl + "，回推買價";
+            }
+          }
+        } catch (err) { /* 沒報價就讓使用者自己填買價 */ }
+      }
+      if (!item.note && row.pnl != null) item.note = "圖上損益 " + row.pnl + "，請補買價";
+      out.push(item);
+    }
+    return out;
+  }
+
+  async function readInventoryPhoto(file) {
+    $("watch-photo-btn").disabled = true;
+    $("watch-status").textContent = "正在讀圖。第一次會下載中文辨識資料。";
+    let worker = null;
+    try {
+      await loadTesseract();
+      worker = await window.Tesseract.createWorker("chi_tra+eng", 1, {
+        logger: function (msg) {
+          if (!msg) return;
+          if (msg.status === "recognizing text") {
+            $("watch-status").textContent = "辨識中 " + Math.round((msg.progress || 0) * 100) + "%";
+          } else {
+            $("watch-status").textContent = "辨識準備中…";
+          }
+        }
+      });
+      await worker.setParameters({ tessedit_pageseg_mode: "6" });
+      const canvas = await prepImage(file);
+      const ret = await worker.recognize(canvas);
+      const parsed = M.parseInventory(ret.data.text || "");
+      if (!parsed.length) {
+        $("watch-status").textContent = "沒讀到代號和股數。請改用上方搜尋，或換一張庫存表。";
+        importRows = [];
+        renderImport();
+        return;
+      }
+      $("watch-status").textContent = "讀到 " + parsed.length + " 檔，正在查現價回推買價…";
+      importRows = await resolveParsed(parsed);
+      renderImport();
+      $("watch-status").textContent = "確認股數與買價後按匯入。圖只在這台手機辨識，不會另存。";
+    } catch (err) {
+      $("watch-status").textContent = err.message || "讀圖失敗";
+    } finally {
+      $("watch-photo-btn").disabled = false;
+      if (worker) worker.terminate();
+    }
   }
 
   function moneyFrom(which) {
@@ -675,9 +886,11 @@
     };
     const key = btn.getAttribute("data-pick");
     if (key === "watch") {
-      addWatch(row);
+      state.picks.watch = row;
+      $("watch-pick").textContent = row.name + " " + row.code + " · 填好買價與股數後按加入";
       $("watch-hits").innerHTML = "";
-      $("watch-q").value = "";
+      $("watch-q").value = row.code + " " + row.name;
+      $("watch-cost").focus();
       return;
     }
     if (key === "risk") {
@@ -711,8 +924,12 @@
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
     else if (t.dataset.openWatch != null) openSymbol(book.watch[Number(t.dataset.openWatch)]);
+    else if (t.id === "watch-add") addFromForm();
+    else if (t.id === "watch-photo-btn") $("watch-photo").click();
+    else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
-      book.watch.splice(Number(t.dataset.delWatch), 1);
+      const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
+      if (removed) book.holdings = book.holdings.filter(function (item) { return item.secid !== removed.secid; });
       scheduleSave();
       renderWatch();
     } else if (t.dataset.delHold != null) {
@@ -750,6 +967,29 @@
   $("tool-back").addEventListener("click", function () { setView("tools"); });
   $("chart").addEventListener("pointermove", onChartPointer);
   $("chart").addEventListener("pointerleave", function () { $("hover").hidden = true; });
+  $("watch-list").addEventListener("input", function (ev) {
+    const shares = ev.target.getAttribute("data-watch-shares");
+    const cost = ev.target.getAttribute("data-watch-cost");
+    const idx = shares != null ? Number(shares) : cost != null ? Number(cost) : -1;
+    if (idx < 0 || !book.watch[idx]) return;
+    if (shares != null) book.watch[idx].shares = ev.target.value;
+    if (cost != null) book.watch[idx].cost = ev.target.value;
+    syncHolding(book.watch[idx]);
+    scheduleSave();
+  });
+  $("import-box").addEventListener("input", function (ev) {
+    const shares = ev.target.getAttribute("data-import-shares");
+    const cost = ev.target.getAttribute("data-import-cost");
+    const idx = shares != null ? Number(shares) : cost != null ? Number(cost) : -1;
+    if (idx < 0 || !importRows[idx]) return;
+    if (shares != null) importRows[idx].shares = ev.target.value;
+    if (cost != null) importRows[idx].cost = ev.target.value;
+  });
+  $("watch-photo").addEventListener("change", function () {
+    const file = $("watch-photo").files && $("watch-photo").files[0];
+    $("watch-photo").value = "";
+    if (file) readInventoryPhoto(file);
+  });
   $("risk-list").addEventListener("change", function (ev) {
     const shares = ev.target.getAttribute("data-shares");
     const cost = ev.target.getAttribute("data-cost");
@@ -759,7 +999,7 @@
   });
   window.addEventListener("resize", draw);
 
-  bindSearch("watch-q", "watch-hits", "watch");
+  bindSearch("watch-q", "watch-hits", "watch", "台股");
   bindSearch("tech-q", "tech-hits", "tech");
   bindSearch("news-q", "news-hits", "news");
   bindSearch("test-q", "test-hits", "test");

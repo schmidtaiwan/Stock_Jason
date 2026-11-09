@@ -227,4 +227,16 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 }
 .warn { color: #ffd089; }
 .pass { color: var(--up); }
+.row { flex-wrap: wrap; margin-top: 10px; }
+.row .primary, .row .secondary { flex: 1; }
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
 .fail { color: var(--down); }
