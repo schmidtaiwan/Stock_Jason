@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 16;
+  const PAGE_BUILD = 17;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -706,35 +706,31 @@
     return (n > 0 ? "+" : "") + fmtPx(n);
   }
 
-  function watchMetricsHtml(m) {
-    if (!m) {
-      return '<div class="watch-metrics"><span class="note">讀取中…</span></div>';
-    }
-    const priceCls = pctClass((m.pct || 0) / 100);
-    const pctTxt = m.pct == null || !isFinite(m.pct) ? "—" :
-      ((m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%");
-    const volTxt = m.volumeLots == null || !isFinite(m.volumeLots) ? "—" :
-      Math.round(m.volumeLots).toLocaleString("zh-Hant");
-    const ampTxt = m.amplitude == null || !isFinite(m.amplitude) ? "—" :
-      Number(m.amplitude).toFixed(2) + "%";
-    return '<div class="watch-metrics">' +
-      '<div><span class="k">成交</span><span class="' + priceCls + '">' + fmtPx(m.price) + "</span>" +
-      '<span class="k gap">漲跌</span><span class="' + priceCls + '">' + signedPx(m.change) + "</span>" +
-      '<span class="k gap">幅度</span><span class="' + priceCls + '">' + pctTxt + "</span></div>" +
-      '<div><span class="k">開／高／低</span><span>' + fmtPx(m.open) + " / " + fmtPx(m.high) + " / " + fmtPx(m.low) + "</span></div>" +
-      '<div><span class="k">參考／均價</span><span>' + fmtPx(m.ref) + " / " + fmtPx(m.avg) + "</span>" +
-      '<span class="k gap">振幅</span><span>' + ampTxt + "</span></div>" +
-      '<div><span class="k">漲停／跌停</span><span class="up">' + fmtPx(m.limitUp) +
-      '</span> / <span class="down">' + fmtPx(m.limitDown) + "</span>" +
-      '<span class="k gap">總量</span><span>' + volTxt + " 張</span></div>" +
-      '<div><span class="k">外資目標</span><span>高 ' + fmtPx(m.targetHigh) +
-      " · 中 " + fmtPx(m.targetMean) + " · 低 " + fmtPx(m.targetLow) + "</span></div>" +
-      '<div><span class="k">本益比</span><span>' +
-      (m.pe != null && isFinite(m.pe) ? Number(m.pe).toFixed(2) : "—") + "</span></div>" +
-      '<div><span class="k">突破／支撐</span><span>上漲 ' +
-      esc(m.breakout && m.breakout.text ? m.breakout.text : "—") +
-      " · 下跌 " + esc(m.support && m.support.text ? m.support.text : "—") +
-      "</span></div></div>";
+  function watchPnl(price, cost, shares) {
+    const p = Number(price);
+    const c = Number(cost);
+    const s = Number(shares);
+    if (!(p > 0) || !isFinite(c) || !(s > 0)) return { text: "—", cls: "", value: null };
+    const v = (p - c) * s;
+    return {
+      text: (v > 0 ? "+" : "") + Math.round(v).toLocaleString("zh-Hant"),
+      cls: v > 0 ? "up" : v < 0 ? "down" : "",
+      value: v
+    };
+  }
+
+  function paintWatchPnl(idx) {
+    const box = $("watch-list");
+    if (!box) return;
+    const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
+    const item = book.watch[idx];
+    if (!row || !item) return;
+    const price = Number(row.getAttribute("data-price"));
+    const pnl = watchPnl(price, item.cost, item.shares);
+    const cell = row.querySelector("[data-watch-pnl]");
+    if (!cell) return;
+    cell.className = pnl.cls;
+    cell.textContent = pnl.text;
   }
 
   function renderWatch() {
@@ -744,41 +740,68 @@
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
-    box.innerHTML = book.watch.map(function (item, idx) {
-      const shares = item.shares == null ? "" : item.shares;
-      const cost = item.cost == null ? "" : item.cost;
-      const th = notifyPctOf(item);
-      if (item.name) item.name = twName(item.name);
-      if (item.market) item.market = twName(item.market);
-      return '<div class="item watch-item"><div class="watch-main"><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
-        esc(item.name) + "</strong> " + esc(item.code) + "<small>" + esc(item.market || "") + "</small></button>" +
-        '<div data-watch-metrics="' + idx + '">' + watchMetricsHtml(null) + "</div>" +
-        '<div class="watch-alert">' +
-        '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
-        (item.notify ? " checked" : "") + '> 通知</label>' +
-        '<label class="watch-alert-pct">漲跌達 ±<input data-watch-notify-pct="' + idx +
-        '" inputmode="decimal" value="' + esc(th) + '" aria-label="通知門檻百分比">% 提醒</label>' +
-        "</div>" +
-        '<div class="grid2"><input data-watch-shares="' + idx + '" inputmode="numeric" value="' + esc(shares) + '" placeholder="股數" aria-label="股數">' +
-        '<input data-watch-cost="' + idx + '" inputmode="decimal" value="' + esc(cost) + '" placeholder="買價" aria-label="買價"></div></div>' +
-        '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button></div>';
-    }).join("");
+    box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
+      "<th>標的</th><th>目前</th><th>買價</th><th>損益</th><th>股數</th><th></th>" +
+      "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
+        const shares = item.shares == null ? "" : item.shares;
+        const cost = item.cost == null ? "" : item.cost;
+        const th = notifyPctOf(item);
+        if (item.name) item.name = twName(item.name);
+        if (item.market) item.market = twName(item.market);
+        const label = (item.name || "") + (item.code || "");
+        return '<tr data-watch-row="' + idx + '" data-price="">' +
+          '<td class="watch-name"><button type="button" class="watch-link" data-open-watch="' + idx + '">' +
+          esc(label) + "</button>" +
+          '<div class="watch-alert">' +
+          '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
+          (item.notify ? " checked" : "") + "> 通知</label>" +
+          '<label class="watch-alert-pct">±<input data-watch-notify-pct="' + idx +
+          '" inputmode="decimal" value="' + esc(th) + '" aria-label="通知門檻百分比">%</label>' +
+          "</div></td>" +
+          '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
+          '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
+          esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
+          '<td class="watch-num" data-watch-pnl="' + idx + '">—</td>' +
+          '<td><input class="watch-input" data-watch-shares="' + idx + '" inputmode="numeric" value="' +
+          esc(shares) + '" placeholder="股數" aria-label="股數"></td>' +
+          '<td><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
+          "</tr>";
+      }).join("") + "</tbody></table></div>";
     M.watchBoard(book.watch).then(function (rows) {
       if (gen !== renderWatch.gen) return;
       rows.forEach(function (m, idx) {
-        if (m && m.name && book.watch[idx] && book.watch[idx].name !== m.name) {
-          book.watch[idx].name = m.name;
-          const btn = box.querySelector('[data-open-watch="' + idx + '"] strong');
-          if (btn) btn.textContent = m.name;
+        const item = book.watch[idx];
+        const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
+        if (!row || !item) return;
+        if (m && m.name && item.name !== m.name) {
+          item.name = m.name;
+          const btn = row.querySelector("[data-open-watch]");
+          if (btn) btn.textContent = m.name + (item.code || "");
         }
-        const slot = box.querySelector('[data-watch-metrics="' + idx + '"]');
-        if (slot) slot.innerHTML = watchMetricsHtml(m || {});
+        const priceCell = row.querySelector("[data-watch-price]");
+        if (priceCell) {
+          if (m && m.price != null && isFinite(m.price)) {
+            const cls = pctClass((m.pct || 0) / 100);
+            const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
+              " " + (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
+            priceCell.className = "watch-num " + cls;
+            priceCell.innerHTML = fmtPx(m.price) +
+              (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
+            row.setAttribute("data-price", String(m.price));
+          } else {
+            priceCell.className = "watch-num";
+            priceCell.textContent = "—";
+            row.setAttribute("data-price", "");
+          }
+        }
+        paintWatchPnl(idx);
       });
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
       if (gen !== renderWatch.gen) return;
-      box.querySelectorAll("[data-watch-metrics]").forEach(function (slot) {
-        slot.innerHTML = watchMetricsHtml({});
+      box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
+        cell.className = "watch-num";
+        cell.textContent = "—";
       });
     });
   }
@@ -1493,6 +1516,7 @@
       book.watch[idx].notifyPct = n > 0 && isFinite(n) ? n : 3;
     }
     syncHolding(book.watch[idx]);
+    if (shares != null || cost != null) paintWatchPnl(idx);
     scheduleSave();
   });
   $("watch-list").addEventListener("change", async function (ev) {
