@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 9;
+  const PAGE_BUILD = 10;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -325,16 +325,19 @@
     const series = items.map(function (item) {
       const first = item.bars[0].c;
       const last = item.bars[item.bars.length - 1].c;
+      const priceMap = new Map(item.bars.map(function (b) { return [b.t.slice(0, 10), b.c]; }));
       return {
         name: item.name,
         color: item.color,
         bars: item.bars,
         change: first ? last / first - 1 : 0,
         last: last,
+        isTw: item.name === "台股",
         map: new Map(item.bars.map(function (b) {
           const y = mode === "pct" ? (b.c / first - 1) * 100 : b.c;
           return [b.t.slice(0, 10), y];
-        }))
+        })),
+        priceMap: priceMap
       };
     });
     if (align === "date" && mode === "pct") {
@@ -350,10 +353,16 @@
       series.forEach(function (s) {
         const end = s.bars[s.bars.length - 1].t.slice(0, 10);
         let carry = null;
+        let priceCarry = null;
         s.values = days.map(function (d) {
           if (d > end) return null;
           if (s.map.has(d)) carry = s.map.get(d);
           return carry;
+        });
+        s.prices = days.map(function (d) {
+          if (d > end) return null;
+          if (s.priceMap.has(d)) priceCarry = s.priceMap.get(d);
+          return priceCarry;
         });
       });
       return { axis: days, series: series, mode: mode };
@@ -363,11 +372,14 @@
     series.forEach(function (s) {
       const pad = max - s.bars.length;
       const values = new Array(max).fill(null);
+      const prices = new Array(max).fill(null);
       s.bars.forEach(function (b, i) {
         const y = mode === "pct" ? (b.c / s.bars[0].c - 1) * 100 : b.c;
         values[pad + i] = y;
+        prices[pad + i] = b.c;
       });
       s.values = values;
+      s.prices = prices;
     });
     const axis = new Array(max).fill("");
     longest.bars.forEach(function (b, i) {
@@ -454,7 +466,17 @@
       const text = String(plot.axis[i] || "").slice(5, 16);
       ctx.fillText(text, xOf(i) - 18, height - 8);
     });
-    canvas._layout = { left: left, width: iw, axis: plot.axis, series: plot.series, mode: plot.mode };
+    canvas._layout = {
+      left: left,
+      top: top,
+      width: iw,
+      height: ih,
+      min: min,
+      max: max,
+      axis: plot.axis,
+      series: plot.series,
+      mode: plot.mode
+    };
   }
 
   function renderLegend(items, mode) {
@@ -467,8 +489,23 @@
         " " + fmt(last) + ' <span class="' + pctClass(change) + '">' + pct(change) + "</span></div>";
     }).join("");
     if (mode === "pct") {
-      $("legend").insertAdjacentHTML("beforeend", '<p class="fine">數字是區間漲跌幅，起點對齊各市場自己的第一根。</p>');
+      $("legend").insertAdjacentHTML("beforeend", '<p class="fine">數字是區間漲跌幅，起點對齊各市場自己的第一根。手指移到台股線上會顯示當日點數。</p>');
     }
+  }
+
+  function seriesLabel(s, i, mode) {
+    const v = s.values[i];
+    if (v == null) return "";
+    if (s.isTw) {
+      const price = s.prices && s.prices[i];
+      if (mode === "pct") {
+        const pctText = (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+        return price != null ? "台股 " + fmt(price) + " 點（" + pctText + "）" : "台股 " + pctText;
+      }
+      return "台股 " + fmt(v) + " 點";
+    }
+    if (mode === "pct") return s.name + " " + (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+    return s.name + " " + fmt(v);
   }
 
   function onChartPointer(ev) {
@@ -478,18 +515,38 @@
     if (!layout || !state.plot) { tip.hidden = true; return; }
     const rect = canvas.getBoundingClientRect();
     const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
     const n = layout.axis.length;
     if (n < 1 || x < layout.left || x > layout.left + layout.width) { tip.hidden = true; return; }
     const i = Math.round((x - layout.left) / layout.width * (n - 1));
-    const parts = layout.series.map(function (s) {
-      const v = s.values[i];
-      if (v == null) return "";
-      const shown = layout.mode === "pct" ? (v >= 0 ? "+" : "") + v.toFixed(2) + "%" : fmt(v);
-      return s.name + " " + shown;
-    }).filter(Boolean);
+    const yOf = function (v) {
+      return layout.top + (layout.max - v) / (layout.max - layout.min) * layout.height;
+    };
+    const xOf = function (idx) {
+      return layout.left + (n <= 1 ? layout.width / 2 : (idx / (n - 1)) * layout.width);
+    };
+    const tw = layout.series.find(function (s) { return s.isTw && s.values[i] != null; });
+    const nearTw = tw && Math.abs(y - yOf(tw.values[i])) <= 28;
+    const parts = (nearTw ? [tw].concat(layout.series.filter(function (s) { return !s.isTw; })) : layout.series)
+      .map(function (s) { return seriesLabel(s, i, layout.mode); })
+      .filter(Boolean);
     if (!parts.length) { tip.hidden = true; return; }
     tip.hidden = false;
+    tip.classList.toggle("on-line", !!nearTw);
     tip.textContent = (layout.axis[i] || "") + "  " + parts.join(" · ");
+    if (nearTw) {
+      const px = rect.left + xOf(i);
+      const py = rect.top + yOf(tw.values[i]);
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, px - tip.offsetWidth / 2)) + "px";
+      tip.style.top = Math.max(8, py - tip.offsetHeight - 12) + "px";
+      tip.style.right = "auto";
+      tip.style.bottom = "auto";
+    } else {
+      tip.style.left = "";
+      tip.style.top = "";
+      tip.style.right = "";
+      tip.style.bottom = "";
+    }
   }
 
   function renderWatch() {
