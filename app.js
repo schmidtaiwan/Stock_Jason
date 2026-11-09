@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 17;
+  const PAGE_BUILD = 18;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -36,9 +36,39 @@
     return M && M.toTW ? M.toTW(s) : String(s == null ? "" : s);
   }
 
+  const NOTIFY_MODES = {
+    pct: { label: "漲跌%", prefix: "±", suffix: "%", def: 3 },
+    priceUp: { label: "漲到價", prefix: "≥", suffix: "", def: "" },
+    priceDown: { label: "跌到價", prefix: "≤", suffix: "", def: "" },
+    pnlUp: { label: "獲利元", prefix: "≥", suffix: "元", def: "" },
+    pnlDown: { label: "虧損元", prefix: "≥", suffix: "元", def: "" }
+  };
+
+  function notifyModeOf(row) {
+    const m = row && row.notifyMode;
+    return NOTIFY_MODES[m] ? m : "pct";
+  }
+
+  function notifyValOf(row) {
+    const mode = notifyModeOf(row);
+    const raw = row && row.notifyVal != null ? row.notifyVal : row && row.notifyPct;
+    const n = Number(raw);
+    if (n > 0 && isFinite(n)) return n;
+    return mode === "pct" ? 3 : null;
+  }
+
   function notifyPctOf(row) {
-    const n = Number(row && row.notifyPct);
-    return n > 0 && isFinite(n) ? n : 3;
+    return notifyModeOf(row) === "pct" ? (notifyValOf(row) || 3) : 3;
+  }
+
+  function normalizeNotify(row) {
+    const mode = notifyModeOf(row);
+    const val = notifyValOf(row);
+    row.notify = !!row.notify;
+    row.notifyMode = mode;
+    row.notifyVal = val;
+    row.notifyPct = mode === "pct" ? (val || 3) : notifyPctOf(row);
+    return row;
   }
 
   function normalizeBook(raw) {
@@ -48,9 +78,7 @@
       const out = Object.assign({}, row);
       if (out.name != null) out.name = twName(out.name);
       if (out.market != null) out.market = twName(out.market);
-      out.notify = !!out.notify;
-      out.notifyPct = notifyPctOf(out);
-      return out;
+      return normalizeNotify(out);
     }
     return {
       watch: Array.isArray(src.watch) ? src.watch.map(fixRow) : [],
@@ -384,23 +412,61 @@
     } catch (err) { /* 略過 */ }
   }
 
+  function watchAlertHit(item, quote) {
+    if (!item || !item.notify || !quote) return null;
+    const mode = notifyModeOf(item);
+    const val = notifyValOf(item);
+    if (!(val > 0)) return null;
+    const price = Number(quote.price);
+    const pctChg = Number(quote.pct);
+    const pnl = watchPnl(price, item.cost, item.shares).value;
+    if (mode === "pct") {
+      if (!isFinite(pctChg) || Math.abs(pctChg) < val) return null;
+      const side = pctChg >= 0 ? "up" : "down";
+      const sign = pctChg > 0 ? "+" : "";
+      return {
+        key: side + "|pct|" + val,
+        body: "幅度 " + sign + pctChg.toFixed(2) + "%（門檻 ±" + val + "%）· 成交 " + fmtPx(price)
+      };
+    }
+    if (mode === "priceUp") {
+      if (!isFinite(price) || price < val) return null;
+      return { key: "priceUp|" + val, body: "漲到 " + fmtPx(price) + "（門檻 ≥" + fmtPx(val) + "）" };
+    }
+    if (mode === "priceDown") {
+      if (!isFinite(price) || price > val) return null;
+      return { key: "priceDown|" + val, body: "跌到 " + fmtPx(price) + "（門檻 ≤" + fmtPx(val) + "）" };
+    }
+    if (mode === "pnlUp") {
+      if (pnl == null || !isFinite(pnl) || pnl < val) return null;
+      return {
+        key: "pnlUp|" + val,
+        body: "獲利 " + fmt(pnl) + " 元（門檻 ≥" + fmt(val) + "）· 成交 " + fmtPx(price)
+      };
+    }
+    if (mode === "pnlDown") {
+      if (pnl == null || !isFinite(pnl) || pnl > -val) return null;
+      return {
+        key: "pnlDown|" + val,
+        body: "虧損 " + fmt(Math.abs(pnl)) + " 元（門檻 ≥" + fmt(val) + "）· 成交 " + fmtPx(price)
+      };
+    }
+    return null;
+  }
+
   function checkWatchAlertsFromRows(items, rows) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const day = taipeiDay();
     (items || []).forEach(function (item, idx) {
       if (!item || !item.notify) return;
-      const m = rows && rows[idx];
-      if (!m || m.pct == null || !isFinite(m.pct)) return;
-      const th = notifyPctOf(item);
-      if (Math.abs(m.pct) < th) return;
-      const side = m.pct >= 0 ? "up" : "down";
-      const key = (item.secid || item.code) + "|" + day + "|" + side + "|" + th;
+      const hit = watchAlertHit(item, rows && rows[idx]);
+      if (!hit) return;
+      const key = (item.secid || item.code) + "|" + day + "|" + hit.key;
       if (alertSent[key]) return;
       alertSent[key] = true;
-      const sign = m.pct > 0 ? "+" : "";
       fireWatchNotice(
         twName(item.name || "") + " " + (item.code || ""),
-        "幅度 " + sign + Number(m.pct).toFixed(2) + "%（門檻 ±" + th + "%）· 成交 " + fmtPx(m.price),
+        hit.body,
         "watch-" + (item.code || idx)
       );
     });
@@ -745,19 +811,31 @@
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
-        const th = notifyPctOf(item);
+        normalizeNotify(item);
+        const mode = notifyModeOf(item);
+        const meta = NOTIFY_MODES[mode];
+        const val = notifyValOf(item);
+        const valText = val == null ? "" : String(val);
         if (item.name) item.name = twName(item.name);
         if (item.market) item.market = twName(item.market);
         const label = (item.name || "") + (item.code || "");
+        const modeOpts = Object.keys(NOTIFY_MODES).map(function (key) {
+          return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
+            NOTIFY_MODES[key].label + "</option>";
+        }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name"><button type="button" class="watch-link" data-open-watch="' + idx + '">' +
           esc(label) + "</button>" +
           '<div class="watch-alert">' +
           '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
           (item.notify ? " checked" : "") + "> 通知</label>" +
-          '<label class="watch-alert-pct">±<input data-watch-notify-pct="' + idx +
-          '" inputmode="decimal" value="' + esc(th) + '" aria-label="通知門檻百分比">%</label>' +
-          "</div></td>" +
+          '<select class="watch-alert-mode" data-watch-notify-mode="' + idx + '" aria-label="通知條件">' +
+          modeOpts + "</select>" +
+          '<label class="watch-alert-val"><span data-alert-prefix="1">' + esc(meta.prefix) + "</span>" +
+          '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
+          '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
+          '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
+          "</label></div></td>" +
           '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
           '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
@@ -1501,25 +1579,71 @@
   $("tool-back").addEventListener("click", function () { setView("tools"); });
   $("chart").addEventListener("pointermove", onChartPointer);
   $("chart").addEventListener("pointerleave", function () { $("hover").hidden = true; });
+  function paintNotifyValChrome(idx) {
+    const box = $("watch-list");
+    if (!box || !book.watch[idx]) return;
+    const mode = notifyModeOf(book.watch[idx]);
+    const meta = NOTIFY_MODES[mode];
+    const input = box.querySelector('label.watch-alert-val input[data-watch-notify-val="' + idx + '"]');
+    if (!input) return;
+    const wrap = input.parentElement;
+    let prefix = wrap.querySelector("[data-alert-prefix]");
+    let suffix = wrap.querySelector("[data-alert-suffix]");
+    if (!prefix) {
+      prefix = document.createElement("span");
+      prefix.setAttribute("data-alert-prefix", "1");
+      wrap.insertBefore(prefix, input);
+    }
+    if (!suffix) {
+      suffix = document.createElement("span");
+      suffix.setAttribute("data-alert-suffix", "1");
+      wrap.appendChild(suffix);
+    }
+    prefix.textContent = meta.prefix;
+    suffix.textContent = meta.suffix || "";
+    input.placeholder = mode === "pct" ? "3" : "數值";
+  }
+
   $("watch-list").addEventListener("input", function (ev) {
     const shares = ev.target.getAttribute("data-watch-shares");
     const cost = ev.target.getAttribute("data-watch-cost");
-    const pct = ev.target.getAttribute("data-watch-notify-pct");
+    const nval = ev.target.getAttribute("data-watch-notify-val");
     const idx = shares != null ? Number(shares)
       : cost != null ? Number(cost)
-        : pct != null ? Number(pct) : -1;
+        : nval != null ? Number(nval) : -1;
     if (idx < 0 || !book.watch[idx]) return;
     if (shares != null) book.watch[idx].shares = ev.target.value;
     if (cost != null) book.watch[idx].cost = ev.target.value;
-    if (pct != null) {
+    if (nval != null) {
       const n = Number(ev.target.value);
-      book.watch[idx].notifyPct = n > 0 && isFinite(n) ? n : 3;
+      book.watch[idx].notifyVal = n > 0 && isFinite(n) ? n : null;
+      if (notifyModeOf(book.watch[idx]) === "pct") {
+        book.watch[idx].notifyPct = book.watch[idx].notifyVal || 3;
+      }
+      normalizeNotify(book.watch[idx]);
     }
     syncHolding(book.watch[idx]);
     if (shares != null || cost != null) paintWatchPnl(idx);
     scheduleSave();
   });
   $("watch-list").addEventListener("change", async function (ev) {
+    const modeEl = ev.target.getAttribute("data-watch-notify-mode");
+    if (modeEl != null) {
+      const idx = Number(modeEl);
+      if (idx < 0 || !book.watch[idx]) return;
+      const next = ev.target.value;
+      book.watch[idx].notifyMode = NOTIFY_MODES[next] ? next : "pct";
+      if (book.watch[idx].notifyMode === "pct" && !(Number(book.watch[idx].notifyVal) > 0)) {
+        book.watch[idx].notifyVal = 3;
+      }
+      normalizeNotify(book.watch[idx]);
+      paintNotifyValChrome(idx);
+      const input = $("watch-list").querySelector('[data-watch-notify-val="' + idx + '"]');
+      if (input && book.watch[idx].notifyVal != null) input.value = String(book.watch[idx].notifyVal);
+      scheduleSave();
+      if (book.watch[idx].notify) pollWatchAlerts();
+      return;
+    }
     const notify = ev.target.getAttribute("data-watch-notify");
     if (notify == null) return;
     const idx = Number(notify);
@@ -1533,7 +1657,7 @@
         return;
       }
       book.watch[idx].notify = true;
-      book.watch[idx].notifyPct = notifyPctOf(book.watch[idx]);
+      normalizeNotify(book.watch[idx]);
       scheduleSave();
       pollWatchAlerts();
       return;
