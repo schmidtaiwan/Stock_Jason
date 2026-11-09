@@ -303,6 +303,34 @@ textarea { min-height: 120px; resize: vertical; }
   margin-left: 10px;
   min-width: 2.8em;
 }
+.watch-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.watch-alert-toggle,
+.watch-alert-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+}
+.watch-alert input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.watch-alert-pct input {
+  width: 56px;
+  min-height: 36px;
+  padding: 6px 8px;
+  text-align: center;
+}
 .badge {
   display: inline-block;
   border-radius: 999px;

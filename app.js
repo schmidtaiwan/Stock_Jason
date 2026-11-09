@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 15;
+  const PAGE_BUILD = 16;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -26,6 +26,7 @@
   let importRows = [];
   let liveTimer = 0;
   let liveBusy = false;
+  const alertSent = {};
 
   function emptyBook() {
     return { watch: [], holdings: [], journal: [], capital: 1000000, riskPct: 1, profile: "穩健" };
@@ -35,6 +36,11 @@
     return M && M.toTW ? M.toTW(s) : String(s == null ? "" : s);
   }
 
+  function notifyPctOf(row) {
+    const n = Number(row && row.notifyPct);
+    return n > 0 && isFinite(n) ? n : 3;
+  }
+
   function normalizeBook(raw) {
     const src = raw && typeof raw === "object" ? raw : {};
     function fixRow(row) {
@@ -42,6 +48,8 @@
       const out = Object.assign({}, row);
       if (out.name != null) out.name = twName(out.name);
       if (out.market != null) out.market = twName(out.market);
+      out.notify = !!out.notify;
+      out.notifyPct = notifyPctOf(out);
       return out;
     }
     return {
@@ -302,13 +310,20 @@
     return ids;
   }
 
+  function hasWatchAlerts() {
+    return (book.watch || []).some(function (item) { return item.notify; });
+  }
+
   async function liveTick() {
-    if (liveBusy || document.hidden || !isTwMarketOpen()) return;
+    if (liveBusy || !isTwMarketOpen()) return;
+    const alertOn = hasWatchAlerts();
+    if (document.hidden && !alertOn) return;
     liveBusy = true;
     try {
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
-      if (state.view === "chart") await loadChart();
-      else if (state.view === "watch") renderWatch();
+      if (!document.hidden && state.view === "chart") await loadChart();
+      else if (!document.hidden && state.view === "watch") renderWatch();
+      else if (alertOn) await pollWatchAlerts();
     } catch (err) {
       /* 下一輪再試 */
     } finally {
@@ -321,7 +336,84 @@
     liveTimer = setInterval(liveTick, 20000);
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden && isTwMarketOpen()) liveTick();
+      else if (document.hidden && hasWatchAlerts() && isTwMarketOpen()) liveTick();
     });
+  }
+
+  function taipeiDay() {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date());
+  }
+
+  async function ensureNotifyPermission() {
+    if (!("Notification" in window)) {
+      $("watch-status").textContent = "這個瀏覽器不支援系統通知。";
+      return false;
+    }
+    if (Notification.permission === "granted") return true;
+    if (Notification.permission === "denied") {
+      $("watch-status").textContent = "通知權限被拒絕，請到瀏覽器設定開啟。";
+      return false;
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        $("watch-status").textContent = "尚未允許通知，無法跳出資訊。";
+        return false;
+      }
+      $("watch-status").textContent = "已開啟通知。盤中達門檻會跳出提醒。";
+      return true;
+    } catch (err) {
+      $("watch-status").textContent = "無法請求通知權限。";
+      return false;
+    }
+  }
+
+  function fireWatchNotice(title, body, tag) {
+    try {
+      new Notification(title, {
+        body: body,
+        tag: tag || "stock-jason",
+        renotify: true,
+        silent: false
+      });
+    } catch (err) { /* 略過 */ }
+  }
+
+  function checkWatchAlertsFromRows(items, rows) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const day = taipeiDay();
+    (items || []).forEach(function (item, idx) {
+      if (!item || !item.notify) return;
+      const m = rows && rows[idx];
+      if (!m || m.pct == null || !isFinite(m.pct)) return;
+      const th = notifyPctOf(item);
+      if (Math.abs(m.pct) < th) return;
+      const side = m.pct >= 0 ? "up" : "down";
+      const key = (item.secid || item.code) + "|" + day + "|" + side + "|" + th;
+      if (alertSent[key]) return;
+      alertSent[key] = true;
+      const sign = m.pct > 0 ? "+" : "";
+      fireWatchNotice(
+        twName(item.name || "") + " " + (item.code || ""),
+        "幅度 " + sign + Number(m.pct).toFixed(2) + "%（門檻 ±" + th + "%）· 成交 " + fmtPx(m.price),
+        "watch-" + (item.code || idx)
+      );
+    });
+  }
+
+  async function pollWatchAlerts() {
+    const items = (book.watch || []).filter(function (item) { return item.notify; });
+    if (!items.length) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      const rows = await M.watchBoard(items);
+      checkWatchAlertsFromRows(items, rows);
+    } catch (err) { /* 下一輪 */ }
   }
 
   function moneyText(n) {
@@ -655,11 +747,18 @@
     box.innerHTML = book.watch.map(function (item, idx) {
       const shares = item.shares == null ? "" : item.shares;
       const cost = item.cost == null ? "" : item.cost;
+      const th = notifyPctOf(item);
       if (item.name) item.name = twName(item.name);
       if (item.market) item.market = twName(item.market);
       return '<div class="item watch-item"><div class="watch-main"><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
         esc(item.name) + "</strong> " + esc(item.code) + "<small>" + esc(item.market || "") + "</small></button>" +
         '<div data-watch-metrics="' + idx + '">' + watchMetricsHtml(null) + "</div>" +
+        '<div class="watch-alert">' +
+        '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
+        (item.notify ? " checked" : "") + '> 通知</label>' +
+        '<label class="watch-alert-pct">漲跌達 ±<input data-watch-notify-pct="' + idx +
+        '" inputmode="decimal" value="' + esc(th) + '" aria-label="通知門檻百分比">% 提醒</label>' +
+        "</div>" +
         '<div class="grid2"><input data-watch-shares="' + idx + '" inputmode="numeric" value="' + esc(shares) + '" placeholder="股數" aria-label="股數">' +
         '<input data-watch-cost="' + idx + '" inputmode="decimal" value="' + esc(cost) + '" placeholder="買價" aria-label="買價"></div></div>' +
         '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button></div>';
@@ -675,6 +774,7 @@
         const slot = box.querySelector('[data-watch-metrics="' + idx + '"]');
         if (slot) slot.innerHTML = watchMetricsHtml(m || {});
       });
+      checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
       if (gen !== renderWatch.gen) return;
       box.querySelectorAll("[data-watch-metrics]").forEach(function (slot) {
@@ -1381,11 +1481,40 @@
   $("watch-list").addEventListener("input", function (ev) {
     const shares = ev.target.getAttribute("data-watch-shares");
     const cost = ev.target.getAttribute("data-watch-cost");
-    const idx = shares != null ? Number(shares) : cost != null ? Number(cost) : -1;
+    const pct = ev.target.getAttribute("data-watch-notify-pct");
+    const idx = shares != null ? Number(shares)
+      : cost != null ? Number(cost)
+        : pct != null ? Number(pct) : -1;
     if (idx < 0 || !book.watch[idx]) return;
     if (shares != null) book.watch[idx].shares = ev.target.value;
     if (cost != null) book.watch[idx].cost = ev.target.value;
+    if (pct != null) {
+      const n = Number(ev.target.value);
+      book.watch[idx].notifyPct = n > 0 && isFinite(n) ? n : 3;
+    }
     syncHolding(book.watch[idx]);
+    scheduleSave();
+  });
+  $("watch-list").addEventListener("change", async function (ev) {
+    const notify = ev.target.getAttribute("data-watch-notify");
+    if (notify == null) return;
+    const idx = Number(notify);
+    if (idx < 0 || !book.watch[idx]) return;
+    if (ev.target.checked) {
+      const ok = await ensureNotifyPermission();
+      if (!ok) {
+        ev.target.checked = false;
+        book.watch[idx].notify = false;
+        scheduleSave();
+        return;
+      }
+      book.watch[idx].notify = true;
+      book.watch[idx].notifyPct = notifyPctOf(book.watch[idx]);
+      scheduleSave();
+      pollWatchAlerts();
+      return;
+    }
+    book.watch[idx].notify = false;
     scheduleSave();
   });
   $("import-box").addEventListener("input", function (ev) {
