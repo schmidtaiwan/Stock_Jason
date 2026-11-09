@@ -155,6 +155,36 @@ main {
 canvas { width: 100%; height: 260px; display: block; touch-action: none; }
 .legend { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .foreign { margin-top: 10px; }
+.stock-detail { margin-top: 12px; display: grid; gap: 10px; }
+.stock-detail .card h3 { margin: 0 0 8px; font-size: 16px; }
+.chip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.chip-cell {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #141b24;
+}
+.chip-cell .tag {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  background: #2a313b;
+}
+.chip-cell .tag.up { background: #321818; color: var(--up); }
+.chip-cell .tag.down { background: #123226; color: var(--down); }
+.stat-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.stat-list li { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.vol-list { max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.vol-list li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.eps-table { width: 100%; font-size: 13px; }
+.eps-table th, .eps-table td { text-align: right; }
+.eps-table th:first-child, .eps-table td:first-child { text-align: left; }
 .foreign .chips { margin-top: 4px; }
 .foreign .chips span {
   border: 1px solid var(--line);

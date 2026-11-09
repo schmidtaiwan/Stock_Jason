@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 11;
+  const PAGE_BUILD = 12;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -628,9 +628,95 @@
     renderWatch();
   }
 
+  function lotsText(n) {
+    if (n == null || !isFinite(n)) return "—";
+    const lots = n / 1000;
+    const sign = lots > 0 ? "+" : "";
+    return sign + lots.toFixed(0) + " 張";
+  }
+
+  function pctText(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return n.toFixed(1) + "%";
+  }
+
+  function renderStockDetail(detail) {
+    const box = $("stock-detail");
+    if (!box) return;
+    if (!detail) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    if (!detail.ok) {
+      box.innerHTML = '<article class="card"><p class="note">' + esc(detail.reason || "沒有明細") + "</p></article>";
+      return;
+    }
+    const q = detail.quote;
+    const own = detail.ownership || {};
+    const m = detail.margins || {};
+    const per = detail.per;
+    const quoteHtml = q
+      ? '<article class="card"><h3>今日行情 ' + esc(q.date.slice(5)) + "</h3><p>收 " + fmt(q.close) +
+        ' <span class="' + pctClass((q.spread || 0) / (q.close - (q.spread || 0) || 1)) + '">' +
+        (q.spread > 0 ? "+" : "") + fmt(q.spread) + "</span></p><p>最高 " + fmt(q.high) + " · 最低 " + fmt(q.low) +
+        " · 成交 " + (q.volume != null ? Math.round(q.volume / 1000).toLocaleString("zh-Hant") + " 張" : "—") +
+        "</p></article>"
+      : "";
+    const chipsHtml = '<article class="card"><h3>今日籌碼日報 ' + esc((detail.chipDate || "").slice(5)) +
+      '</h3><div class="chip-grid">' + (detail.chipCards || []).map(function (c) {
+        return '<div class="chip-cell"><span class="tag ' + c.tone.cls + '">' + esc(c.tone.label) +
+          "</span><div>" + esc(c.name) + '</div><strong class="' + (c.net > 0 ? "up" : c.net < 0 ? "down" : "") + '">' +
+          lotsText(c.net) + "</strong></div>";
+      }).join("") + '</div><p class="fine">依當日買賣超佔成交比重粗分大買／中買／中立／中賣／大賣。</p></article>';
+    const ownHtml = '<article class="card"><h3>籌碼分佈</h3><ul class="stat-list">' +
+      "<li><span>外資持股占比</span><strong>" + pctText(own.foreignPct) + "</strong></li>" +
+      "<li><span>外資剩餘可投資占比</span><strong>" + pctText(own.foreignRemain) + "</strong></li>" +
+      '<li><span>近 5 日外資買賣超</span><strong class="' + ((own.flow5 && own.flow5.foreign) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.foreign) + "</strong></li>" +
+      '<li><span>近 5 日投信買賣超</span><strong class="' + ((own.flow5 && own.flow5.trust) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.trust) + "</strong></li>" +
+      '<li><span>近 5 日自營買賣超</span><strong class="' + ((own.flow5 && own.flow5.dealer) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.dealer) + "</strong></li>" +
+      '<li><span>近 5 日法人合計</span><strong class="' + ((own.flow5 && own.flow5.total) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.total) + "</strong></li>" +
+      '</ul><p class="fine">持股占比目前公開資料主要是外資；投信／自營以近 5 日買賣超代表法人籌碼流向。</p></article>';
+    const finHtml = '<article class="card"><h3>財務狀況（三率）</h3><ul class="stat-list">' +
+      "<li><span>毛利率</span><strong>" + pctText(m.gross) + ' <span class="' + (m.grossTrend && m.grossTrend.cls) + '">' + esc(m.grossTrend && m.grossTrend.text) + "</span></strong></li>" +
+      "<li><span>營益率</span><strong>" + pctText(m.op) + ' <span class="' + (m.opTrend && m.opTrend.cls) + '">' + esc(m.opTrend && m.opTrend.text) + "</span></strong></li>" +
+      "<li><span>淨利率</span><strong>" + pctText(m.net) + ' <span class="' + (m.netTrend && m.netTrend.cls) + '">' + esc(m.netTrend && m.netTrend.text) + "</span></strong></li>" +
+      '</ul><p class="fine">用最近一季對上一季判斷上升／下降。資料截至 ' + esc(m.date || "—") + "。</p></article>";
+    const epsHtml = '<article class="card"><h3>EPS 與本益比</h3><table class="eps-table"><thead><tr><th>年</th><th>EPS</th><th>別</th></tr></thead><tbody>' +
+      (detail.epsYears || []).map(function (row) {
+        return "<tr><td>" + row.year + "</td><td>" + (row.eps == null ? "—" : row.eps.toFixed(2)) + "</td><td>" + esc(row.kind) + "</td></tr>";
+      }).join("") + "</tbody></table><p>本益比 " + (per && per.per != null ? per.per.toFixed(2) + " 倍" : "—") +
+      " · 股價淨值比 " + (per && per.pbr != null ? per.pbr.toFixed(2) : "—") +
+      " · 殖利率 " + (per && per.yield != null ? per.yield.toFixed(2) + "%" : "—") +
+      '</p><p class="fine">前兩年為財報季 EPS 加總；今年未滿四季會年化。後兩年依近兩年成長粗估，不是券商正式預估。</p></article>';
+    const volHtml = '<article class="card"><h3>近 60 日成交張數</h3><ul class="vol-list">' +
+      (detail.volumes || []).map(function (row) {
+        return "<li><span>" + esc(row.date.slice(5)) + '</span><strong class="' + (row.spread > 0 ? "up" : row.spread < 0 ? "down" : "") + '">' +
+          row.lots.toLocaleString("zh-Hant") + "</strong></li>";
+      }).join("") + "</ul></article>";
+    box.innerHTML = quoteHtml + chipsHtml + ownHtml + finHtml + epsHtml + volHtml;
+  }
+
+  async function loadStockDetail(row) {
+    const box = $("stock-detail");
+    if (!box) return;
+    if (!row) { renderStockDetail(null); return; }
+    box.hidden = false;
+    box.innerHTML = '<article class="card"><p class="status">正在讀籌碼與財務…</p></article>';
+    try {
+      const detail = await M.stockDetail(row.secid, row.code);
+      if (!state.focus || state.focus.secid !== row.secid) return;
+      renderStockDetail(detail);
+    } catch (err) {
+      if (!state.focus || state.focus.secid !== row.secid) return;
+      box.innerHTML = '<article class="card"><p class="note">' + esc(err.message || "明細讀取失敗") + "</p></article>";
+    }
+  }
+
   function openSymbol(row) {
     state.focus = row;
+    state.range = state.range === "1d" ? "1d" : "1y";
+    state.custom = false;
     setView("chart");
+    buildToggles();
+    loadStockDetail(row);
   }
 
   function addFromForm() {
@@ -1148,6 +1234,7 @@
   });
   $("focus-clear").addEventListener("click", function () {
     state.focus = null;
+    renderStockDetail(null);
     loadChart();
   });
   $("idea-run").addEventListener("click", runIdeas);

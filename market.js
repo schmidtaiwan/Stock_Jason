@@ -1400,6 +1400,196 @@
     });
   }
 
+  function twStockId(secid, code) {
+    const id = String(secid || "");
+    const c = String(code || "").toUpperCase();
+    if (id.indexOf("178.") === 0 || id.indexOf("tw.") === 0) return c || id.slice(id.indexOf(".") + 1);
+    if (/^\d{4,6}[A-Z]?$/.test(c)) return c;
+    return "";
+  }
+
+  async function finMind(dataset, stockId, start) {
+    const url = "https://api.finmindtrade.com/api/v4/data?dataset=" + encodeURIComponent(dataset) +
+      "&data_id=" + encodeURIComponent(stockId) + "&start_date=" + encodeURIComponent(start);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(dataset + " 讀取失敗");
+    const json = await res.json();
+    return Array.isArray(json.data) ? json.data : [];
+  }
+
+  function chipTone(net, vol) {
+    const r = vol > 0 ? net / vol : 0;
+    if (r >= 0.08) return { label: "大買", cls: "up" };
+    if (r >= 0.02) return { label: "中買", cls: "up" };
+    if (r > -0.02) return { label: "中立", cls: "" };
+    if (r > -0.08) return { label: "中賣", cls: "down" };
+    return { label: "大賣", cls: "down" };
+  }
+
+  function rateTrend(now, prev) {
+    if (now == null || prev == null || !isFinite(now) || !isFinite(prev)) return { text: "—", cls: "" };
+    const d = now - prev;
+    if (Math.abs(d) < 0.05) return { text: "持平", cls: "" };
+    return d > 0 ? { text: "上升", cls: "up" } : { text: "下降", cls: "down" };
+  }
+
+  function yearEps(rows) {
+    const byYear = {};
+    rows.forEach(function (row) {
+      if (row.type !== "EPS" || row.value == null) return;
+      const y = String(row.date).slice(0, 4);
+      if (!byYear[y]) byYear[y] = { year: y, sum: 0, n: 0, dates: [] };
+      byYear[y].sum += Number(row.value);
+      byYear[y].n += 1;
+      byYear[y].dates.push(row.date);
+    });
+    return Object.keys(byYear).sort().map(function (y) { return byYear[y]; });
+  }
+
+  function quarterBag(rows) {
+    const byDate = {};
+    rows.forEach(function (row) {
+      if (!byDate[row.date]) byDate[row.date] = { date: row.date };
+      byDate[row.date][row.type] = num(row.value);
+    });
+    return Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
+  }
+
+  async function stockDetail(secid, code) {
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前只有台股有籌碼與財務明細。" };
+    const startChip = isoDaysAgo(120);
+    const startShare = isoDaysAgo(400);
+    const startFin = isoDaysAgo(2000);
+    const startPer = isoDaysAgo(40);
+    const startPrice = isoDaysAgo(120);
+    const got = await Promise.all([
+      finMind("TaiwanStockInstitutionalInvestorsBuySell", stockId, startChip).catch(function () { return []; }),
+      finMind("TaiwanStockShareholding", stockId, startShare).catch(function () { return []; }),
+      finMind("TaiwanStockFinancialStatements", stockId, startFin).catch(function () { return []; }),
+      finMind("TaiwanStockPER", stockId, startPer).catch(function () { return []; }),
+      finMind("TaiwanStockPrice", stockId, startPrice).catch(function () { return []; })
+    ]);
+    const chips = got[0];
+    const shares = got[1];
+    const fins = got[2];
+    const pers = got[3];
+    const prices = got[4];
+
+    const byDay = {};
+    chips.forEach(function (row) {
+      if (!byDay[row.date]) byDay[row.date] = { date: row.date, foreign: 0, trust: 0, dealer: 0 };
+      const net = (num(row.buy) || 0) - (num(row.sell) || 0);
+      if (row.name === "Foreign_Investor" || row.name === "Foreign_Dealer_Self") byDay[row.date].foreign += net;
+      else if (row.name === "Investment_Trust") byDay[row.date].trust += net;
+      else if (row.name === "Dealer" || row.name === "Dealer_self" || row.name === "Dealer_Hedging") byDay[row.date].dealer += net;
+    });
+    const chipDays = Object.keys(byDay).sort().map(function (d) {
+      const row = byDay[d];
+      row.total = row.foreign + row.trust + row.dealer;
+      return row;
+    });
+    const latestChip = chipDays.length ? chipDays[chipDays.length - 1] : null;
+    const priceByDate = {};
+    prices.forEach(function (row) { priceByDate[row.date] = row; });
+    const latestPrice = prices.length ? prices[prices.length - 1] : null;
+    const vol = latestPrice ? (num(latestPrice.Trading_Volume) || 0) : 0;
+    const chipCards = latestChip ? [
+      { name: "外資", net: latestChip.foreign, tone: chipTone(latestChip.foreign, vol) },
+      { name: "投信", net: latestChip.trust, tone: chipTone(latestChip.trust, vol) },
+      { name: "自營", net: latestChip.dealer, tone: chipTone(latestChip.dealer, vol) },
+      { name: "法人", net: latestChip.total, tone: chipTone(latestChip.total, vol) }
+    ] : [];
+
+    const share = shares.length ? shares[shares.length - 1] : null;
+    const foreignPct = share ? num(share.ForeignInvestmentSharesRatio) : null;
+    const foreignRemain = share ? num(share.ForeignInvestmentRemainRatio) : null;
+    const last5 = chipDays.slice(-5);
+    const flow5 = {
+      foreign: last5.reduce(function (a, r) { return a + r.foreign; }, 0),
+      trust: last5.reduce(function (a, r) { return a + r.trust; }, 0),
+      dealer: last5.reduce(function (a, r) { return a + r.dealer; }, 0)
+    };
+    flow5.total = flow5.foreign + flow5.trust + flow5.dealer;
+
+    const q = quarterBag(fins);
+    const last = q.length ? q[q.length - 1] : null;
+    const prev = q.length > 1 ? q[q.length - 2] : null;
+    function margin(row, key) {
+      if (!row || !(row.Revenue > 0) || row[key] == null) return null;
+      return row[key] / row.Revenue * 100;
+    }
+    const margins = {
+      date: last ? last.date : "",
+      gross: margin(last, "GrossProfit"),
+      op: margin(last, "OperatingIncome"),
+      net: margin(last, "IncomeAfterTaxes"),
+      grossTrend: rateTrend(margin(last, "GrossProfit"), margin(prev, "GrossProfit")),
+      opTrend: rateTrend(margin(last, "OperatingIncome"), margin(prev, "OperatingIncome")),
+      netTrend: rateTrend(margin(last, "IncomeAfterTaxes"), margin(prev, "IncomeAfterTaxes"))
+    };
+
+    const years = yearEps(fins);
+    const nowY = new Date().getFullYear();
+    const want = [nowY - 2, nowY - 1, nowY, nowY + 1, nowY + 2];
+    const actual = {};
+    years.forEach(function (row) { actual[Number(row.year)] = row; });
+    const y1 = actual[nowY - 1] ? actual[nowY - 1].sum : null;
+    const y2 = actual[nowY - 2] ? actual[nowY - 2].sum : null;
+    const growth = (y1 != null && y2 != null && y2 !== 0) ? (y1 / y2 - 1) : null;
+    const cur = actual[nowY];
+    let yearNow = cur ? cur.sum : null;
+    if (cur && cur.n > 0 && cur.n < 4) yearNow = cur.sum * (4 / cur.n);
+    const epsYears = want.map(function (y) {
+      if (y < nowY) {
+        return { year: y, eps: actual[y] ? actual[y].sum : null, kind: "實際" };
+      }
+      if (y === nowY) {
+        return { year: y, eps: yearNow, kind: cur && cur.n >= 4 ? "實際" : "年化粗估" };
+      }
+      if (y === nowY + 1) {
+        return { year: y, eps: yearNow != null && growth != null ? yearNow * (1 + growth) : null, kind: "粗估" };
+      }
+      const next = yearNow != null && growth != null ? yearNow * (1 + growth) : null;
+      return { year: y, eps: next != null && growth != null ? next * (1 + growth) : null, kind: "粗估" };
+    });
+
+    const per = pers.length ? pers[pers.length - 1] : null;
+    const volRows = prices.slice(-60).reverse().map(function (row) {
+      return {
+        date: row.date,
+        lots: Math.round((num(row.Trading_Volume) || 0) / 1000),
+        close: num(row.close),
+        spread: num(row.spread)
+      };
+    });
+
+    return {
+      ok: true,
+      stockId: stockId,
+      quote: latestPrice ? {
+        date: latestPrice.date,
+        open: num(latestPrice.open),
+        high: num(latestPrice.max),
+        low: num(latestPrice.min),
+        close: num(latestPrice.close),
+        spread: num(latestPrice.spread),
+        volume: num(latestPrice.Trading_Volume)
+      } : null,
+      chipDate: latestChip ? latestChip.date : "",
+      chipCards: chipCards,
+      ownership: {
+        foreignPct: foreignPct,
+        foreignRemain: foreignRemain,
+        flow5: flow5
+      },
+      margins: margins,
+      epsYears: epsYears,
+      per: per ? { date: per.date, per: num(per.PER), pbr: num(per.PBR), yield: num(per.dividend_yield) } : null,
+      volumes: volRows
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -1413,6 +1603,8 @@
     backtest: backtest,
     riskReport: riskReport,
     reviewJournal: reviewJournal,
-    foreignNets: foreignNets
+    foreignNets: foreignNets,
+    stockDetail: stockDetail,
+    twStockId: twStockId
   };
 })(window);
