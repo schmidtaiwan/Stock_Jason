@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 2;
+  const PAGE_BUILD = 3;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -163,7 +163,7 @@
   }
 
   async function doLogin() {
-    $("gate-msg").textContent = "正在登入…";
+    $("gate-msg").textContent = "正在等 Google 授權…";
     try {
       const account = await D.login({ prompt: "select_account" });
       if (!D.isAllowed(account.email)) {
@@ -571,25 +571,76 @@
     });
   }
 
+  function findTableBand(data, w, h) {
+    const step = Math.max(1, Math.floor(w / 180));
+    const samples = Math.ceil(w / step);
+    let start = -1;
+    let gap = 0;
+    let darkRows = 0;
+    let best = null;
+    function close(end) {
+      const y1 = end - gap;
+      if (start >= 0 && y1 - start > 80 && darkRows > 8) {
+        if (!best || darkRows > best[2]) best = [start, y1, darkRows];
+      }
+      start = -1;
+      gap = 0;
+      darkRows = 0;
+    }
+    for (let y = 0; y < h; y++) {
+      let sum = 0;
+      let dark = 0;
+      for (let x = 0; x < w; x += step) {
+        const i = (y * w + x) * 4;
+        const L = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        sum += L;
+        if (L < 150) dark++;
+      }
+      const paper = sum / samples > 130;
+      const ink = dark / samples > 0.004;
+      if (paper && ink) {
+        if (start < 0) start = y;
+        gap = 0;
+        darkRows++;
+      } else if (start >= 0 && paper && gap < 36) {
+        gap++;
+      } else if (start >= 0) {
+        close(y);
+      }
+    }
+    if (start >= 0) close(h);
+    return best;
+  }
+
   function prepImage(file) {
     return new Promise(function (resolve, reject) {
       const img = new Image();
       img.onload = function () {
-        const scale = img.width < 1400 ? 1400 / img.width : 1;
+        const src = document.createElement("canvas");
+        src.width = img.width;
+        src.height = img.height;
+        const sctx = src.getContext("2d", { willReadFrequently: true });
+        sctx.drawImage(img, 0, 0);
+        const frame = sctx.getImageData(0, 0, src.width, src.height);
+        const band = findTableBand(frame.data, src.width, src.height);
+        const top = band ? Math.max(0, band[0] - 8) : 0;
+        const bottom = band ? Math.min(src.height, band[1] + 8) : src.height;
+        const cropH = Math.max(1, bottom - top);
+        const scale = src.width < 1600 ? 1600 / src.width : 1;
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
+        canvas.width = Math.round(src.width * scale);
+        canvas.height = Math.round(cropH * scale);
         const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const px = frame.data;
+        ctx.drawImage(src, 0, top, src.width, cropH, 0, 0, canvas.width, canvas.height);
+        const out = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const px = out.data;
         for (let i = 0; i < px.length; i += 4) {
           let L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
           L = (L - 128) * 1.8 + 128;
           L = L < 0 ? 0 : L > 255 ? 255 : L;
           px[i] = px[i + 1] = px[i + 2] = L;
         }
-        ctx.putImageData(frame, 0, 0);
+        ctx.putImageData(out, 0, 0);
         URL.revokeObjectURL(img.src);
         resolve(canvas);
       };
@@ -618,7 +669,10 @@
         cost: "",
         note: ""
       };
-      if (item.secid && row.pnl != null) {
+      if (row.cost > 0) {
+        item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
+        item.note = "圖上成交均價";
+      } else if (item.secid && row.pnl != null) {
         try {
           const map = await M.quoteMap([item.secid]);
           const quote = map[item.secid];
@@ -663,7 +717,10 @@
         renderImport();
         return;
       }
-      $("watch-status").textContent = "讀到 " + parsed.length + " 檔，正在查現價回推買價…";
+      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
+      $("watch-status").textContent = priced
+        ? "讀到 " + parsed.length + " 檔，其中 " + priced + " 檔用圖上的成交均價。"
+        : "讀到 " + parsed.length + " 檔，正在查現價回推買價…";
       importRows = await resolveParsed(parsed);
       renderImport();
       $("watch-status").textContent = "確認股數與買價後按匯入。圖只在這台手機辨識，不會另存。";

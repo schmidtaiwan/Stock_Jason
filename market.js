@@ -984,73 +984,137 @@
     });
     text = text.replace(/[—–−]/g, "-");
     text = text.replace(/([\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])/g, "$1");
-    text = text.split(/\n/).filter(function (line) {
-      return !/帳號|總損益|頁次|返回|重查|成本扣息|調整帳務|其他庫存|帳務模式|先進先出|首頁|自選報價|交易帳務|市場行情|新增自選/.test(line);
-    }).join("\n");
     text = text.replace(/[|「」“”"'【】\[\]_]/g, " ");
     text = text.replace(/(\d),(?=\d{3}(\D|$))/g, "$1");
-    const rows = [];
-    const re = /(?<![0-9A-Za-z])(\d{4,6}[A-Za-z]?)(?![0-9A-Za-z])/g;
-    const noiseName = /返回|庫存|說明|帳務|損益|股票|交易|頁次|筆數|調整|成本|配息|融資|首頁|行情|桃園|反沖|重查/;
-    const hits = [];
-    let match;
-    while ((match = re.exec(text))) {
-      const code = match[1].toUpperCase();
-      const before = text.slice(Math.max(0, match.index - 24), match.index);
-      if (text.charAt(match.index - 1) === "-") continue;
-      if (/總損益|帳號|頁次|筆數|電話/.test(before)) continue;
-      const prevCh = before.replace(/\s+$/, "").slice(-1);
-      if (!/[A-Za-z]/.test(code) && /[\d-]/.test(prevCh)) continue;
-      if (!/[A-Za-z]/.test(code) && /現買|現賣|股數|買進/.test(before.slice(-8))) continue;
-      if (/^(?:100|200|500|1000|2000|3000|5000|10000)$/.test(code) && !/[\u4e00-\u9fff]{2,}\s*$/.test(before)) continue;
-      hits.push({ code: code, at: match.index, end: match.index + match[1].length, before: before });
+    text = text.replace(/(\d)\.(\d{3})(?!\d)/g, "$1$2");
+    const noiseName = /返回|庫存|說明|帳務|損益|股票|交易|頁次|筆數|調整|成本|配息|融資|首頁|行情|桃園|反沖|重查|現買|現賣|股數|均價/;
+    const lines = text.split(/\n/).map(function (line) {
+      return line.replace(/\s+/g, " ").trim();
+    }).filter(function (line) {
+      return line && !/帳號|總損益|頁次|返回|重查|成本扣息|調整帳務|其他庫存|帳務模式|先進先出|首頁|自選報價|交易帳務|市場行情|新增自選/.test(line);
+    });
+
+    function cleanName(source) {
+      const found = String(source || "").match(/[\u4e00-\u9fff][\u4e00-\u9fff0-9]{1,16}/g) || [];
+      for (let i = found.length - 1; i >= 0; i--) {
+        if (!noiseName.test(found[i])) return found[i];
+      }
+      return "";
     }
-    hits.forEach(function (hit, index) {
-      const next = hits[index + 1];
-      const after = text.slice(hit.end, next ? next.at : hit.end + 80);
-      const nameMatch = hit.before.match(/([\u4e00-\u9fff][\u4e00-\u9fff0-9]{1,16})\s*$/);
-      let name = nameMatch ? nameMatch[1] : "";
-      if (noiseName.test(name) || name === "股數") name = "";
-      const code = hit.code;
-      const nums = after.match(/-?\d+(?:\.\d+)?/g) || [];
-      let shares = null;
+
+    function amounts(source) {
+      const tokens = String(source || "").match(/-?\d+(?:\.\d+)?/g) || [];
       let pnl = null;
-      const positives = [];
-      nums.forEach(function (token) {
+      const pos = [];
+      tokens.forEach(function (token) {
         const value = Number(token);
-        if (!isFinite(value)) return;
+        if (!isFinite(value) || value === 0) return;
+        const dec = token.indexOf(".") >= 0;
         if (token.charAt(0) === "-") {
-          if (token.indexOf(".") >= 0 && Math.abs(value) < 100) return;
+          if (dec && Math.abs(value) < 100) return;
           if (pnl == null) pnl = value;
           return;
         }
-        if (value >= 1 && value < 10000000) positives.push(value);
+        if (value > 0 && value < 10000000) pos.push({ value: value, dec: dec });
       });
-      if (positives.length) shares = positives[0];
-      if (pnl == null && positives.length > 1) pnl = positives[1];
-      if (!(shares > 0)) {
-        const prev = text.slice(Math.max(0, hit.at - 48), hit.at);
-        const cut = prev.lastIndexOf("\n");
-        const prevLine = cut >= 0 ? prev.slice(0, cut) : "";
-        const line = prevLine.slice(prevLine.lastIndexOf("\n") + 1);
-        const backNums = line.match(/-?\d+(?:\.\d+)?/g) || [];
-        const backPos = [];
-        backNums.forEach(function (token) {
-          const value = Number(token);
-          if (!isFinite(value)) return;
-          if (token.charAt(0) === "-") {
-            if (token.indexOf(".") >= 0 && Math.abs(value) < 100) return;
-            if (pnl == null) pnl = value;
-            return;
-          }
-          if (value >= 1 && value < 10000000) backPos.push(value);
-        });
-        if (backPos.length) shares = backPos[0];
-        if (pnl == null && backPos.length > 1) pnl = backPos[1];
+      let shares = null;
+      let shareAt = -1;
+      for (let i = 0; i < pos.length; i++) {
+        if (!pos[i].dec && pos[i].value >= 100 && pos[i].value % 100 === 0) {
+          shares = pos[i].value;
+          shareAt = i;
+          break;
+        }
       }
-      if (!(shares > 0)) return;
-      if (/^(?:100|200|500|1000|2000|3000|5000|10000)$/.test(code) && !name) return;
-      rows.push({ code: code, name: name, shares: shares, pnl: pnl, pct: null });
+      if (shares == null) {
+        for (let i = 0; i < pos.length; i++) {
+          if (!pos[i].dec && pos[i].value >= 1) {
+            shares = pos[i].value;
+            shareAt = i;
+            break;
+          }
+        }
+      }
+      const after = pos.slice(shareAt + 1);
+      while (after.length > 1 && !after[after.length - 1].dec && after[after.length - 1].value < 10) after.pop();
+      let cost = null;
+      if (!(shares > 0)) return { shares: null, pnl: pnl, cost: null };
+      if (pnl != null) {
+        const kept = [];
+        after.forEach(function (num, idx) {
+          const laterPrice = after.slice(idx + 1).some(function (item) {
+            return item.dec ? item.value >= 5 : item.value >= 10;
+          });
+          if (num.dec && num.value < 30 && laterPrice) return;
+          if (!num.dec && num.value < 200 && num.value % 100 !== 0 && laterPrice) return;
+          if (!num.dec && num.value < 10) return;
+          kept.push(num);
+        });
+        while (kept.length > 1 && !kept[kept.length - 1].dec && kept[kept.length - 1].value < 100 && kept[kept.length - 2].value >= 100) {
+          kept.pop();
+        }
+        if (kept.length) cost = kept[kept.length - 1].value;
+      } else if (after.length && !after[0].dec && after[0].value >= 50) {
+        pnl = after[0].value;
+        const rest = after.slice(1).filter(function (num) {
+          return num.dec ? num.value >= 5 : num.value >= 10;
+        });
+        if (rest.length) cost = rest[rest.length - 1].value;
+      } else if (after.length === 1 && (after[0].dec || after[0].value >= 10)) {
+        cost = after[0].value;
+      }
+      return { shares: shares, pnl: pnl, cost: cost };
+    }
+
+    const hits = [];
+    lines.forEach(function (line, index) {
+      const re = /(?<![0-9A-Za-z])(\d{4,6}[A-Za-z]?)(?![0-9A-Za-z])/g;
+      let match;
+      while ((match = re.exec(line))) {
+        const code = match[1].toUpperCase();
+        const before = line.slice(Math.max(0, match.index - 24), match.index);
+        if (line.charAt(match.index - 1) === "-") continue;
+        if (/總損益|帳號|頁次|筆數|電話/.test(before)) continue;
+        const prevToken = before.trim().split(/\s+/).pop() || "";
+        if (!/[A-Za-z]/.test(code) && /^\d{2,}$/.test(prevToken)) continue;
+        if (!/[A-Za-z]/.test(code) && /現買|現賣|股數|買進/.test(before.slice(-8))) continue;
+        if (/^(?:100|200|500|1000|2000|3000|5000|10000)$/.test(code) && !/[\u4e00-\u9fff]{2,}\s*$/.test(before)) continue;
+        hits.push({ code: code, line: index, at: match.index, end: match.index + match[1].length });
+      }
+    });
+
+    const rows = [];
+    hits.forEach(function (hit) {
+      const line = lines[hit.line];
+      const next = hits.filter(function (item) { return item.line === hit.line && item.at > hit.at; })[0];
+      const segment = line.slice(hit.end, next ? next.at : line.length);
+      const own = amounts(segment);
+      const prev = hit.line > 0 && !hits.some(function (item) { return item.line === hit.line - 1; }) ? lines[hit.line - 1] : "";
+      const following = hit.line + 1 < lines.length && !hits.some(function (item) { return item.line === hit.line + 1; }) ? lines[hit.line + 1] : "";
+      const prevMoney = amounts(prev);
+      const nextMoney = amounts(following);
+      let blob = segment;
+      if (!(own.shares >= 100) && prevMoney.shares >= 100) blob = prev;
+      else if (!(own.shares > 0) && nextMoney.shares > 0) blob = following;
+      const money = amounts(blob);
+      if (!(money.shares > 0)) return;
+      let name = cleanName(line.slice(0, hit.at));
+      if (!name) name = cleanName(blob);
+      if (!name) {
+        for (let i = hit.line - 1; i >= Math.max(0, hit.line - 2); i--) {
+          if (/\d{3,}/.test(lines[i])) continue;
+          name = cleanName(lines[i]);
+          if (name) break;
+        }
+      }
+      rows.push({
+        code: hit.code,
+        name: name,
+        shares: money.shares,
+        pnl: money.pnl,
+        cost: money.cost,
+        pct: null
+      });
     });
     const negatives = rows.filter(function (row) { return row.pnl != null && row.pnl < 0; }).length;
     if (negatives && negatives >= rows.length - 1) {

@@ -81,7 +81,16 @@
   function requestToken(prompt, hint) {
     return init().then(function () {
       return new Promise(function (resolve, reject) {
+        let settled = false;
+        const timer = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          reject(new Error("登入逾時。請再按一次；若沒有跳出 Google 視窗，請允許彈出視窗。"));
+        }, 40000);
         tokenClient.callback = function (resp) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
           if (!resp || resp.error) {
             reject(new Error((resp && (resp.error_description || resp.error)) || "登入未完成"));
             return;

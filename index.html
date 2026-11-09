@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=2">
+  <link rel="stylesheet" href="app.css?v=3">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -89,7 +89,7 @@
             <button id="watch-photo-btn" class="secondary" type="button">上傳庫存圖</button>
           </div>
           <input id="watch-photo" class="sr" type="file" accept="image/*">
-          <p class="fine">庫存圖若只有損益、沒有成本，會用現價回推平均買價。確認後才寫入。</p>
+          <p class="fine">庫存圖有成交均價就用圖上的價格；只有損益時才用現價回推。確認後才寫入。</p>
           <p id="watch-status" class="status" role="status"></p>
           <div id="import-box"></div>
         </div>
@@ -232,9 +232,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="google_config.js?v=2"></script>
-  <script src="drive.js?v=2"></script>
-  <script src="market.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="google_config.js?v=3"></script>
+  <script src="drive.js?v=3"></script>
+  <script src="market.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
