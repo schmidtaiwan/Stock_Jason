@@ -1,0 +1,12 @@
+{
+  "name": "股票分析",
+  "short_name": "股票分析",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#12181f",
+  "theme_color": "#12181f",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

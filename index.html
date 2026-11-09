@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12181f">
+  <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="股票分析">
+  <title>股票分析</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+  <section id="gate" class="gate">
+    <img class="mark" src="icon.svg" alt="">
+    <h1>股票分析</h1>
+    <p class="lede">手機上看美股三大指數，同一張圖可疊上台股、日股、韓股。自選股依登入的 Gmail 分開保存。</p>
+    <p class="note">資料寫入 jason660803@gmail.com 的雲端硬碟 StockJason，不會進 GitHub。請用 <strong id="prefer"></strong> 登入。</p>
+    <div class="stack">
+      <button id="enter" class="primary" type="button">先看走勢</button>
+      <button id="gate-login" class="secondary" type="button">用 Google 登入</button>
+    </div>
+    <p id="gate-ver" class="page-ver">版次 —</p>
+    <p id="gate-msg" class="status" role="status"></p>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <header class="top">
+      <div class="brand-row">
+        <div class="brand">
+          <img class="mark" src="icon.svg" alt="">
+          <div>
+            <h1>股票分析</h1>
+            <p id="pageVer" class="page-ver">版次 —</p>
+          </div>
+        </div>
+        <div class="tools">
+          <button id="login" type="button">登入</button>
+          <button id="logout" type="button" hidden>登出</button>
+        </div>
+      </div>
+      <p id="who" class="who"></p>
+    </header>
+
+    <main>
+      <section id="view-chart">
+        <div id="ranges" class="ranges"></div>
+        <div id="focus-bar" class="focus-bar" hidden>
+          <strong id="focus-name"></strong>
+          <button id="focus-clear" class="ghost" type="button">回到市場</button>
+        </div>
+        <div id="market-box">
+          <div id="markets" class="chips"></div>
+          <p class="fine">同一張圖可同時打開美股、台股、日股、韓股。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。</p>
+        </div>
+        <div class="card">
+          <canvas id="chart" width="640" height="520"></canvas>
+          <p id="chart-status" class="status" role="status"></p>
+          <div id="legend" class="legend"></div>
+        </div>
+        <p id="hover" class="tip" hidden></p>
+      </section>
+
+      <section id="view-watch" hidden>
+        <h2>自選股</h2>
+        <p id="watch-note" class="note"></p>
+        <label for="watch-q">搜尋美股、台股、日股、韓股</label>
+        <input id="watch-q" type="search" placeholder="代號或名稱，例如 2330、AAPL" enterkeyhint="search" autocomplete="off">
+        <div id="watch-hits"></div>
+        <div id="watch-list"></div>
+      </section>
+
+      <section id="view-tools" hidden>
+        <h2>交易分析</h2>
+        <div class="menu">
+          <button type="button" data-tool="ideas">1. 交易點子產生器<small>掃描市場，列出進場、停損、停利與風報比</small></button>
+          <button type="button" data-tool="tech">2. 自動化技術分析師<small>日線與週線的支撐壓力、均線、動能與買賣判斷</small></button>
+          <button type="button" data-tool="news">3. 新聞轉交易策略<small>把消息拆成短長期影響、反映程度與失效條件</small></button>
+          <button type="button" data-tool="test">4. 交易策略回測分析師<small>勝率、獲利因子、最大回撤與改進方向</small></button>
+          <button type="button" data-tool="risk">5. 投資組合風險管理<small>配置、相關性、再平衡，以及大盤跌 20% 的避險</small></button>
+          <button type="button" data-tool="journal">6. 交易日誌分析師<small>最近 20 筆的錯誤、錯過的機會與三條個人規則</small></button>
+        </div>
+      </section>
+
+      <section id="view-tool" hidden>
+        <button id="tool-back" class="ghost" type="button">返回分析</button>
+        <h2 id="tool-title"></h2>
+
+        <div id="panel-ideas" class="panel" hidden>
+          <div class="grid2">
+            <div><label for="idea-capital">帳戶資金</label><input id="idea-capital" inputmode="decimal" value="1000000"></div>
+            <div><label for="idea-risk">單筆風險 %</label><input id="idea-risk" inputmode="decimal" value="1"></div>
+          </div>
+          <p class="fine">掃描美股、台股、日股、韓股的一組流動標的。做多、收盤價試算，不含手續費。</p>
+          <button id="idea-run" class="primary" type="button">掃描 5 個點子</button>
+          <p id="idea-status" class="status" role="status"></p>
+          <div id="idea-out" class="result"></div>
+        </div>
+
+        <div id="panel-tech" class="panel" hidden>
+          <label for="tech-q">標的</label>
+          <input id="tech-q" type="search" placeholder="代號或名稱" autocomplete="off">
+          <div id="tech-hits"></div>
+          <p id="tech-pick" class="note">還沒選標的</p>
+          <button id="tech-run" class="primary" type="button">分析日線與週線</button>
+          <p id="tech-status" class="status" role="status"></p>
+          <div id="tech-out" class="result"></div>
+        </div>
+
+        <div id="panel-news" class="panel" hidden>
+          <label for="news-q">標的</label>
+          <input id="news-q" type="search" placeholder="代號或名稱" autocomplete="off">
+          <div id="news-hits"></div>
+          <p id="news-pick" class="note">還沒選標的</p>
+          <label for="news-text">最新消息</label>
+          <textarea id="news-text" placeholder="貼上公司或產業新聞。程式用詞彙與近期漲跌估計影響，不會假裝讀過全文以外的內線。"></textarea>
+          <div class="grid2">
+            <div><label for="news-capital">帳戶資金</label><input id="news-capital" inputmode="decimal" value="1000000"></div>
+            <div><label for="news-risk">單筆風險 %</label><input id="news-risk" inputmode="decimal" value="1"></div>
+          </div>
+          <button id="news-run" class="primary" type="button">轉成策略</button>
+          <p id="news-status" class="status" role="status"></p>
+          <div id="news-out" class="result"></div>
+        </div>
+
+        <div id="panel-test" class="panel" hidden>
+          <label for="test-q">標的</label>
+          <input id="test-q" type="search" placeholder="代號或名稱" autocomplete="off">
+          <div id="test-hits"></div>
+          <p id="test-pick" class="note">還沒選標的</p>
+          <label for="test-strategy">策略</label>
+          <select id="test-strategy">
+            <option value="cross">5 日 / 20 日均線交叉</option>
+            <option value="rsi">RSI 30 進、70 出</option>
+            <option value="breakout">20 日突破</option>
+          </select>
+          <label for="test-range">區間</label>
+          <select id="test-range">
+            <option value="1y">一年</option>
+            <option value="3y">三年</option>
+            <option value="5y">五年</option>
+          </select>
+          <button id="test-run" class="primary" type="button">回測</button>
+          <p id="test-status" class="status" role="status"></p>
+          <div id="test-out" class="result"></div>
+        </div>
+
+        <div id="panel-risk" class="panel" hidden>
+          <label for="risk-profile">風險承受</label>
+          <select id="risk-profile">
+            <option value="保守">保守（單一上限 15%）</option>
+            <option value="穩健" selected>穩健（單一上限 25%）</option>
+            <option value="積極">積極（單一上限 40%）</option>
+          </select>
+          <label for="risk-q">加入持股</label>
+          <input id="risk-q" type="search" placeholder="代號或名稱" autocomplete="off">
+          <div id="risk-hits"></div>
+          <div id="risk-list"></div>
+          <button id="risk-run" class="primary" type="button">檢視組合</button>
+          <p id="risk-status" class="status" role="status"></p>
+          <div id="risk-out" class="result"></div>
+        </div>
+
+        <div id="panel-journal" class="panel" hidden>
+          <div class="grid2">
+            <div><label for="j-date">日期</label><input id="j-date" type="date"></div>
+            <div><label for="j-side">方向</label>
+              <select id="j-side"><option>買進</option><option>放空</option></select>
+            </div>
+          </div>
+          <label for="j-q">標的</label>
+          <input id="j-q" type="search" placeholder="代號或名稱" autocomplete="off">
+          <div id="j-hits"></div>
+          <p id="j-pick" class="note">還沒選標的</p>
+          <div class="grid2">
+            <div><label for="j-entry">進場價</label><input id="j-entry" inputmode="decimal"></div>
+            <div><label for="j-exit">出場價</label><input id="j-exit" inputmode="decimal"></div>
+            <div><label for="j-qty">數量</label><input id="j-qty" inputmode="decimal" value="1"></div>
+            <div><label for="j-stop">停損價</label><input id="j-stop" inputmode="decimal"></div>
+          </div>
+          <label for="j-emotion">當下狀態</label>
+          <select id="j-emotion">
+            <option>依計畫</option>
+            <option>追價</option>
+            <option>恐懼提早出</option>
+            <option>不甘心加碼</option>
+            <option>猶豫沒下</option>
+          </select>
+          <label><input id="j-missed" type="checkbox"> 這筆是錯過的機會</label>
+          <label for="j-note">筆記</label>
+          <textarea id="j-note" placeholder="為什麼進、為什麼出"></textarea>
+          <button id="j-add" class="primary" type="button">寫入日誌</button>
+          <div id="j-list"></div>
+          <button id="j-run" class="secondary" type="button">分析最近 20 筆</button>
+          <p id="j-status" class="status" role="status"></p>
+          <div id="j-out" class="result"></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="dock">
+      <button type="button" data-view="chart" aria-current="page">走勢</button>
+      <button type="button" data-view="watch">自選</button>
+      <button type="button" data-view="tools">分析</button>
+    </nav>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="google_config.js?v=1"></script>
+  <script src="drive.js?v=1"></script>
+  <script src="market.js?v=1"></script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>
