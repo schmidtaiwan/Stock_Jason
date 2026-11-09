@@ -796,6 +796,7 @@
     const capital = Number(opts.capital) > 0 ? Number(opts.capital) : 1000000;
     const riskPct = Number(opts.riskPct) > 0 ? Number(opts.riskPct) : 1;
     const market = opts.market || "台股";
+    const limit = Math.max(1, Math.min(20, Math.floor(Number(opts.limit) || 5)));
     const pool = UNIVERSE.filter(function (meta) {
       return !market || market === "全部" || meta.market === market;
     });
@@ -813,7 +814,7 @@
         return null;
       }
     });
-    const ideas = rows.filter(Boolean).sort(function (a, b) { return b.score - a.score; }).slice(0, 5);
+    const ideas = rows.filter(Boolean).sort(function (a, b) { return b.score - a.score; }).slice(0, limit);
     let quotes = {};
     try { quotes = await quoteMap(ideas.map(function (item) { return item.secid; })); } catch (e) { quotes = {}; }
     ideas.forEach(function (item, idx) {

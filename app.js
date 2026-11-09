@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 8;
+  const PAGE_BUILD = 9;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -829,14 +829,23 @@
     return { capital: book.capital, riskPct: book.riskPct };
   }
 
+  function ideaLimit() {
+    const n = Math.floor(Number($("idea-count").value));
+    const limit = Math.max(1, Math.min(20, isFinite(n) && n > 0 ? n : 5));
+    $("idea-count").value = String(limit);
+    return limit;
+  }
+
   async function runIdeas() {
     const money = moneyFrom("idea");
+    const limit = ideaLimit();
     $("idea-run").disabled = true;
     $("idea-status").textContent = "開始掃描…";
     $("idea-out").innerHTML = "";
     try {
       const report = await M.scan({
         market: "台股",
+        limit: limit,
         capital: money.capital,
         riskPct: money.riskPct,
         onProgress: function (done, total, name) {
