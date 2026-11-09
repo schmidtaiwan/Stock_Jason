@@ -18,7 +18,7 @@
     { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#ff7a8a" },
     { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#4fd2e0" },
     { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#f2c14e" },
-    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#ff9f43" }
+    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#38bdf8" }
   ];
 
   const UNIVERSE = [
@@ -1455,6 +1455,320 @@
     return Object.keys(byDate).sort().map(function (d) { return byDate[d]; });
   }
 
+  function tickSize(price) {
+    const p = Math.abs(price);
+    if (p < 10) return 0.01;
+    if (p < 50) return 0.05;
+    if (p < 100) return 0.1;
+    if (p < 500) return 0.5;
+    if (p < 1000) return 1;
+    return 5;
+  }
+
+  function ceilTick(price) {
+    const t = tickSize(price);
+    return Math.round(Math.ceil(price / t - 1e-9) * t * 10000) / 10000;
+  }
+
+  function floorTick(price) {
+    const t = tickSize(price);
+    return Math.round(Math.floor(price / t + 1e-9) * t * 10000) / 10000;
+  }
+
+  function formatLevelPx(price) {
+    if (!(price > 0)) return "—";
+    const t = tickSize(price);
+    if (t >= 1) return Math.round(price).toLocaleString("zh-Hant");
+    if (t >= 0.1) return price.toFixed(1);
+    return price.toFixed(2);
+  }
+
+  function avgRange(bars, n) {
+    const take = bars.slice(-Math.min(n, bars.length));
+    if (!take.length) return 0;
+    let sum = 0;
+    take.forEach(function (b) { sum += Math.max((b.h || 0) - (b.l || 0), 0); });
+    const avg = sum / take.length;
+    return avg > 0 ? avg : tickSize(bars[bars.length - 1].c);
+  }
+
+  function pushAbove(list, close, level, why) {
+    if (!(level > close)) return;
+    list.push({ level: level, why: why });
+  }
+
+  function pushBelow(list, close, level, why) {
+    if (!(level < close)) return;
+    list.push({ level: level, why: why });
+  }
+
+  function pickNearest(cands, close, minGap, aboveClose) {
+    if (!cands.length) return null;
+    const far = aboveClose
+      ? cands.filter(function (c) { return c.level >= close + minGap; })
+      : cands.filter(function (c) { return c.level <= close - minGap; });
+    const pool = far.length ? far : cands;
+    return pool.reduce(function (best, cur) {
+      if (!best) return cur;
+      return aboveClose
+        ? (cur.level < best.level ? cur : best)
+        : (cur.level > best.level ? cur : best);
+    }, null);
+  }
+
+  /** 與桌面版 TrendAnalyzer.FindLevels 對齊的簡化版（不含成交量輪廓）。 */
+  function findLevels(bars) {
+    if (!bars || bars.length < 5) return { breakout: null, support: null };
+    const close = bars[bars.length - 1].c;
+    const atr14 = avgRange(bars, 14);
+    const minGap = Math.max(atr14 * 0.15, tickSize(close));
+    const n20 = Math.min(20, bars.length);
+    const n60 = Math.min(60, bars.length);
+    const last20 = bars.slice(-n20);
+    const last60 = bars.slice(-n60);
+    let hi20 = -Infinity;
+    let lo20 = Infinity;
+    let hi60 = -Infinity;
+    let lo60 = Infinity;
+    last20.forEach(function (b) {
+      hi20 = Math.max(hi20, b.h);
+      lo20 = Math.min(lo20, b.l);
+    });
+    last60.forEach(function (b) {
+      hi60 = Math.max(hi60, b.h);
+      lo60 = Math.min(lo60, b.l);
+    });
+    const closes = closesOf(bars);
+    const ma20 = sma(closes, 20);
+    const ma60 = sma(closes, 60);
+    const m20 = ma20[ma20.length - 1];
+    const m60 = ma60[ma60.length - 1];
+    const rangeLike = m20 != null && m60 != null && Math.abs(m20 - m60) / close < 0.02;
+    const boxHi = rangeLike ? hi20 : hi60;
+    const boxLo = rangeLike ? lo20 : lo60;
+    const above = [];
+    const below = [];
+    pushAbove(above, close, boxHi, rangeLike ? "箱型上緣" : "近" + n60 + "日高");
+    if (Math.abs(hi20 - boxHi) > minGap) pushAbove(above, close, hi20, "近" + n20 + "日高");
+    if (m20 != null) pushAbove(above, close, m20, "MA20");
+    if (m60 != null) pushAbove(above, close, m60, "MA60");
+    pushBelow(below, close, boxLo, rangeLike ? "箱型下緣" : "近" + n60 + "日低");
+    if (Math.abs(lo20 - boxLo) > minGap) pushBelow(below, close, lo20, "近" + n20 + "日低");
+    if (m20 != null) pushBelow(below, close, m20, "MA20");
+    if (m60 != null) pushBelow(below, close, m60, "MA60");
+
+    let brkCand = pickNearest(above, close, minGap, true);
+    let supCand = pickNearest(below, close, minGap, false);
+    if (rangeLike) {
+      const exactHi = above.find(function (c) { return Math.abs(c.level - boxHi) < 1e-6; });
+      if (exactHi) brkCand = exactHi;
+      if (close - boxLo <= Math.max(atr14 * 2.5, close * 0.08)) {
+        const exactLo = below.find(function (c) { return Math.abs(c.level - boxLo) < 1e-6; });
+        if (exactLo) supCand = exactLo;
+      }
+    }
+
+    let breakout;
+    if (brkCand) {
+      let focus = ceilTick(brkCand.level + minGap);
+      if (focus <= close) focus = ceilTick(close + tickSize(close));
+      breakout = { focus: focus, text: formatLevelPx(focus), why: brkCand.why };
+    } else {
+      let focus = ceilTick(Math.max(hi20, close) + minGap);
+      if (focus <= close) focus = ceilTick(close + tickSize(close));
+      breakout = { focus: focus, text: formatLevelPx(focus), why: "站上近高" };
+    }
+
+    let support;
+    if (supCand) {
+      const half = Math.max(atr14 * 0.25, tickSize(supCand.level) * 2);
+      let low = floorTick(supCand.level - half);
+      let high = floorTick(Math.min(supCand.level + half, close - tickSize(close)));
+      if (high < low) high = low;
+      if (high >= close) {
+        high = floorTick(close - tickSize(close));
+        if (high < low) high = low;
+      }
+      const focus = Math.min(Math.max(floorTick(supCand.level), low), high);
+      support = {
+        low: low,
+        high: high,
+        focus: focus,
+        text: low === high ? formatLevelPx(low) : formatLevelPx(low) + "–" + formatLevelPx(high),
+        why: supCand.why
+      };
+    } else {
+      const half = Math.max(atr14 * 0.25, tickSize(lo20) * 2);
+      let low = floorTick(lo20 - minGap);
+      let high = floorTick(Math.min(lo20 + half, close - tickSize(close)));
+      if (high < low) high = low;
+      support = {
+        low: low,
+        high: high,
+        focus: floorTick(lo20),
+        text: low === high ? formatLevelPx(low) : formatLevelPx(low) + "–" + formatLevelPx(high),
+        why: "近低支撐"
+      };
+    }
+    return { breakout: breakout, support: support };
+  }
+
+  let targetsCache = null;
+  let targetsCachePromise = null;
+
+  async function loadTargetsCache() {
+    if (targetsCache) return targetsCache;
+    if (!targetsCachePromise) {
+      targetsCachePromise = fetch("targets-cache.json")
+        .then(function (res) { return res.ok ? res.json() : { items: {} }; })
+        .then(function (json) {
+          targetsCache = json && json.items ? json : { items: {} };
+          return targetsCache;
+        })
+        .catch(function () {
+          targetsCache = { items: {} };
+          return targetsCache;
+        });
+    }
+    return targetsCachePromise;
+  }
+
+  function parseFactsetTargets(html) {
+    if (!html) return null;
+    const m = String(html).match(/"targetValuation":\{[^}]+\}/);
+    if (!m) return null;
+    try {
+      const tv = JSON.parse(m[0].slice('"targetValuation":'.length));
+      const high = num(tv.feHigh);
+      const mean = num(tv.feMean);
+      const low = num(tv.feLow);
+      if (!(high > 0) && !(mean > 0) && !(low > 0)) return null;
+      return {
+        high: high,
+        mean: mean,
+        low: low,
+        median: num(tv.feMedian),
+        asOf: tv.rateDate || "",
+        source: "cnyes"
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function fetchCnyesTargetsLive(code) {
+    const target = "https://www.cnyes.com/twstock/" + encodeURIComponent(code);
+    const urls = [
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(target),
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(target),
+      "https://corsproxy.io/?" + encodeURIComponent(target)
+    ];
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 9000) : 0;
+        const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
+        if (timer) clearTimeout(timer);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const hit = parseFactsetTargets(text);
+        if (hit) return hit;
+      } catch (err) { /* 下一個代理 */ }
+    }
+    return null;
+  }
+
+  async function foreignTargets(code) {
+    const id = String(code || "").toUpperCase();
+    if (!id) return null;
+    const cache = await loadTargetsCache();
+    const hit = cache.items && cache.items[id];
+    if (hit && (hit.high > 0 || hit.mean > 0 || hit.low > 0)) {
+      return {
+        high: num(hit.high),
+        mean: num(hit.mean),
+        low: num(hit.low),
+        median: num(hit.median),
+        asOf: hit.asOf || "",
+        source: "cache"
+      };
+    }
+    const live = await fetchCnyesTargetsLive(id);
+    if (live) {
+      if (!cache.items) cache.items = {};
+      cache.items[id] = live;
+    }
+    return live;
+  }
+
+  async function dayBarsForLevels(secid, code) {
+    const stockId = twStockId(secid, code);
+    if (stockId) {
+      const rows = await finMind("TaiwanStockPrice", stockId, isoDaysAgo(140)).catch(function () { return []; });
+      const out = rows.map(function (row) {
+        return {
+          t: row.date,
+          o: num(row.open),
+          c: num(row.close),
+          h: num(row.max),
+          l: num(row.min),
+          v: num(row.Trading_Volume) || 0
+        };
+      }).filter(function (b) { return b.c != null && b.c > 0 && b.h != null && b.l != null; });
+      if (out.length >= 5) return out;
+    }
+    if (String(secid || "").indexOf("tw.") === 0 || String(secid || "").indexOf("fx.") === 0) return [];
+    const em = await kline(secid, 101, 80).catch(function () { return []; });
+    return em.length >= 5 ? em : [];
+  }
+
+  async function watchMetrics(item) {
+    const secid = item && item.secid;
+    const code = item && item.code;
+    const stockId = twStockId(secid, code);
+    const empty = {
+      price: null,
+      pct: null,
+      pe: null,
+      targetHigh: null,
+      targetMean: null,
+      targetLow: null,
+      breakout: null,
+      support: null
+    };
+    if (!secid) return empty;
+    const jobs = [
+      quoteMap([secid]).catch(function () { return {}; }),
+      stockId
+        ? finMind("TaiwanStockPER", stockId, isoDaysAgo(40)).catch(function () { return []; })
+        : Promise.resolve([]),
+      dayBarsForLevels(secid, code),
+      stockId ? foreignTargets(stockId) : Promise.resolve(null)
+    ];
+    const got = await Promise.all(jobs);
+    const q = got[0][secid] || null;
+    const pers = got[1];
+    const dayBars = got[2];
+    const targets = got[3];
+    const per = pers.length ? num(pers[pers.length - 1].PER) : null;
+    const levels = findLevels(dayBars);
+    return {
+      price: q && q.price != null ? q.price : null,
+      pct: q && q.pct != null ? q.pct : null,
+      pe: per,
+      targetHigh: targets ? targets.high : null,
+      targetMean: targets ? targets.mean : null,
+      targetLow: targets ? targets.low : null,
+      breakout: levels.breakout,
+      support: levels.support
+    };
+  }
+
+  async function watchBoard(items) {
+    const list = items || [];
+    return mapPool(list, 3, function (item) { return watchMetrics(item); });
+  }
+
   async function stockDetail(secid, code) {
     const stockId = twStockId(secid, code);
     if (!stockId) return { ok: false, reason: "目前只有台股有籌碼與財務明細。" };
@@ -1605,6 +1919,10 @@
     reviewJournal: reviewJournal,
     foreignNets: foreignNets,
     stockDetail: stockDetail,
-    twStockId: twStockId
+    twStockId: twStockId,
+    watchMetrics: watchMetrics,
+    watchBoard: watchBoard,
+    foreignTargets: foreignTargets,
+    findLevels: findLevels
   };
 })(window);

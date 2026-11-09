@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 12;
+  const PAGE_BUILD = 13;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -531,33 +531,63 @@
     tip.textContent = (layout.axis[i] || "") + "  " + parts.join(" · ");
   }
 
+  function fmtPx(n) {
+    if (n == null || !isFinite(n)) return "—";
+    const a = Math.abs(n);
+    if (a >= 1000) return Math.round(n).toLocaleString("zh-Hant");
+    if (a >= 100) return n.toLocaleString("zh-Hant", { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+    return n.toLocaleString("zh-Hant", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  }
+
+  function watchMetricsHtml(m) {
+    if (!m) {
+      return '<div class="watch-metrics"><span class="note">讀取中…</span></div>';
+    }
+    const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
+      ((m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%");
+    const priceCls = pctClass((m.pct || 0) / 100);
+    return '<div class="watch-metrics">' +
+      '<div><span class="k">成交</span><span class="' + priceCls + '">' + fmtPx(m.price) +
+      (pctTxt ? " " + pctTxt : "") + "</span></div>" +
+      '<div><span class="k">外資目標</span><span>高 ' + fmtPx(m.targetHigh) +
+      " · 中 " + fmtPx(m.targetMean) + " · 低 " + fmtPx(m.targetLow) + "</span></div>" +
+      '<div><span class="k">本益比</span><span>' +
+      (m.pe != null && isFinite(m.pe) ? Number(m.pe).toFixed(2) : "—") + "</span></div>" +
+      '<div><span class="k">突破／支撐</span><span>上漲 ' +
+      esc(m.breakout && m.breakout.text ? m.breakout.text : "—") +
+      " · 下跌 " + esc(m.support && m.support.text ? m.support.text : "—") +
+      "</span></div></div>";
+  }
+
   function renderWatch() {
     const box = $("watch-list");
     if (!book.watch.length) {
       box.innerHTML = '<p class="note">自選股還是空的。用代號或庫存圖加入。</p>';
       return;
     }
+    const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
     box.innerHTML = book.watch.map(function (item, idx) {
       const shares = item.shares == null ? "" : item.shares;
       const cost = item.cost == null ? "" : item.cost;
-      return '<div class="item"><div><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
+      return '<div class="item watch-item"><div class="watch-main"><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
         esc(item.name) + "</strong> " + esc(item.code) + "<small>" + esc(item.market || "") + "</small></button>" +
+        '<div data-watch-metrics="' + idx + '">' + watchMetricsHtml(null) + "</div>" +
         '<div class="grid2"><input data-watch-shares="' + idx + '" inputmode="numeric" value="' + esc(shares) + '" placeholder="股數" aria-label="股數">' +
         '<input data-watch-cost="' + idx + '" inputmode="decimal" value="' + esc(cost) + '" placeholder="買價" aria-label="買價"></div></div>' +
         '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button></div>';
     }).join("");
-    const ids = book.watch.map(function (item) { return item.secid; });
-    M.quoteMap(ids).then(function (map) {
-      box.querySelectorAll("[data-open-watch]").forEach(function (btn) {
-        const item = book.watch[Number(btn.getAttribute("data-open-watch"))];
-        const q = map[item.secid];
-        if (!q || q.price == null) return;
-        const span = document.createElement("small");
-        span.className = pctClass((q.pct || 0) / 100);
-        span.textContent = fmt(q.price) + "  " + (q.pct > 0 ? "+" : "") + Number(q.pct).toFixed(2) + "%";
-        btn.appendChild(span);
+    M.watchBoard(book.watch).then(function (rows) {
+      if (gen !== renderWatch.gen) return;
+      rows.forEach(function (m, idx) {
+        const slot = box.querySelector('[data-watch-metrics="' + idx + '"]');
+        if (slot) slot.innerHTML = watchMetricsHtml(m || {});
       });
-    }).catch(function () {});
+    }).catch(function () {
+      if (gen !== renderWatch.gen) return;
+      box.querySelectorAll("[data-watch-metrics]").forEach(function (slot) {
+        slot.innerHTML = watchMetricsHtml({});
+      });
+    });
   }
 
   function bindSearch(inputId, hitId, key, prefer) {
