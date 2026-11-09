@@ -22,6 +22,26 @@
   ];
 
   const UNIVERSE = [
+    { secid: "178.2330", code: "2330", name: "台積電", market: "台股" },
+    { secid: "178.2317", code: "2317", name: "鴻海", market: "台股" },
+    { secid: "178.2454", code: "2454", name: "聯發科", market: "台股" },
+    { secid: "178.2308", code: "2308", name: "台達電", market: "台股" },
+    { secid: "178.2382", code: "2382", name: "廣達", market: "台股" },
+    { secid: "178.2357", code: "2357", name: "華碩", market: "台股" },
+    { secid: "178.3711", code: "3711", name: "日月光投控", market: "台股" },
+    { secid: "178.3037", code: "3037", name: "欣興", market: "台股" },
+    { secid: "178.2303", code: "2303", name: "聯電", market: "台股" },
+    { secid: "178.2881", code: "2881", name: "富邦金", market: "台股" },
+    { secid: "178.2882", code: "2882", name: "國泰金", market: "台股" },
+    { secid: "178.2891", code: "2891", name: "中信金", market: "台股" },
+    { secid: "178.2412", code: "2412", name: "中華電", market: "台股" },
+    { secid: "178.1301", code: "1301", name: "台塑", market: "台股" },
+    { secid: "178.1303", code: "1303", name: "南亞", market: "台股" },
+    { secid: "178.2002", code: "2002", name: "中鋼", market: "台股" },
+    { secid: "178.2207", code: "2207", name: "和泰車", market: "台股" },
+    { secid: "178.2912", code: "2912", name: "統一超", market: "台股" },
+    { secid: "178.1216", code: "1216", name: "統一", market: "台股" },
+    { secid: "178.1101", code: "1101", name: "台泥", market: "台股" },
     { secid: "105.AAPL", code: "AAPL", name: "蘋果", market: "美股" },
     { secid: "105.MSFT", code: "MSFT", name: "微軟", market: "美股" },
     { secid: "105.NVDA", code: "NVDA", name: "輝達", market: "美股" },
@@ -32,9 +52,6 @@
     { secid: "105.AVGO", code: "AVGO", name: "博通", market: "美股" },
     { secid: "105.AMD", code: "AMD", name: "超微", market: "美股" },
     { secid: "106.JPM", code: "JPM", name: "摩根大通", market: "美股" },
-    { secid: "178.2330", code: "2330", name: "台積電", market: "台股" },
-    { secid: "178.2317", code: "2317", name: "鴻海", market: "台股" },
-    { secid: "178.2454", code: "2454", name: "聯發科", market: "台股" },
     { secid: "176.7203", code: "7203", name: "豐田", market: "日股" },
     { secid: "176.6758", code: "6758", name: "索尼", market: "日股" },
     { secid: "177.005930", code: "005930", name: "三星電子", market: "韓股" },
@@ -778,17 +795,21 @@
     opts = opts || {};
     const capital = Number(opts.capital) > 0 ? Number(opts.capital) : 1000000;
     const riskPct = Number(opts.riskPct) > 0 ? Number(opts.riskPct) : 1;
+    const market = opts.market || "台股";
+    const pool = UNIVERSE.filter(function (meta) {
+      return !market || market === "全部" || meta.market === market;
+    });
     let done = 0;
-    const rows = await mapPool(UNIVERSE, 3, async function (meta) {
+    const rows = await mapPool(pool, 3, async function (meta) {
       try {
         const raw = await kline(meta.secid, 101, 180);
         const idea = scoreOne(meta, raw);
         done++;
-        if (opts.onProgress) opts.onProgress(done, UNIVERSE.length, meta.name);
+        if (opts.onProgress) opts.onProgress(done, pool.length, meta.name);
         return idea;
       } catch (err) {
         done++;
-        if (opts.onProgress) opts.onProgress(done, UNIVERSE.length, meta.name);
+        if (opts.onProgress) opts.onProgress(done, pool.length, meta.name);
         return null;
       }
     });
@@ -803,7 +824,7 @@
       item.riskCash = capital * (riskPct / 100);
     });
     return {
-      scanned: UNIVERSE.length,
+      scanned: pool.length,
       kept: ideas.length,
       tradable: ideas.filter(function (item) { return item.badge === "可進場"; }).length,
       ideas: ideas

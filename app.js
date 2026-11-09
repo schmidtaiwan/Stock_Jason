@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 6;
+  const PAGE_BUILD = 7;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -836,6 +836,7 @@
     $("idea-out").innerHTML = "";
     try {
       const report = await M.scan({
+        market: "台股",
         capital: money.capital,
         riskPct: money.riskPct,
         onProgress: function (done, total, name) {
@@ -1144,11 +1145,11 @@
   window.addEventListener("resize", draw);
 
   bindSearch("watch-q", "watch-hits", "watch", "台股");
-  bindSearch("tech-q", "tech-hits", "tech");
-  bindSearch("news-q", "news-hits", "news");
-  bindSearch("test-q", "test-hits", "test");
-  bindSearch("risk-q", "risk-hits", "risk");
-  bindSearch("j-q", "j-hits", "journal");
+  bindSearch("tech-q", "tech-hits", "tech", "台股");
+  bindSearch("news-q", "news-hits", "news", "台股");
+  bindSearch("test-q", "test-hits", "test", "台股");
+  bindSearch("risk-q", "risk-hits", "risk", "台股");
+  bindSearch("j-q", "j-hits", "journal", "台股");
 
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
