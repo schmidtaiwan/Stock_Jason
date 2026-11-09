@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 13;
+  const PAGE_BUILD = 14;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -28,12 +28,23 @@
     return { watch: [], holdings: [], journal: [], capital: 1000000, riskPct: 1, profile: "穩健" };
   }
 
+  function twName(s) {
+    return M && M.toTW ? M.toTW(s) : String(s == null ? "" : s);
+  }
+
   function normalizeBook(raw) {
     const src = raw && typeof raw === "object" ? raw : {};
+    function fixRow(row) {
+      if (!row || typeof row !== "object") return row;
+      const out = Object.assign({}, row);
+      if (out.name != null) out.name = twName(out.name);
+      if (out.market != null) out.market = twName(out.market);
+      return out;
+    }
     return {
-      watch: Array.isArray(src.watch) ? src.watch : [],
-      holdings: Array.isArray(src.holdings) ? src.holdings : [],
-      journal: Array.isArray(src.journal) ? src.journal : [],
+      watch: Array.isArray(src.watch) ? src.watch.map(fixRow) : [],
+      holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
+      journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
       riskPct: Number(src.riskPct) > 0 ? Number(src.riskPct) : 1,
       profile: src.profile || "穩健"
@@ -539,16 +550,32 @@
     return n.toLocaleString("zh-Hant", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   }
 
+  function signedPx(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return (n > 0 ? "+" : "") + fmtPx(n);
+  }
+
   function watchMetricsHtml(m) {
     if (!m) {
       return '<div class="watch-metrics"><span class="note">讀取中…</span></div>';
     }
-    const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
-      ((m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%");
     const priceCls = pctClass((m.pct || 0) / 100);
+    const pctTxt = m.pct == null || !isFinite(m.pct) ? "—" :
+      ((m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%");
+    const volTxt = m.volumeLots == null || !isFinite(m.volumeLots) ? "—" :
+      Math.round(m.volumeLots).toLocaleString("zh-Hant");
+    const ampTxt = m.amplitude == null || !isFinite(m.amplitude) ? "—" :
+      Number(m.amplitude).toFixed(2) + "%";
     return '<div class="watch-metrics">' +
-      '<div><span class="k">成交</span><span class="' + priceCls + '">' + fmtPx(m.price) +
-      (pctTxt ? " " + pctTxt : "") + "</span></div>" +
+      '<div><span class="k">成交</span><span class="' + priceCls + '">' + fmtPx(m.price) + "</span>" +
+      '<span class="k gap">漲跌</span><span class="' + priceCls + '">' + signedPx(m.change) + "</span>" +
+      '<span class="k gap">幅度</span><span class="' + priceCls + '">' + pctTxt + "</span></div>" +
+      '<div><span class="k">開／高／低</span><span>' + fmtPx(m.open) + " / " + fmtPx(m.high) + " / " + fmtPx(m.low) + "</span></div>" +
+      '<div><span class="k">參考／均價</span><span>' + fmtPx(m.ref) + " / " + fmtPx(m.avg) + "</span>" +
+      '<span class="k gap">振幅</span><span>' + ampTxt + "</span></div>" +
+      '<div><span class="k">漲停／跌停</span><span class="up">' + fmtPx(m.limitUp) +
+      '</span> / <span class="down">' + fmtPx(m.limitDown) + "</span>" +
+      '<span class="k gap">總量</span><span>' + volTxt + " 張</span></div>" +
       '<div><span class="k">外資目標</span><span>高 ' + fmtPx(m.targetHigh) +
       " · 中 " + fmtPx(m.targetMean) + " · 低 " + fmtPx(m.targetLow) + "</span></div>" +
       '<div><span class="k">本益比</span><span>' +
@@ -569,6 +596,8 @@
     box.innerHTML = book.watch.map(function (item, idx) {
       const shares = item.shares == null ? "" : item.shares;
       const cost = item.cost == null ? "" : item.cost;
+      if (item.name) item.name = twName(item.name);
+      if (item.market) item.market = twName(item.market);
       return '<div class="item watch-item"><div class="watch-main"><button type="button" class="hit" data-open-watch="' + idx + '"><strong>' +
         esc(item.name) + "</strong> " + esc(item.code) + "<small>" + esc(item.market || "") + "</small></button>" +
         '<div data-watch-metrics="' + idx + '">' + watchMetricsHtml(null) + "</div>" +
@@ -579,6 +608,11 @@
     M.watchBoard(book.watch).then(function (rows) {
       if (gen !== renderWatch.gen) return;
       rows.forEach(function (m, idx) {
+        if (m && m.name && book.watch[idx] && book.watch[idx].name !== m.name) {
+          book.watch[idx].name = m.name;
+          const btn = box.querySelector('[data-open-watch="' + idx + '"] strong');
+          if (btn) btn.textContent = m.name;
+        }
         const slot = box.querySelector('[data-watch-metrics="' + idx + '"]');
         if (slot) slot.innerHTML = watchMetricsHtml(m || {});
       });
@@ -640,8 +674,8 @@
     const item = {
       secid: row.secid,
       code: row.code,
-      name: row.name,
-      market: row.market || "",
+      name: twName(row.name),
+      market: twName(row.market || ""),
       shares: row.shares == null ? "" : String(row.shares).trim(),
       cost: row.cost == null ? "" : String(row.cost).trim()
     };
@@ -1101,6 +1135,8 @@
       return;
     }
     box.innerHTML = book.holdings.map(function (item, idx) {
+      if (item.name) item.name = twName(item.name);
+      if (item.market) item.market = twName(item.market);
       return '<div class="item"><div><strong>' + esc(item.name) + "</strong> " + esc(item.code) +
         '<div class="grid2"><input data-shares="' + idx + '" inputmode="decimal" value="' + esc(item.shares) + '" aria-label="股數">' +
         '<input data-cost="' + idx + '" inputmode="decimal" value="' + esc(item.cost) + '" aria-label="成本"></div></div>' +
@@ -1188,8 +1224,8 @@
     const row = {
       secid: btn.getAttribute("data-secid"),
       code: btn.getAttribute("data-code"),
-      name: btn.getAttribute("data-name"),
-      market: btn.getAttribute("data-market")
+      name: twName(btn.getAttribute("data-name")),
+      market: twName(btn.getAttribute("data-market"))
     };
     const key = btn.getAttribute("data-pick");
     if (key === "watch") {

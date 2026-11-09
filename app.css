@@ -299,6 +299,10 @@ textarea { min-height: 120px; resize: vertical; }
   color: var(--muted);
   margin-right: 6px;
 }
+.watch-metrics .k.gap {
+  margin-left: 10px;
+  min-width: 2.8em;
+}
 .badge {
   display: inline-block;
   border-radius: 999px;
