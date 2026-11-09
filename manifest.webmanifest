@@ -1,6 +1,6 @@
 {
-  "name": "股票分析",
-  "short_name": "股票分析",
+  "name": "三生有杏 股票分析",
+  "short_name": "三生有杏",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#12181f",

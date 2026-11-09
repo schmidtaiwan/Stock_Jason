@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 4;
+  const PAGE_BUILD = 5;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -14,7 +14,10 @@
     picks: {},
     plot: null,
     chartGen: 0,
-    foreignGen: 0
+    foreignGen: 0,
+    custom: false,
+    from: "",
+    to: ""
   };
 
   let book = emptyBook();
@@ -186,11 +189,62 @@
   function buildToggles() {
     $("ranges").innerHTML = Object.keys(M.RANGES).map(function (id) {
       const spec = M.RANGES[id];
-      return '<button type="button" class="chip" data-range="' + id + '" aria-pressed="' + (state.range === id) + '">' + spec.label + "</button>";
+      const on = !state.custom && state.range === id;
+      return '<button type="button" class="chip" data-range="' + id + '" aria-pressed="' + on + '">' + spec.label + "</button>";
     }).join("");
     $("markets").innerHTML = M.MARKETS.map(function (m) {
       return '<button type="button" class="chip" data-market="' + m.id + '" aria-pressed="' + !!state.on[m.id] + '">' + m.name + "</button>";
     }).join("");
+    syncDateInputs();
+  }
+
+  function syncDateInputs() {
+    const from = $("range-from");
+    const to = $("range-to");
+    if (!from || !to) return;
+    if (document.activeElement === from || document.activeElement === to) return;
+    if (state.from) from.value = state.from;
+    if (state.to) to.value = state.to;
+    from.classList.toggle("custom", !!state.custom);
+    to.classList.toggle("custom", !!state.custom);
+  }
+
+  function plotWindow() {
+    return state.custom && state.from && state.to ? { from: state.from, to: state.to } : null;
+  }
+
+  function fillDatesFromPlot() {
+    const plot = state.plot;
+    if (!plot || !plot.axis || !plot.axis.length) return;
+    let first = "";
+    let last = "";
+    for (let i = 0; i < plot.axis.length; i++) {
+      const d = String(plot.axis[i] || "").slice(0, 10);
+      if (d.length >= 10) { first = d; break; }
+    }
+    for (let i = plot.axis.length - 1; i >= 0; i--) {
+      const d = String(plot.axis[i] || "").slice(0, 10);
+      if (d.length >= 10) { last = d; break; }
+    }
+    if (!first || !last) return;
+    state.from = first;
+    state.to = last;
+    syncDateInputs();
+  }
+
+  function applyCustomDates() {
+    const from = $("range-from").value;
+    const to = $("range-to").value;
+    if (!from || !to) return;
+    if (from > to) {
+      $("chart-status").textContent = "起始日不能晚於結束日。";
+      return;
+    }
+    state.custom = true;
+    state.from = from;
+    state.to = to;
+    buildToggles();
+    loadChart();
   }
 
   function paintFocus() {
@@ -217,7 +271,7 @@
       box.dataset.ready = "1";
       box.innerHTML = '<p class="fine">外資買賣超（億元）</p><div class="chips">' + order.map(function (id) {
         const v = nets[id];
-        const cls = (v > 0 ? "up" : v < 0 ? "down" : "") + (state.range === id ? " on" : "");
+        const cls = (v > 0 ? "up" : v < 0 ? "down" : "") + (!state.custom && state.range === id ? " on" : "");
         return '<span class="' + cls + '">' + esc(M.RANGES[id].label) + " " + moneyText(v) + "</span>";
       }).join("") + "</div>";
     } catch (err) {
@@ -232,9 +286,12 @@
     renderForeign();
     try {
       let items = [];
-      const align = (M.RANGES[state.range] || {}).align || "date";
+      const win = plotWindow();
+      const align = win
+        ? ((Date.parse(win.to) - Date.parse(win.from)) / 86400000 <= 5 ? "index" : "date")
+        : ((M.RANGES[state.range] || {}).align || "date");
       if (state.focus) {
-        const series = await M.bars(state.focus.secid, state.range);
+        const series = await M.bars(state.focus.secid, state.range, win);
         items = [{ name: state.focus.name, color: "#e0a100", bars: series }];
       } else {
         const picked = M.MARKETS.filter(function (m) { return state.on[m.id]; });
@@ -243,7 +300,7 @@
           return;
         }
         const got = await Promise.all(picked.map(async function (m) {
-          try { return { name: m.name, color: m.color, bars: await M.bars(m.secid, state.range) }; }
+          try { return { name: m.name, color: m.color, bars: await M.bars(m.secid, state.range, win) }; }
           catch (err) { return { name: m.name, error: err.message || "失敗" }; }
         }));
         if (gen !== state.chartGen) return;
@@ -257,6 +314,7 @@
       state.plot = buildPlot(items, mode, align);
       draw();
       renderLegend(items, mode);
+      fillDatesFromPlot();
       if (state.focus) $("chart-status").textContent = "";
     } catch (err) {
       if (gen === state.chartGen) $("chart-status").textContent = err.message || "讀取失敗";
@@ -999,6 +1057,7 @@
     if (t.dataset.pick) onPick(t);
     else if (t.dataset.range) {
       state.range = t.dataset.range;
+      state.custom = false;
       buildToggles();
       loadChart();
     } else if (t.dataset.market) {
@@ -1027,7 +1086,8 @@
     }
   });
 
-  $("ranges").addEventListener("click", function () {});
+  $("range-from").addEventListener("change", applyCustomDates);
+  $("range-to").addEventListener("change", applyCustomDates);
   $("enter").addEventListener("click", function () { showApp(); });
   $("gate-login").addEventListener("click", doLogin);
   $("login").addEventListener("click", doLogin);

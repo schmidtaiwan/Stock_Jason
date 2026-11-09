@@ -92,11 +92,12 @@
     return out;
   }
 
-  async function kline(secid, klt, lmt) {
-    const key = secid + "|" + klt + "|" + lmt;
+  async function kline(secid, klt, lmt, endDay) {
+    const end = endDay ? String(endDay).replace(/-/g, "") : "20500101";
+    const key = secid + "|" + klt + "|" + lmt + "|" + end;
     if (cache.has(key)) return copyBars(cache.get(key));
     const url = "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + encodeURIComponent(secid) +
-      "&klt=" + klt + "&fqt=1&lmt=" + lmt + "&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
+      "&klt=" + klt + "&fqt=1&lmt=" + lmt + "&end=" + end + "&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
     let last = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -116,9 +117,48 @@
     throw last || new Error("行情讀取失敗");
   }
 
-  async function bars(secid, rangeId) {
+  function clipBars(bars, from, to) {
+    if (!from && !to) return bars;
+    const out = bars.filter(function (b) {
+      const d = b.t.slice(0, 10);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+    out.symbolName = bars.symbolName || "";
+    return out;
+  }
+
+  function spanDays(from, to) {
+    const a = Date.parse(from + "T00:00:00");
+    const b = Date.parse(to + "T00:00:00");
+    if (!isFinite(a) || !isFinite(b) || b < a) return 20;
+    return Math.max(1, Math.round((b - a) / 86400000) + 1);
+  }
+
+  function customSpec(from, to) {
+    const days = spanDays(from, to);
+    if (days <= 1) return { klt: 1, lmt: 420, session: "last", align: "index" };
+    if (days <= 5) return { klt: 15, lmt: 240, days: days, align: "index" };
+    if (days <= 400) return { klt: 101, lmt: Math.min(1300, days + 40), align: "date" };
+    return { klt: 102, lmt: Math.min(400, Math.ceil(days / 5) + 20), align: "index" };
+  }
+
+  async function bars(secid, rangeId, window) {
     if (String(secid || "").indexOf("tw.") === 0) throw new Error("這檔目前只有報價，沒有走勢");
-    if (String(secid || "") === "fx.USDTWD") return fxBars(rangeId);
+    const from = window && window.from;
+    const to = window && window.to;
+    if (String(secid || "") === "fx.USDTWD") {
+      const rows = await fxBars(rangeId, from && to ? { from: from, to: to } : null);
+      return from && to ? clipBars(rows, from, to) : rows;
+    }
+    if (from && to) {
+      const spec = customSpec(from, to);
+      const raw = await kline(secid, spec.klt, spec.lmt, to);
+      const cut = clipBars(trimBars(raw, spec), from, to);
+      if (!cut.length) throw new Error("這段日期沒有行情");
+      return cut;
+    }
     const spec = RANGES[rangeId] || RANGES["20d"];
     const raw = await kline(secid, spec.klt, spec.lmt);
     return trimBars(raw, spec);
@@ -294,14 +334,30 @@
     return bars;
   }
 
-  async function fxBars(rangeId) {
-    const query = FX_QUERY[rangeId] || FX_QUERY["20d"];
+  function fxQueryForWindow(from, to) {
+    const days = spanDays(from, to);
+    if (days <= 1) return "interval=1m&range=1d";
+    if (days <= 5) return "interval=15m&range=5d";
+    if (days <= 40) return "interval=1d&range=1mo";
+    if (days <= 400) return "interval=1d&range=2y";
+    return "interval=1wk&range=5y";
+  }
+
+  async function fxBars(rangeId, window) {
+    const from = window && window.from;
+    const to = window && window.to;
+    const query = from && to ? fxQueryForWindow(from, to) : (FX_QUERY[rangeId] || FX_QUERY["20d"]);
     const key = "fx|" + query;
     let rows = cache.get(key);
     if (!rows) {
       rows = barsFromYahoo(await yahooChart("TWD=X", query));
       rows.symbolName = "台幣對美金";
       cache.set(key, rows);
+    }
+    if (from && to) {
+      const cut = clipBars(rows, from, to);
+      if (!cut.length) throw new Error("這段日期沒有匯率");
+      return cut;
     }
     const keep = FX_KEEP[rangeId];
     const out = keep ? rows.slice(-keep) : rows.slice();
