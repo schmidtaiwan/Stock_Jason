@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 3;
+  const PAGE_BUILD = 4;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -7,13 +7,14 @@
 
   const state = {
     range: "20d",
-    on: { dji: true, spx: true, ndx: true, tw: false, jp: false, kr: false },
+    on: { dji: true, spx: true, ndx: true, tw: false, jp: false, kr: false, sox: true, fx: true },
     focus: null,
     view: "chart",
     tool: "",
     picks: {},
     plot: null,
-    chartGen: 0
+    chartGen: 0,
+    foreignGen: 0
   };
 
   let book = emptyBook();
@@ -199,10 +200,36 @@
     if (on) $("focus-name").textContent = state.focus.name + " " + state.focus.code + " · " + (state.focus.market || "");
   }
 
+  function moneyText(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return (n > 0 ? "+" : "") + n.toFixed(1);
+  }
+
+  async function renderForeign() {
+    const box = $("foreign");
+    if (!box) return;
+    const gen = ++state.foreignGen;
+    const order = ["1d", "5d", "20d", "180d", "1y"];
+    if (!box.dataset.ready) box.textContent = "正在讀外資買賣超…";
+    try {
+      const nets = await M.foreignNets();
+      if (gen !== state.foreignGen) return;
+      box.dataset.ready = "1";
+      box.innerHTML = '<p class="fine">外資買賣超（億元）</p><div class="chips">' + order.map(function (id) {
+        const v = nets[id];
+        const cls = (v > 0 ? "up" : v < 0 ? "down" : "") + (state.range === id ? " on" : "");
+        return '<span class="' + cls + '">' + esc(M.RANGES[id].label) + " " + moneyText(v) + "</span>";
+      }).join("") + "</div>";
+    } catch (err) {
+      if (gen === state.foreignGen) box.textContent = "外資買賣超這次沒讀到。";
+    }
+  }
+
   async function loadChart() {
     const gen = ++state.chartGen;
     $("chart-status").textContent = "正在讀行情…";
     paintFocus();
+    renderForeign();
     try {
       let items = [];
       const align = (M.RANGES[state.range] || {}).align || "date";

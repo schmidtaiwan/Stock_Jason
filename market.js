@@ -16,7 +16,9 @@
     { id: "ndx", name: "那斯達克", region: "美股", secid: "100.NDX", color: "#d38bff" },
     { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#3dbe7a" },
     { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#ff7a8a" },
-    { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#4fd2e0" }
+    { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#4fd2e0" },
+    { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#f2c14e" },
+    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#ff9f43" }
   ];
 
   const UNIVERSE = [
@@ -116,6 +118,7 @@
 
   async function bars(secid, rangeId) {
     if (String(secid || "").indexOf("tw.") === 0) throw new Error("這檔目前只有報價，沒有走勢");
+    if (String(secid || "") === "fx.USDTWD") return fxBars(rangeId);
     const spec = RANGES[rangeId] || RANGES["20d"];
     const raw = await kline(secid, spec.klt, spec.lmt);
     return trimBars(raw, spec);
@@ -239,11 +242,200 @@
   }
 
   function indexRegion(code) {
-    const map = { DJIA: "美股", SPX: "美股", NDX: "美股", TWII: "台股", N225: "日股", KS11: "韓股" };
+    const map = { DJIA: "美股", SPX: "美股", NDX: "美股", SOX: "美股", TWII: "台股", N225: "日股", KS11: "韓股" };
     return map[code] || "指數";
   }
 
+  const FX_QUERY = {
+    "1d": "interval=1m&range=1d",
+    "5d": "interval=15m&range=5d",
+    "20d": "interval=1d&range=1mo",
+    "180d": "interval=1d&range=1y",
+    "1y": "interval=1d&range=1y",
+    "3y": "interval=1wk&range=5y",
+    "5y": "interval=1wk&range=5y"
+  };
+  const FX_KEEP = { "20d": 20, "180d": 180, "1y": 250, "3y": 160 };
+
+  function isoDaysAgo(days) {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+
+  function taipeiStamp(epochSec) {
+    const x = new Date(epochSec * 1000 + 8 * 3600 * 1000);
+    const p = function (n) { return String(n).padStart(2, "0"); };
+    return x.getUTCFullYear() + "-" + p(x.getUTCMonth() + 1) + "-" + p(x.getUTCDate()) + " " + p(x.getUTCHours()) + ":" + p(x.getUTCMinutes());
+  }
+
+  function barsFromYahoo(json) {
+    const chart = json && json.chart;
+    if (!chart || !chart.result || !chart.result.length) throw new Error("沒有匯率");
+    const row = chart.result[0];
+    const ts = row.timestamp || [];
+    const q = (row.indicators && row.indicators.quote && row.indicators.quote[0]) || {};
+    const bars = [];
+    for (let i = 0; i < ts.length; i++) {
+      const c = num(q.close && q.close[i]);
+      if (!(c > 0)) continue;
+      bars.push({
+        t: taipeiStamp(ts[i]),
+        o: num(q.open && q.open[i]) || c,
+        c: c,
+        h: num(q.high && q.high[i]) || c,
+        l: num(q.low && q.low[i]) || c,
+        v: num(q.volume && q.volume[i]) || 0
+      });
+    }
+    if (!bars.length) throw new Error("沒有匯率");
+    return bars;
+  }
+
+  async function fxBars(rangeId) {
+    const query = FX_QUERY[rangeId] || FX_QUERY["20d"];
+    const key = "fx|" + query;
+    let rows = cache.get(key);
+    if (!rows) {
+      rows = barsFromYahoo(await yahooChart("TWD=X", query));
+      rows.symbolName = "台幣對美金";
+      cache.set(key, rows);
+    }
+    const keep = FX_KEEP[rangeId];
+    const out = keep ? rows.slice(-keep) : rows.slice();
+    out.symbolName = "台幣對美金";
+    return copyBars(out);
+  }
+
+  async function foreignNets() {
+    const key = "foreign|nets";
+    if (cache.has(key)) return cache.get(key);
+    const url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockTotalInstitutionalInvestors&start_date=" + isoDaysAgo(460);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("外資買賣超讀取失敗");
+    const json = await res.json();
+    const nets = (json.data || []).filter(function (row) {
+      return row.name === "Foreign_Investor";
+    }).map(function (row) {
+      return { date: row.date, net: (num(row.buy) - num(row.sell)) / 1e8 };
+    }).filter(function (row) { return isFinite(row.net); });
+    nets.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    function sumLast(n) {
+      const slice = nets.slice(-n);
+      if (!slice.length) return null;
+      return slice.reduce(function (acc, row) { return acc + row.net; }, 0);
+    }
+    const out = { "1d": sumLast(1), "5d": sumLast(5), "20d": sumLast(20), "180d": sumLast(180), "1y": sumLast(250) };
+    cache.set(key, out);
+    return out;
+  }
+
+  let yahooDirect = true;
+
+  function yahooCandidates(secid) {
+    const id = String(secid || "");
+    const known = {
+      "100.DJIA": ["^DJI"],
+      "100.SPX": ["^GSPC"],
+      "100.NDX": ["^NDX"],
+      "100.TWII": ["^TWII"],
+      "100.N225": ["^N225"],
+      "100.KS11": ["^KS11"],
+      "251.SOX": ["^SOX"],
+      "fx.USDTWD": ["TWD=X"]
+    };
+    if (known[id]) return known[id];
+    const dot = id.indexOf(".");
+    if (dot < 0) return [];
+    const prefix = id.slice(0, dot);
+    const code = id.slice(dot + 1);
+    if (prefix === "178" || prefix === "tw") return [code + ".TW", code + ".TWO"];
+    if (prefix === "105" || prefix === "106") return [code];
+    if (prefix === "176") return [code + ".T"];
+    if (prefix === "177") return [code + ".KS"];
+    return [];
+  }
+
+  async function yahooChart(symbol, query) {
+    const path = "https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(symbol) + "?" + (query || "interval=1d&range=1d");
+    if (yahooDirect) {
+      try {
+        const res = await fetch(path);
+        if (res.ok) return await res.json();
+      } catch (err) {
+        yahooDirect = false;
+      }
+    }
+    const relay = await fetch("https://r.jina.ai/" + path);
+    if (!relay.ok) throw new Error("Yahoo 報價讀取失敗");
+    const text = await relay.text();
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("Yahoo 沒有回傳成交價");
+    return JSON.parse(text.slice(start, end + 1));
+  }
+
+  async function yahooQuote(secid) {
+    const symbols = yahooCandidates(secid);
+    for (let i = 0; i < symbols.length; i++) {
+      try {
+        const json = await yahooChart(symbols[i]);
+        const chart = json && json.chart;
+        if (!chart || (chart.error && chart.error !== null) || !chart.result || !chart.result.length) continue;
+        const meta = chart.result[0].meta || {};
+        const price = num(meta.regularMarketPrice);
+        if (!(price > 0)) continue;
+        const prev = num(meta.previousClose) || num(meta.chartPreviousClose);
+        const code = String(secid).slice(String(secid).indexOf(".") + 1);
+        return {
+          secid: secid,
+          code: code,
+          name: meta.shortName || code,
+          price: price,
+          pct: prev ? (price - prev) / prev * 100 : null,
+          pe: null,
+          cap: null,
+          pb: null
+        };
+      } catch (err) { /* 下一個代號，或改回原行情 */ }
+    }
+    return null;
+  }
+
+  const quoteFresh = new Map();
+
   async function quoteMap(secids) {
+    const ids = (secids || []).filter(Boolean);
+    const out = {};
+    if (!ids.length) return out;
+    const missed = [];
+    const need = [];
+    const now = Date.now();
+    ids.forEach(function (id) {
+      const hit = quoteFresh.get(id);
+      if (hit && now - hit.at < 60000) out[id] = hit.quote;
+      else need.push(id);
+    });
+    await mapPool(need, 4, async function (id) {
+      const quote = await yahooQuote(id);
+      if (quote) {
+        out[id] = quote;
+        quoteFresh.set(id, { at: Date.now(), quote: quote });
+      } else missed.push(id);
+    });
+    if (missed.length) {
+      const rest = await quoteFeed(missed);
+      Object.keys(rest).forEach(function (id) {
+        out[id] = rest[id];
+        quoteFresh.set(id, { at: Date.now(), quote: rest[id] });
+      });
+    }
+    return out;
+  }
+
+  async function quoteFeed(secids) {
     const ids = (secids || []).filter(Boolean);
     const out = {};
     if (!ids.length) return out;
@@ -1142,6 +1334,7 @@
     newsPlan: newsPlan,
     backtest: backtest,
     riskReport: riskReport,
-    reviewJournal: reviewJournal
+    reviewJournal: reviewJournal,
+    foreignNets: foreignNets
   };
 })(window);

@@ -13,13 +13,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=3">
+  <link rel="stylesheet" href="app.css?v=4">
 </head>
 <body>
   <section id="gate" class="gate">
     <img class="mark" src="icon.svg" alt="">
     <h1>股票分析</h1>
-    <p class="lede">手機上看美股三大指數，同一張圖可疊上台股、日股、韓股。自選股依登入的 Gmail 分開保存。</p>
+    <p class="lede">手機上看美股三大指數、費半和台幣對美金匯率，同一張圖可疊上台股、日股、韓股。即時價來自 Yahoo。</p>
     <p class="note">資料寫入 jason660803@gmail.com 的雲端硬碟 StockJason，不會進 GitHub。請用 <strong id="prefer"></strong> 登入。</p>
     <div class="stack">
       <button id="enter" class="primary" type="button">先看走勢</button>
@@ -56,18 +56,20 @@
         </div>
         <div id="market-box">
           <div id="markets" class="chips"></div>
-          <p class="fine">同一張圖可同時打開美股、台股、日股、韓股。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。</p>
+          <p class="fine">同一張圖可同時打開美股、費半、台股、日股、韓股，以及台幣對美金。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。匯率是 1 美元兌台幣。</p>
         </div>
         <div class="card">
           <canvas id="chart" width="640" height="520"></canvas>
           <p id="chart-status" class="status" role="status"></p>
           <div id="legend" class="legend"></div>
+          <div id="foreign" class="foreign"></div>
         </div>
         <p id="hover" class="tip" hidden></p>
       </section>
 
       <section id="view-watch" hidden>
         <h2>自選股</h2>
+        <p class="fine">股價與漲跌來自 Yahoo。</p>
         <p id="watch-note" class="note"></p>
         <div class="card">
           <label for="watch-q">台股代號或名稱</label>
@@ -232,9 +234,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="google_config.js?v=3"></script>
-  <script src="drive.js?v=3"></script>
-  <script src="market.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="google_config.js?v=4"></script>
+  <script src="drive.js?v=4"></script>
+  <script src="market.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

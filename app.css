@@ -116,6 +116,17 @@ main {
 }
 canvas { width: 100%; height: 260px; display: block; touch-action: none; }
 .legend { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.foreign { margin-top: 10px; }
+.foreign .chips { margin-top: 4px; }
+.foreign .chips span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+}
+.foreign .chips span.on { border-color: var(--accent); font-weight: 700; }
 .legend button {
   display: flex;
   justify-content: space-between;
