@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 14;
+  const PAGE_BUILD = 15;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -9,6 +9,7 @@
     range: "20d",
     on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true },
     focus: null,
+    focusFrom: null,
     view: "chart",
     tool: "",
     picks: {},
@@ -23,6 +24,8 @@
   let book = emptyBook();
   let saveTimer = 0;
   let importRows = [];
+  let liveTimer = 0;
+  let liveBusy = false;
 
   function emptyBook() {
     return { watch: [], holdings: [], journal: [], capital: 1000000, riskPct: 1, profile: "穩健" };
@@ -262,7 +265,63 @@
     const on = !!state.focus;
     $("focus-bar").hidden = !on;
     $("market-box").hidden = on;
-    if (on) $("focus-name").textContent = state.focus.name + " " + state.focus.code + " · " + (state.focus.market || "");
+    if (on) {
+      $("focus-name").textContent = state.focus.name + " " + state.focus.code + " · " + (state.focus.market || "");
+      $("focus-clear").textContent = state.focusFrom === "watch" ? "回自選" : "回到市場";
+    }
+  }
+
+  function isTwMarketOpen(now) {
+    const d = now || new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Taipei",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(d);
+    const map = {};
+    parts.forEach(function (p) { if (p.type !== "literal") map[p.type] = p.value; });
+    const wd = map.weekday;
+    if (wd === "Sat" || wd === "Sun") return false;
+    const hh = Number(map.hour);
+    const mm = Number(map.minute);
+    const mins = hh * 60 + mm;
+    return mins >= 9 * 60 && mins <= 13 * 60 + 30;
+  }
+
+  function liveSecids() {
+    const ids = [];
+    if (state.focus && state.focus.secid) ids.push(state.focus.secid);
+    M.MARKETS.forEach(function (m) {
+      if (state.on[m.id]) ids.push(m.secid);
+    });
+    (book.watch || []).forEach(function (item) {
+      if (item.secid) ids.push(item.secid);
+    });
+    return ids;
+  }
+
+  async function liveTick() {
+    if (liveBusy || document.hidden || !isTwMarketOpen()) return;
+    liveBusy = true;
+    try {
+      if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
+      if (state.view === "chart") await loadChart();
+      else if (state.view === "watch") renderWatch();
+    } catch (err) {
+      /* 下一輪再試 */
+    } finally {
+      liveBusy = false;
+    }
+  }
+
+  function startLiveClock() {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(liveTick, 20000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && isTwMarketOpen()) liveTick();
+    });
   }
 
   function moneyText(n) {
@@ -776,10 +835,12 @@
 
   function openSymbol(row) {
     state.focus = row;
+    state.focusFrom = "watch";
     state.range = state.range === "1d" ? "1d" : "1y";
     state.custom = false;
     setView("chart");
     buildToggles();
+    paintFocus();
     loadStockDetail(row);
   }
 
@@ -1299,9 +1360,13 @@
     renderWatch();
   });
   $("focus-clear").addEventListener("click", function () {
+    const backWatch = state.focusFrom === "watch";
     state.focus = null;
+    state.focusFrom = null;
     renderStockDetail(null);
-    loadChart();
+    paintFocus();
+    if (backWatch) setView("watch");
+    else loadChart();
   });
   $("idea-run").addEventListener("click", runIdeas);
   $("tech-run").addEventListener("click", runTech);
@@ -1358,4 +1423,5 @@
   buildToggles();
   loadBook();
   paintChrome();
+  startLiveClock();
 })();

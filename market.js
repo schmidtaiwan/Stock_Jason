@@ -162,12 +162,39 @@
   }
 
   async function bars(secid, rangeId, window) {
-    if (String(secid || "").indexOf("tw.") === 0) throw new Error("這檔目前只有報價，沒有走勢");
+    const id = String(secid || "");
     const from = window && window.from;
     const to = window && window.to;
-    if (String(secid || "") === "fx.USDTWD") {
+    if (id === "fx.USDTWD") {
       const rows = await fxBars(rangeId, from && to ? { from: from, to: to } : null);
       return from && to ? clipBars(rows, from, to) : rows;
+    }
+    const stockId = twStockId(id, id.indexOf(".") >= 0 ? id.slice(id.indexOf(".") + 1) : "");
+    if (stockId) {
+      let want = 120;
+      if (from && to) want = spanDays(from, to) + 20;
+      else {
+        const spec = RANGES[rangeId] || RANGES["20d"];
+        if (spec.klt === 102) want = Math.min(1300, (spec.lmt || 160) * 7);
+        else want = Math.max(20, spec.lmt || 20);
+      }
+      try {
+        const rows = await historyBars(id, stockId, want);
+        if (from && to) {
+          const cut = clipBars(rows, from, to);
+          if (cut.length) return cut;
+        } else if (rows.length) {
+          const keep = (RANGES[rangeId] && RANGES[rangeId].klt === 101)
+            ? Math.max(1, RANGES[rangeId].lmt || rows.length)
+            : rows.length;
+          const out = rows.slice(-keep);
+          out.symbolName = rows.symbolName || stockId;
+          return out;
+        }
+      } catch (err) {
+        if (id.indexOf("tw.") === 0) throw err;
+      }
+      if (id.indexOf("tw.") === 0) throw new Error("這檔目前只有報價，沒有走勢");
     }
     if (from && to) {
       const spec = customSpec(from, to);
@@ -179,6 +206,23 @@
     const spec = RANGES[rangeId] || RANGES["20d"];
     const raw = await kline(secid, spec.klt, spec.lmt);
     return trimBars(raw, spec);
+  }
+
+  function bustLiveCaches(secids) {
+    quoteFresh.clear();
+    const ids = (secids || []).filter(Boolean);
+    if (!ids.length) {
+      cache.clear();
+      return;
+    }
+    Array.from(cache.keys()).forEach(function (key) {
+      for (let i = 0; i < ids.length; i++) {
+        if (key.indexOf(ids[i] + "|") === 0) {
+          cache.delete(key);
+          break;
+        }
+      }
+    });
   }
 
   async function mapPool(items, limit, fn) {
@@ -2069,6 +2113,7 @@
     findLevels: findLevels,
     historyBars: historyBars,
     toTW: toTW,
-    cnyesQuotes: cnyesQuotes
+    cnyesQuotes: cnyesQuotes,
+    bustLiveCaches: bustLiveCaches
   };
 })(window);
