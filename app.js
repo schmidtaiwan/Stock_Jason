@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 5;
+  const PAGE_BUILD = 6;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -7,7 +7,7 @@
 
   const state = {
     range: "20d",
-    on: { dji: true, spx: true, ndx: true, tw: false, jp: false, kr: false, sox: true, fx: true },
+    on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true },
     focus: null,
     view: "chart",
     tool: "",
