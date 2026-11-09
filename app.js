@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 10;
+  const PAGE_BUILD = 11;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -489,7 +489,7 @@
         " " + fmt(last) + ' <span class="' + pctClass(change) + '">' + pct(change) + "</span></div>";
     }).join("");
     if (mode === "pct") {
-      $("legend").insertAdjacentHTML("beforeend", '<p class="fine">數字是區間漲跌幅，起點對齊各市場自己的第一根。手指移到台股線上會顯示當日點數。</p>');
+      $("legend").insertAdjacentHTML("beforeend", '<p class="fine">數字是區間漲跌幅，起點對齊各市場自己的第一根。下方提示會顯示台股當日點數。</p>');
     }
   }
 
@@ -515,38 +515,20 @@
     if (!layout || !state.plot) { tip.hidden = true; return; }
     const rect = canvas.getBoundingClientRect();
     const x = ev.clientX - rect.left;
-    const y = ev.clientY - rect.top;
     const n = layout.axis.length;
     if (n < 1 || x < layout.left || x > layout.left + layout.width) { tip.hidden = true; return; }
     const i = Math.round((x - layout.left) / layout.width * (n - 1));
-    const yOf = function (v) {
-      return layout.top + (layout.max - v) / (layout.max - layout.min) * layout.height;
-    };
-    const xOf = function (idx) {
-      return layout.left + (n <= 1 ? layout.width / 2 : (idx / (n - 1)) * layout.width);
-    };
-    const tw = layout.series.find(function (s) { return s.isTw && s.values[i] != null; });
-    const nearTw = tw && Math.abs(y - yOf(tw.values[i])) <= 28;
-    const parts = (nearTw ? [tw].concat(layout.series.filter(function (s) { return !s.isTw; })) : layout.series)
-      .map(function (s) { return seriesLabel(s, i, layout.mode); })
-      .filter(Boolean);
+    const parts = layout.series.map(function (s) {
+      return seriesLabel(s, i, layout.mode);
+    }).filter(Boolean);
     if (!parts.length) { tip.hidden = true; return; }
     tip.hidden = false;
-    tip.classList.toggle("on-line", !!nearTw);
+    tip.classList.remove("on-line");
+    tip.style.left = "";
+    tip.style.top = "";
+    tip.style.right = "";
+    tip.style.bottom = "";
     tip.textContent = (layout.axis[i] || "") + "  " + parts.join(" · ");
-    if (nearTw) {
-      const px = rect.left + xOf(i);
-      const py = rect.top + yOf(tw.values[i]);
-      tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, px - tip.offsetWidth / 2)) + "px";
-      tip.style.top = Math.max(8, py - tip.offsetHeight - 12) + "px";
-      tip.style.right = "auto";
-      tip.style.bottom = "auto";
-    } else {
-      tip.style.left = "";
-      tip.style.top = "";
-      tip.style.right = "";
-      tip.style.bottom = "";
-    }
   }
 
   function renderWatch() {
