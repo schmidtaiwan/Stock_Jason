@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 19;
+  const PAGE_BUILD = 20;
   const PAGE_DATE = "2026-11-09";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -807,7 +807,7 @@
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      "<th>標的</th><th>目前</th><th>買價</th><th>損益</th><th>股數</th><th></th>" +
+      "<th>標的</th><th>目前</th><th>買價</th><th>損益</th><th>股數</th><th></th><th>通知</th>" +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -825,17 +825,7 @@
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name"><button type="button" class="watch-link" data-open-watch="' + idx + '">' +
-          esc(label) + "</button>" +
-          '<div class="watch-alert">' +
-          '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
-          (item.notify ? " checked" : "") + "> 通知</label>" +
-          '<select class="watch-alert-mode" data-watch-notify-mode="' + idx + '" aria-label="通知條件">' +
-          modeOpts + "</select>" +
-          '<label class="watch-alert-val"><span data-alert-prefix="1">' + esc(meta.prefix) + "</span>" +
-          '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
-          '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
-          '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
-          "</label></div></td>" +
+          esc(label) + "</button></td>" +
           '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
           '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
@@ -843,6 +833,16 @@
           '<td><input class="watch-input" data-watch-shares="' + idx + '" inputmode="numeric" value="' +
           esc(shares) + '" placeholder="股數" aria-label="股數"></td>' +
           '<td><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
+          '<td class="watch-alert-cell"><div class="watch-alert">' +
+          '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
+          (item.notify ? " checked" : "") + "> 開</label>" +
+          '<select class="watch-alert-mode" data-watch-notify-mode="' + idx + '" aria-label="通知條件">' +
+          modeOpts + "</select>" +
+          '<label class="watch-alert-val"><span data-alert-prefix="1">' + esc(meta.prefix) + "</span>" +
+          '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
+          '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
+          '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
+          "</label></div></td>" +
           "</tr>";
       }).join("") + "</tbody></table></div>";
     M.watchBoard(book.watch).then(function (rows) {
