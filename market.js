@@ -486,7 +486,7 @@
     const dot = id.indexOf(".");
     if (dot < 0) return [];
     const prefix = id.slice(0, dot);
-    const code = id.slice(dot + 1);
+    const code = id.slice(dot + 1).toUpperCase();
     if (prefix === "178" || prefix === "tw") return [code + ".TW", code + ".TWO"];
     if (prefix === "105" || prefix === "106") return [code];
     if (prefix === "176") return [code + ".T"];
@@ -500,6 +500,7 @@
       try {
         const res = await fetch(path);
         if (res.ok) return await res.json();
+        yahooDirect = false;
       } catch (err) {
         yahooDirect = false;
       }
@@ -515,27 +516,34 @@
 
   async function yahooQuote(secid) {
     const symbols = yahooCandidates(secid);
+    const queries = ["interval=1m&range=1d", "interval=1d&range=5d"];
     for (let i = 0; i < symbols.length; i++) {
-      try {
-        const json = await yahooChart(symbols[i]);
-        const chart = json && json.chart;
-        if (!chart || (chart.error && chart.error !== null) || !chart.result || !chart.result.length) continue;
-        const meta = chart.result[0].meta || {};
-        const price = num(meta.regularMarketPrice);
-        if (!(price > 0)) continue;
-        const prev = num(meta.previousClose) || num(meta.chartPreviousClose);
-        const code = String(secid).slice(String(secid).indexOf(".") + 1);
-        return {
-          secid: secid,
-          code: code,
-          name: meta.shortName || code,
-          price: price,
-          pct: prev ? (price - prev) / prev * 100 : null,
-          pe: null,
-          cap: null,
-          pb: null
-        };
-      } catch (err) { /* 下一個代號，或改回原行情 */ }
+      for (let q = 0; q < queries.length; q++) {
+        try {
+          const json = await yahooChart(symbols[i], queries[q]);
+          const chart = json && json.chart;
+          if (!chart || (chart.error && chart.error !== null) || !chart.result || !chart.result.length) continue;
+          const meta = chart.result[0].meta || {};
+          const price = num(meta.regularMarketPrice) || num(meta.postMarketPrice);
+          if (!(price > 0)) continue;
+          const prev = num(meta.previousClose) || num(meta.chartPreviousClose);
+          const change = prev ? price - prev : num(meta.regularMarketChange);
+          const pct = prev ? (price - prev) / prev * 100 : num(meta.regularMarketChangePercent);
+          const code = String(secid).slice(String(secid).indexOf(".") + 1).toUpperCase();
+          return {
+            secid: secid,
+            code: code,
+            name: toTW(meta.shortName || meta.symbol || code),
+            price: price,
+            change: change,
+            pct: pct,
+            pe: null,
+            cap: null,
+            pb: null,
+            source: "yahoo"
+          };
+        } catch (err) { /* 下一個查詢／代號 */ }
+      }
     }
     return null;
   }
@@ -2079,7 +2087,53 @@
 
   async function watchBoard(items) {
     const list = items || [];
-    return mapPool(list, 3, function (item) { return watchMetrics(item); });
+    if (!list.length) return [];
+    // 自選表只要即時價：優先 Yahoo，失敗才退回其他來源
+    const secids = list.map(function (item) { return item && item.secid; }).filter(Boolean);
+    let quotes = {};
+    try { quotes = await quoteMap(secids); } catch (err) { quotes = {}; }
+    return list.map(function (item) {
+      const q = (item && item.secid && quotes[item.secid]) || null;
+      const price = q && q.price != null && isFinite(q.price) ? q.price : null;
+      const pct = q && q.pct != null && isFinite(q.pct) ? q.pct : null;
+      const change = q && q.change != null && isFinite(q.change)
+        ? q.change
+        : (price != null && pct != null ? price * pct / (100 + pct) : null);
+      return {
+        name: toTW((q && q.name) || (item && item.name) || (item && item.code) || ""),
+        price: price,
+        change: change,
+        pct: pct,
+        open: q && q.open != null ? q.open : null,
+        high: q && q.high != null ? q.high : null,
+        low: q && q.low != null ? q.low : null,
+        ref: q && q.ref != null ? q.ref : null,
+        avg: q && q.avg != null ? q.avg : null,
+        amplitude: q && q.amplitude != null ? q.amplitude : null,
+        volumeLots: q && q.volumeLots != null ? q.volumeLots : null,
+        limitUp: q && q.limitUp != null ? q.limitUp : null,
+        limitDown: q && q.limitDown != null ? q.limitDown : null,
+        pe: null,
+        targetHigh: null,
+        targetMean: null,
+        targetLow: null,
+        breakout: null,
+        support: null,
+        source: q && q.source ? q.source : (q ? "yahoo" : "")
+      };
+    });
+  }
+
+  async function twiiQuote() {
+    const q = await yahooQuote("100.TWII");
+    if (!q || !(q.price > 0)) throw new Error("加權指數讀不到");
+    const change = q.change != null ? q.change : (q.pct != null ? q.price * q.pct / (100 + q.pct) : null);
+    return {
+      price: q.price,
+      change: change,
+      pct: q.pct,
+      name: "加權指數"
+    };
   }
 
   async function stockDetail(secid, code) {
@@ -2742,6 +2796,7 @@
     twStockId: twStockId,
     watchMetrics: watchMetrics,
     watchBoard: watchBoard,
+    twiiQuote: twiiQuote,
     foreignTargets: foreignTargets,
     findLevels: findLevels,
     historyBars: historyBars,

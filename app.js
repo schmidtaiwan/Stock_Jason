@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 25;
+  const PAGE_BUILD = 26;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -138,6 +138,34 @@
       ? "現在讀的是 " + account.email + " 的自選股。"
       : "登入後才會依 Gmail 讀寫 jason660803 雲端硬碟裡的自選股。";
     $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
+    paintTwii();
+  }
+
+  let twiiBusy = false;
+  async function paintTwii() {
+    const priceEl = $("twii-price");
+    const chgEl = $("twii-chg");
+    if (!priceEl || !chgEl || twiiBusy) return;
+    twiiBusy = true;
+    try {
+      const q = await M.twiiQuote();
+      const cls = pctClass((q.pct || 0) / 100);
+      priceEl.textContent = fmt(q.price);
+      priceEl.className = cls;
+      const pts = q.change == null || !isFinite(q.change) ? "—" :
+        ((q.change > 0 ? "+" : "") + q.change.toFixed(2) + " 點");
+      const pctTxt = q.pct == null || !isFinite(q.pct) ? "" :
+        "（" + (q.pct > 0 ? "+" : "") + q.pct.toFixed(2) + "%）";
+      chgEl.className = "twii-chg " + cls;
+      chgEl.textContent = pts + pctTxt;
+    } catch (err) {
+      priceEl.textContent = "—";
+      priceEl.className = "";
+      chgEl.className = "twii-chg";
+      chgEl.textContent = "加權讀取中";
+    } finally {
+      twiiBusy = false;
+    }
   }
 
   function setWatchCompose(open) {
@@ -375,6 +403,7 @@
     liveBusy = true;
     try {
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
+      if (!document.hidden) paintTwii();
       if (!document.hidden && state.view === "chart") await loadChart();
       else if (!document.hidden && state.view === "watch") renderWatch();
       else if (alertOn) await pollWatchAlerts();
