@@ -11,7 +11,7 @@
   };
 
   const MARKETS = [
-    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#3dbe7a" },
+    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#ff6b6b" },
     { id: "spx", name: "標普", region: "美股", secid: "100.SPX", color: "#6cb6ff" },
     { id: "ndx", name: "那斯達克", region: "美股", secid: "100.NDX", color: "#d38bff" },
     { id: "dji", name: "道瓊", region: "美股", secid: "100.DJIA", color: "#e0a100" },

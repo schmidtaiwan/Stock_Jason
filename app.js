@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 29;
+  const PAGE_BUILD = 30;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -684,7 +684,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const left = 52;
-    const right = 12;
+    const right = 22;
     const top = 16;
     const bottom = 28;
     const iw = width - left - right;
@@ -708,9 +708,10 @@
       const n = plot.axis.length;
       return left + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
     };
+    const axisFont = '12px "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif';
     ctx.strokeStyle = "#2c3846";
     ctx.fillStyle = "#93a0b0";
-    ctx.font = "12px sans-serif";
+    ctx.font = axisFont;
     ctx.lineWidth = 1;
     for (let g = 0; g <= 4; g++) {
       const v = min + (max - min) * (g / 4);
@@ -734,16 +735,29 @@
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 2;
       let open = false;
+      let lastX = null;
+      let lastY = null;
       s.values.forEach(function (v, i) {
         if (v == null) { open = false; return; }
         const x = xOf(i);
         const y = yOf(v);
         if (!open) { ctx.moveTo(x, y); open = true; }
         else ctx.lineTo(x, y);
+        lastX = x;
+        lastY = y;
       });
       ctx.stroke();
+      if (lastX != null && s.name) {
+        const tag = String(s.name).charAt(0);
+        ctx.font = axisFont;
+        ctx.fillStyle = s.color;
+        ctx.textBaseline = "middle";
+        ctx.fillText(tag, lastX + 4, lastY);
+        ctx.textBaseline = "alphabetic";
+      }
     });
     ctx.fillStyle = "#93a0b0";
+    ctx.font = axisFont;
     const marks = [0, Math.floor((plot.axis.length - 1) / 2), plot.axis.length - 1];
     marks.forEach(function (i) {
       const text = String(plot.axis[i] || "").slice(5, 16);
