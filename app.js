@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 24;
+  const PAGE_BUILD = 25;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -140,6 +140,22 @@
     $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
   }
 
+  function setWatchCompose(open) {
+    const board = $("watch-board");
+    const compose = $("watch-compose");
+    const openBtn = $("watch-open-add");
+    if (!board || !compose) return;
+    board.hidden = !!open;
+    compose.hidden = !open;
+    if (openBtn) openBtn.hidden = !!open;
+    if (open) {
+      const q = $("watch-q");
+      if (q) setTimeout(function () { q.focus(); }, 0);
+    } else {
+      renderWatch();
+    }
+  }
+
   function setView(name) {
     state.view = name;
     $("view-chart").hidden = name !== "chart";
@@ -152,7 +168,10 @@
       else btn.removeAttribute("aria-current");
     });
     if (name === "chart") loadChart();
-    if (name === "watch") renderWatch();
+    if (name === "watch") {
+      setWatchCompose(false);
+      renderWatch();
+    }
   }
 
   function openTool(id) {
@@ -809,7 +828,7 @@
   function renderWatch() {
     const box = $("watch-list");
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">自選股還是空的。用代號或庫存圖加入。</p>';
+      box.innerHTML = '<p class="note">自選股還是空的。按右上角「加入」用代號或庫存圖新增。</p>';
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
@@ -1067,12 +1086,13 @@
       cost: $("watch-cost").value
     });
     state.picks.watch = null;
-    $("watch-pick").textContent = "已加入。可以再搜下一個。";
+    $("watch-pick").textContent = "點選搜尋結果後，填買進價格與股數。";
     $("watch-q").value = "";
     $("watch-shares").value = "";
     $("watch-cost").value = "";
     $("watch-hits").innerHTML = "";
     $("watch-status").textContent = "";
+    setWatchCompose(false);
   }
 
   function renderImport() {
@@ -1101,6 +1121,7 @@
     importRows = [];
     renderImport();
     $("watch-status").textContent = n ? "已匯入 " + n + " 檔。" : "沒有可匯入的代號。";
+    if (n) setWatchCompose(false);
   }
 
   function loadTesseract() {
@@ -1564,7 +1585,10 @@
         "<h3>組合條件</h3><ul>" + r.combos.map(function (line) {
           return "<li>" + esc(line) + "</li>";
         }).join("") + "</ul>" +
-        "<h3>此版尚未納入</h3><ul>" + r.missing.map(function (line) {
+        "<h3>已納入（原期貨／廣度／融資）</h3><ul>" + (r.included || []).map(function (line) {
+          return "<li>" + esc(line) + "</li>";
+        }).join("") + "</ul>" +
+        "<h3>中期參考（產業／總經）</h3><ul>" + (r.midTerm || []).map(function (line) {
           return "<li>" + esc(line) + "</li>";
         }).join("") + "</ul>" +
         "<p class=\"fine\">" + esc(r.weightsNote) +
@@ -1641,6 +1665,8 @@
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
     else if (t.dataset.openWatch != null) openSymbol(book.watch[Number(t.dataset.openWatch)]);
+    else if (t.id === "watch-open-add") setWatchCompose(true);
+    else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "import-ok") commitImport();

@@ -2269,6 +2269,170 @@
     return out;
   }
 
+  async function finMindRaw(dataset, start, dataId) {
+    let url = "https://api.finmindtrade.com/api/v4/data?dataset=" + encodeURIComponent(dataset) +
+      "&start_date=" + encodeURIComponent(start);
+    if (dataId) url += "&data_id=" + encodeURIComponent(dataId);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(dataset + " 讀取失敗");
+    const json = await res.json();
+    if (json.status != null && Number(json.status) !== 200) throw new Error(json.msg || dataset + " 失敗");
+    return Array.isArray(json.data) ? json.data : [];
+  }
+
+  // 台指期近月收盤、正逆價差％
+  async function txFuturesSeries(days) {
+    const key = "tx|fut|" + days;
+    if (cache.has(key)) return cache.get(key);
+    const rows = await finMindRaw("TaiwanFuturesDaily", isoDaysAgo(Math.max(60, days + 40)), "TX");
+    const byDay = {};
+    rows.forEach(function (row) {
+      const close = num(row.close);
+      const vol = num(row.volume) || 0;
+      if (!(close > 0) || !(vol > 0)) return;
+      if (String(row.contract_date || "").indexOf("/") >= 0) return; // 排除價差單
+      const day = row.date;
+      const session = String(row.trading_session || "");
+      const pref = session === "after_market" ? 0 : 1;
+      const cur = byDay[day];
+      if (!cur || pref > cur.pref || (pref === cur.pref && vol > cur.volume)) {
+        byDay[day] = {
+          date: day,
+          close: close,
+          volume: vol,
+          pref: pref,
+          basisPct: num(row.spread_per),
+          contract: row.contract_date
+        };
+      }
+    });
+    const daysSorted = Object.keys(byDay).sort();
+    const out = [];
+    let prev = null;
+    daysSorted.forEach(function (d) {
+      const row = byDay[d];
+      const ret = prev && prev > 0 ? row.close / prev - 1 : null;
+      out.push({ date: d, close: row.close, ret: ret, basisPct: row.basisPct, contract: row.contract });
+      prev = row.close;
+    });
+    cache.set(key, out);
+    return out;
+  }
+
+  // 外資台指期淨未平倉（口數）
+  async function txForeignFutSeries(days) {
+    const key = "tx|foreign|" + days;
+    if (cache.has(key)) return cache.get(key);
+    const rows = await finMindRaw("TaiwanFuturesInstitutionalInvestors", isoDaysAgo(Math.max(60, days + 40)), "TX");
+    const byDay = {};
+    rows.forEach(function (row) {
+      if (!/外資/.test(String(row.institutional_investors || ""))) return;
+      const longOi = num(row.long_open_interest_balance_volume) || 0;
+      const shortOi = num(row.short_open_interest_balance_volume) || 0;
+      byDay[row.date] = { date: row.date, netOi: longOi - shortOi };
+    });
+    const daysSorted = Object.keys(byDay).sort();
+    const out = [];
+    let prev = null;
+    daysSorted.forEach(function (d) {
+      const net = byDay[d].netOi;
+      out.push({ date: d, netOi: net, delta: prev == null ? null : net - prev });
+      prev = net;
+    });
+    cache.set(key, out);
+    return out;
+  }
+
+  // 選擇權 PCR（成交口數 Put/Call），TXO 近月附近彙總
+  async function txOptionPcrSeries(days) {
+    const key = "tx|pcr|" + days;
+    if (cache.has(key)) return cache.get(key);
+    // TXO 全日契約量大：只抓近 ~70 日，避免逾時
+    const start = isoDaysAgo(70);
+    const rows = await finMindRaw("TaiwanOptionDaily", start, "TXO");
+    const byDay = {};
+    rows.forEach(function (row) {
+      const vol = num(row.volume) || 0;
+      if (!(vol > 0)) return;
+      const cp = String(row.call_put || row.CallPut || "").toUpperCase();
+      if (!byDay[row.date]) byDay[row.date] = { call: 0, put: 0 };
+      if (cp.indexOf("P") === 0) byDay[row.date].put += vol;
+      else if (cp.indexOf("C") === 0) byDay[row.date].call += vol;
+    });
+    const out = Object.keys(byDay).sort().map(function (d) {
+      const c = byDay[d].call;
+      const p = byDay[d].put;
+      return { date: d, pcr: c > 0 ? p / c : null, call: c, put: p };
+    }).filter(function (row) { return row.pcr != null; });
+    cache.set(key, out);
+    return out;
+  }
+
+  // 整體市場融資餘額
+  async function marginSeries(days) {
+    const key = "margin|total|" + days;
+    if (cache.has(key)) return cache.get(key);
+    const rows = await finMindRaw("TaiwanStockTotalMarginPurchaseShortSale", isoDaysAgo(Math.max(60, days + 40)));
+    const byDay = {};
+    rows.forEach(function (row) {
+      if (row.name !== "MarginPurchase") return;
+      const bal = num(row.TodayBalance);
+      if (!(bal > 0)) return;
+      byDay[row.date] = bal;
+    });
+    const daysSorted = Object.keys(byDay).sort();
+    const out = [];
+    let prev = null;
+    daysSorted.forEach(function (d) {
+      const bal = byDay[d];
+      out.push({ date: d, balance: bal, chg: prev > 0 ? bal / prev - 1 : null });
+      prev = bal;
+    });
+    cache.set(key, out);
+    return out;
+  }
+
+  // 廣度代理：櫃買報酬指數相對加權（上漲擴散）
+  async function breadthProxySeries(days) {
+    const key = "breadth|otc|" + days;
+    if (cache.has(key)) return cache.get(key);
+    const start = isoDaysAgo(Math.max(60, days + 40));
+    const [taiex, otc] = await Promise.all([
+      finMindRaw("TaiwanStockTotalReturnIndex", start, "TAIEX").catch(function () { return []; }),
+      finMindRaw("TaiwanStockTotalReturnIndex", start, "TPEx").catch(function () { return []; })
+    ]);
+    const tMap = new Map();
+    taiex.forEach(function (row) {
+      const p = num(row.price);
+      if (p > 0) tMap.set(row.date, p);
+    });
+    const oMap = new Map();
+    otc.forEach(function (row) {
+      const p = num(row.price);
+      if (p > 0) oMap.set(row.date, p);
+    });
+    const daysSorted = Array.from(new Set([].concat(Array.from(tMap.keys()), Array.from(oMap.keys())))).sort();
+    const out = [];
+    let prevT = null;
+    let prevO = null;
+    daysSorted.forEach(function (d) {
+      const t = tMap.get(d);
+      const o = oMap.get(d);
+      if (!(t > 0) || !(o > 0)) return;
+      const tRet = prevT > 0 ? t / prevT - 1 : null;
+      const oRet = prevO > 0 ? o / prevO - 1 : null;
+      out.push({
+        date: d,
+        // 櫃買強於加權 → 廣度偏多
+        spread: (tRet != null && oRet != null) ? (oRet - tRet) : null
+      });
+      prevT = t;
+      prevO = o;
+    });
+    cache.set(key, out);
+    return out;
+  }
+
   function gradeOf(score) {
     if (score >= 60) return { label: "強勢看多", band: "+60～+100" };
     if (score >= 30) return { label: "偏多", band: "+30～+59" };
@@ -2336,6 +2500,36 @@
       dealerMap.set(row.date, row.dealer);
     });
 
+    const extra = await Promise.all([
+      txFuturesSeries(need).catch(function () { return []; }),
+      txForeignFutSeries(need).catch(function () { return []; }),
+      txOptionPcrSeries(need).catch(function () { return []; }),
+      marginSeries(need).catch(function () { return []; }),
+      breadthProxySeries(need).catch(function () { return []; })
+    ]);
+    const txMap = new Map();
+    const basisMap = new Map();
+    (extra[0] || []).forEach(function (row) {
+      if (row.ret != null) txMap.set(row.date, row.ret);
+      if (row.basisPct != null) basisMap.set(row.date, row.basisPct / 100);
+    });
+    const futForeignMap = new Map();
+    (extra[1] || []).forEach(function (row) {
+      if (row.delta != null) futForeignMap.set(row.date, row.delta);
+    });
+    const pcrMap = new Map();
+    (extra[2] || []).forEach(function (row) {
+      if (row.pcr != null) pcrMap.set(row.date, row.pcr);
+    });
+    const marginMap = new Map();
+    (extra[3] || []).forEach(function (row) {
+      if (row.chg != null) marginMap.set(row.date, row.chg);
+    });
+    const breadthMap = new Map();
+    (extra[4] || []).forEach(function (row) {
+      if (row.spread != null) breadthMap.set(row.date, row.spread);
+    });
+
     const target = loaded.find(function (row) {
       return row.spec.secid === (horizonKey === "stock" ? targetSecid : "100.TWII") && row.ok;
     }) || loaded.find(function (row) { return row.spec.id === "twii" && row.ok; });
@@ -2344,54 +2538,53 @@
     const twBars = target.bars;
     const twDays = twBars.map(function (b) { return String(b.t).slice(0, 10); });
 
+    function pushPart(parts, state, id, label, group, weight, score, ret) {
+      if (score == null || !isFinite(score)) return;
+      parts.push({ id: id, label: label, group: group, weight: weight, score: score, ret: ret });
+      state.wSum += weight;
+      state.sSum += weight * score;
+    }
+
     function factorScoreOn(day, prevDay) {
       const parts = [];
-      let wSum = 0;
-      let sSum = 0;
+      const state = { wSum: 0, sSum: 0 };
       loaded.forEach(function (row) {
         if (!row.ok) return;
         const r = row.rets.get(prevDay);
         if (r == null) return;
-        let sc = scoreFromRet(row.spec.invert ? -r : r, row.spec.scale);
-        if (sc == null) return;
-        parts.push({ id: row.spec.id, label: row.spec.label, group: row.spec.group, weight: row.spec.weight, score: sc, ret: r });
-        wSum += row.spec.weight;
-        sSum += row.spec.weight * sc;
+        const sc = scoreFromRet(row.spec.invert ? -r : r, row.spec.scale);
+        pushPart(parts, state, row.spec.id, row.spec.label, row.spec.group, row.spec.weight, sc, r);
       });
       const fr = foreignMap.get(prevDay);
       const tr = trustMap.get(prevDay);
       const dr = dealerMap.get(prevDay);
-      if (fr != null) {
-        const sc = scoreFromRet(fr / 1e10, 0.8);
-        parts.push({ id: "foreign", label: "外資現貨買賣超", group: "flow", weight: 0.08, score: sc, ret: fr });
-        wSum += 0.08; sSum += 0.08 * sc;
-      }
-      if (tr != null) {
-        const sc = scoreFromRet(tr / 1e9, 0.8);
-        parts.push({ id: "trust", label: "投信買賣超", group: "flow", weight: 0.04, score: sc, ret: tr });
-        wSum += 0.04; sSum += 0.04 * sc;
-      }
-      if (dr != null) {
-        const sc = scoreFromRet(dr / 1e9, 0.8);
-        parts.push({ id: "dealer", label: "自營商買賣超", group: "flow", weight: 0.03, score: sc, ret: dr });
-        wSum += 0.03; sSum += 0.03 * sc;
-      }
+      if (fr != null) pushPart(parts, state, "foreign", "外資現貨買賣超", "flow", 0.08, scoreFromRet(fr / 1e10, 0.8), fr);
+      if (tr != null) pushPart(parts, state, "trust", "投信買賣超", "flow", 0.04, scoreFromRet(tr / 1e9, 0.8), tr);
+      if (dr != null) pushPart(parts, state, "dealer", "自營商買賣超", "flow", 0.03, scoreFromRet(dr / 1e9, 0.8), dr);
       const vr = vixRets.get(prevDay);
-      if (vr != null) {
-        const sc = scoreFromRet(-vr, 0.08);
-        parts.push({ id: "vix", label: "VIX（反向）", group: "risk", weight: 0.04, score: sc, ret: vr });
-        wSum += 0.04; sSum += 0.04 * sc;
-      }
+      if (vr != null) pushPart(parts, state, "vix", "VIX（反向）", "risk", 0.04, scoreFromRet(-vr, 0.08), vr);
       const nr = tnxRets.get(prevDay);
-      if (nr != null) {
-        const sc = scoreFromRet(-nr, 0.02);
-        parts.push({ id: "tnx", label: "美債10年（反向）", group: "risk", weight: 0.04, score: sc, ret: nr });
-        wSum += 0.04; sSum += 0.04 * sc;
+      if (nr != null) pushPart(parts, state, "tnx", "美債10年（反向）", "risk", 0.04, scoreFromRet(-nr, 0.02), nr);
+
+      // 期貨／選擇權／廣度／融資（原紅框項目）
+      const txr = txMap.get(prevDay);
+      if (txr != null) pushPart(parts, state, "tx", "台指期近月動能", "futures", 0.07, scoreFromRet(txr, 0.01), txr);
+      const basis = basisMap.get(prevDay);
+      if (basis != null) pushPart(parts, state, "basis", "台指期正逆價差", "futures", 0.05, scoreFromRet(basis, 0.008), basis);
+      const ffd = futForeignMap.get(prevDay);
+      if (ffd != null) pushPart(parts, state, "futForeign", "外資期貨淨部位變化", "futures", 0.05, scoreFromRet(ffd / 8000, 0.8), ffd);
+      const pcr = pcrMap.get(prevDay);
+      if (pcr != null) {
+        // PCR 偏高偏避險；用 (1 - PCR) 方向：PCR↑ → 分數偏空
+        pushPart(parts, state, "pcr", "選擇權 PCR", "futures", 0.03, scoreFromRet(1 - pcr, 0.25), pcr);
       }
-      // 台指期／選擇權公開即時序列此版先缺，權重併入已讀到的類別
-      if (!(wSum > 0)) return { score: 0, parts: [] };
-      const score = Math.round(sSum / wSum);
-      return { score: score, parts: parts, missingFutures: true };
+      const br = breadthMap.get(prevDay);
+      if (br != null) pushPart(parts, state, "breadth", "上漲擴散（櫃買相對加權）", "local", 0.04, scoreFromRet(br, 0.006), br);
+      const mg = marginMap.get(prevDay);
+      if (mg != null) pushPart(parts, state, "margin", "融資餘額變化", "local", 0.03, scoreFromRet(mg, 0.004), mg);
+
+      if (!(state.wSum > 0)) return { score: 0, parts: [] };
+      return { score: Math.round(state.sSum / state.wSum), parts: parts };
     }
 
     const lastDay = twDays[twDays.length - 1];
@@ -2410,12 +2603,25 @@
     const foreign = partScore("foreign");
     const fx = partScore("fx");
     const vix = partScore("vix");
+    const tx = partScore("tx");
+    const basis = partScore("basis");
+    const futForeign = partScore("futForeign");
+    const pcr = partScore("pcr");
+    const breadth = partScore("breadth");
+    const margin = partScore("margin");
     if (sox != null && tsm != null && sox > 20 && tsm > 20) combos.push("費半與台積電 ADR 同向偏多 → 隔日偏多假設");
     if (sox != null && nvda != null && sox < -20 && nvda < -20) combos.push("費半與 NVIDIA 同向偏空 → 隔日偏空假設");
     if (foreign != null && foreign > 20) combos.push("外資現貨偏買 → 資金流入假設");
     if (foreign != null && foreign < -20) combos.push("外資現貨偏賣 → 資金流出假設");
     if (fx != null && foreign != null && fx < -20 && foreign < -20) combos.push("美元升／台幣弱 + 外資賣超 → 匯出壓力假設");
     if (vix != null && sox != null && vix < -20 && sox < -20) combos.push("VIX 升、費半弱 → 風險資產壓力假設");
+    if (tx != null && basis != null && tx > 20 && basis > 10) combos.push("台指期偏多且正價差 → 期貨動能偏多假設");
+    if (tx != null && basis != null && tx < -20 && basis < -10) combos.push("台指期偏空且逆價差 → 期貨動能偏空假設");
+    if (futForeign != null && foreign != null && futForeign > 20 && foreign > 20) combos.push("外資現貨＋期貨同向偏多 → 資金流入加強假設");
+    if (futForeign != null && foreign != null && futForeign < -20 && foreign < -20) combos.push("外資現貨＋期貨同向偏空 → 資金流出加強假設");
+    if (pcr != null && pcr < -20 && vix != null && vix < -10) combos.push("PCR 偏高且 VIX 升 → 避險升溫假設");
+    if (breadth != null && breadth > 20 && margin != null && margin > 10) combos.push("上漲擴散＋融資增加 → 市場參與升溫假設");
+    if (breadth != null && breadth < -20 && margin != null && margin < -10) combos.push("擴散轉弱＋融資收縮 → 風險偏好降溫假設");
     if (!combos.length) combos.push("組合條件尚未同時達標，先看總分與各因子");
 
     // 簡易回測：用前一日因子分數預測後 horizon 日的漲跌方向
@@ -2467,9 +2673,10 @@
         us: "美股／半導體（建議權重 25%）",
         asia: "亞股（建議權重 10%）",
         flow: "三大法人現貨（建議權重 15%）",
+        futures: "期貨／選擇權（建議權重 20%）",
         fx: "匯率（建議權重 10%）",
         risk: "VIX／美債（建議權重 8%）",
-        local: "台股內部動能（建議權重 7%）"
+        local: "台股內部／廣度／融資（建議權重 12%）"
       };
       return {
         group: g,
@@ -2491,12 +2698,19 @@
       parts: now.parts.sort(function (a, b) { return Math.abs(b.score) - Math.abs(a.score); }),
       groups: groupRows,
       combos: combos,
-      missing: [
-        "台指期近月／正逆價差／外資期貨淨部位／選擇權 PCR（此版尚未接期交所即時序列，權重已併入可讀資料）",
-        "上漲下跌家數、融資融券餘額（待接證交所廣度與信用交易）",
-        "完整產業基本面與總經（PMI、出口訂單）僅作中期參考，不納入隔日評分"
+      included: [
+        "台指期近月動能、正逆價差（FinMind TaiwanFuturesDaily）",
+        "外資期貨淨未平倉變化（FinMind TaiwanFuturesInstitutionalInvestors）",
+        "選擇權 PCR（FinMind TaiwanOptionDaily TXO 彙總）",
+        "上漲擴散代理：櫃買報酬指數相對加權（FinMind TotalReturnIndex）",
+        "融資餘額變化（FinMind TaiwanStockTotalMarginPurchaseShortSale）"
       ],
-      weightsNote: "初始權重：美股25、期貨20、法人15、匯率10、亞股10、VIX美債8、台股內部7、產業5。期貨與廣度缺資料時自動重分配。",
+      midTerm: [
+        "產業基本面代理：費半 SOX、台積電 ADR 中期動能（已反映於美股／半導體類分數）",
+        "總經代理：美元兌台幣、美債殖利率（PMI／出口訂單月頻資料不納入隔日評分，以上述日頻代理）"
+      ],
+      missing: [],
+      weightsNote: "初始權重：美股25、期貨／選擇權20、法人15、匯率10、亞股10、VIX美債8、台股內部／廣度／融資12。缺資料時自動重分配。",
       backtest: {
         trials: trials,
         accuracy: trials ? hits / trials : null,

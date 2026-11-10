@@ -278,6 +278,21 @@ textarea { min-height: 120px; resize: vertical; }
   min-height: 36px;
   flex-shrink: 0;
 }
+.watch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.watch-head h2 { margin: 0; }
+.watch-head .primary {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+#watch-compose-back { margin: 0 0 10px; }
 .watch-table-wrap {
   width: 100%;
   overflow-x: auto;
