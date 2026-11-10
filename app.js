@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 35;
+  const PAGE_BUILD = 36;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -226,6 +226,16 @@
     };
     state.tool = id;
     $("tool-title").textContent = titles[id] || "";
+    const note = $("tool-note");
+    if (note) {
+      if (id === "report") {
+        note.hidden = false;
+        note.textContent = "每日16:00後更新";
+      } else {
+        note.hidden = true;
+        note.textContent = "";
+      }
+    }
     ["ideas", "tech", "news", "test", "risk", "journal", "predict", "report"].forEach(function (key) {
       $("panel-" + key).hidden = key !== id;
     });

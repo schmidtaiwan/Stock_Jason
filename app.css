@@ -490,6 +490,19 @@ textarea { min-height: 120px; resize: vertical; }
   color: var(--accent);
 }
 .badge.go { background: #321818; color: var(--up); }
+.tool-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 0 4px;
+}
+.tool-head h2 { margin: 0; }
+.tool-note {
+  font-size: 13px;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .result { margin-top: 12px; }
 .result p { margin: 6px 0; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }

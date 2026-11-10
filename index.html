@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=35">
+  <link rel="stylesheet" href="app.css?v=36">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -146,7 +146,10 @@
 
       <section id="view-tool" hidden>
         <button id="tool-back" class="ghost" type="button">返回分析</button>
-        <h2 id="tool-title"></h2>
+        <div class="tool-head">
+          <h2 id="tool-title"></h2>
+          <span id="tool-note" class="tool-note" hidden></span>
+        </div>
 
         <div id="panel-ideas" class="panel" hidden>
           <p class="fine">掃固定池裡的台股（約 20 檔藍籌，不是全市場），每檔拉日 K，用均線／RSI／MACD／突破／回檔打分；分數夠且是突破或回檔才標「可進場」，並依資金與風險％算股數。做多、收盤價試算，不含手續費。</p>
@@ -358,9 +361,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=35"></script>
-  <script src="drive.js?v=35"></script>
-  <script src="market.js?v=35"></script>
-  <script src="app.js?v=35"></script>
+  <script src="google_config.js?v=36"></script>
+  <script src="drive.js?v=36"></script>
+  <script src="market.js?v=36"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>
