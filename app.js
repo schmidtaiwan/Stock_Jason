@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 26;
+  const PAGE_BUILD = 27;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -854,10 +854,39 @@
     cell.textContent = pnl.text;
   }
 
+  function paintWatchTotal() {
+    const el = $("watch-total-pnl");
+    if (!el) return;
+    const box = $("watch-list");
+    if (!book.watch.length) {
+      el.className = "";
+      el.textContent = "—";
+      return;
+    }
+    let sum = 0;
+    let n = 0;
+    book.watch.forEach(function (item, idx) {
+      const row = box && box.querySelector('tr[data-watch-row="' + idx + '"]');
+      const price = row ? Number(row.getAttribute("data-price")) : NaN;
+      const pnl = watchPnl(price, item.cost, item.shares);
+      if (pnl.value == null || !isFinite(pnl.value)) return;
+      sum += pnl.value;
+      n += 1;
+    });
+    if (!n) {
+      el.className = "";
+      el.textContent = "—";
+      return;
+    }
+    el.className = sum > 0 ? "up" : sum < 0 ? "down" : "";
+    el.textContent = (sum > 0 ? "+" : "") + Math.round(sum).toLocaleString("zh-Hant");
+  }
+
   function renderWatch() {
     const box = $("watch-list");
     if (!book.watch.length) {
       box.innerHTML = '<p class="note">自選股還是空的。按右上角「加入」用代號或庫存圖新增。</p>';
+      paintWatchTotal();
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
@@ -929,6 +958,7 @@
         }
         paintWatchPnl(idx);
       });
+      paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
       if (gen !== renderWatch.gen) return;
@@ -936,6 +966,7 @@
         cell.className = "watch-num";
         cell.textContent = "—";
       });
+      paintWatchTotal();
     });
   }
 
@@ -1792,7 +1823,10 @@
       normalizeNotify(book.watch[idx]);
     }
     syncHolding(book.watch[idx]);
-    if (shares != null || cost != null) paintWatchPnl(idx);
+    if (shares != null || cost != null) {
+      paintWatchPnl(idx);
+      paintWatchTotal();
+    }
     scheduleSave();
   });
   $("watch-list").addEventListener("change", async function (ev) {

@@ -320,6 +320,32 @@ textarea { min-height: 120px; resize: vertical; }
   border-radius: 999px;
 }
 #watch-compose-back { margin: 0 0 10px; }
+.watch-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.watch-summary .note {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.watch-total {
+  flex: 0 0 auto;
+  text-align: right;
+  line-height: 1.15;
+}
+.watch-total-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.watch-total strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
 .watch-table-wrap {
   width: 100%;
   overflow-x: auto;

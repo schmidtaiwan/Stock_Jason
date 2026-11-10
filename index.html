@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=26">
+  <link rel="stylesheet" href="app.css?v=27">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -93,7 +93,13 @@
         </div>
         <div id="watch-board">
           <p class="fine">表格顯示標的、目前價、買價、損益與股數。通知可選漲到價、跌到價、漲跌%、獲利元或虧損元；盤中達標提醒，同條件當天一次。請用 Chrome 並允許通知。</p>
-          <p id="watch-note" class="note"></p>
+          <div class="watch-summary">
+            <p id="watch-note" class="note"></p>
+            <div id="watch-total" class="watch-total" aria-label="總損益">
+              <span class="watch-total-label">總損益</span>
+              <strong id="watch-total-pnl">—</strong>
+            </div>
+          </div>
           <div id="watch-list"></div>
         </div>
         <div id="watch-compose" hidden>
@@ -309,9 +315,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="google_config.js?v=26"></script>
-  <script src="drive.js?v=26"></script>
-  <script src="market.js?v=26"></script>
-  <script src="app.js?v=26"></script>
+  <script src="google_config.js?v=27"></script>
+  <script src="drive.js?v=27"></script>
+  <script src="market.js?v=27"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
