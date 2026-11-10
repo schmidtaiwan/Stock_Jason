@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 32;
+  const PAGE_BUILD = 33;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -123,28 +123,42 @@
   function showApp() {
     $("gate").hidden = true;
     $("app").hidden = false;
-    paintChrome();
-    if (state.view === "chart") loadChart();
+    paintChrome(false);
+    // 進站／登入後紅框先抓加權，再載圖
+    paintTwii(true).then(function () {
+      if (state.view === "chart") loadChart();
+    });
   }
 
-  function paintChrome() {
+  function paintChrome(skipTwii) {
     const account = D.account();
     $("who").textContent = account ? account.email : "尚未登入";
     $("login").hidden = !!account;
     $("logout").hidden = !account;
     $("watch-note").textContent = "";
     $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
-    paintTwii();
+    if (!skipTwii) paintTwii(false);
   }
 
   let twiiBusy = false;
-  async function paintTwii() {
+  let twiiSeq = 0;
+  async function paintTwii(force) {
     const priceEl = $("twii-price");
     const chgEl = $("twii-chg");
-    if (!priceEl || !chgEl || twiiBusy) return;
+    if (!priceEl || !chgEl) return;
+    if (twiiBusy && !force) return;
+    const seq = ++twiiSeq;
     twiiBusy = true;
+    if (force) {
+      priceEl.textContent = "…";
+      priceEl.className = "";
+      chgEl.className = "twii-chg";
+      chgEl.textContent = "讀取中";
+    }
     try {
+      if (M.bustLiveCaches) M.bustLiveCaches(["100.TWII"]);
       const q = await M.twiiQuote();
+      if (seq !== twiiSeq) return;
       const cls = pctClass((q.pct || 0) / 100);
       priceEl.textContent = fmt(q.price);
       priceEl.className = cls;
@@ -155,12 +169,13 @@
       chgEl.className = "twii-chg " + cls;
       chgEl.textContent = pts + pctTxt;
     } catch (err) {
+      if (seq !== twiiSeq) return;
       priceEl.textContent = "—";
       priceEl.className = "";
       chgEl.className = "twii-chg";
-      chgEl.textContent = "加權讀取中";
+      chgEl.textContent = "加權讀取失敗";
     } finally {
-      twiiBusy = false;
+      if (seq === twiiSeq) twiiBusy = false;
     }
   }
 
@@ -281,9 +296,13 @@
         return;
       }
       $("gate-msg").textContent = "";
-      showApp();
+      $("gate").hidden = true;
+      $("app").hidden = false;
+      paintChrome(true);
+      await paintTwii(true);
       await loadBook();
-      paintChrome();
+      paintChrome(true);
+      if (state.view === "chart") loadChart();
     } catch (err) {
       $("gate-msg").textContent = D.friendly(err);
       if ($("app") && !$("app").hidden) {
@@ -1966,6 +1985,7 @@
     $("app").hidden = false;
   }
   loadBook();
-  paintChrome();
+  paintChrome(true);
+  paintTwii(true);
   startLiveClock();
 })();
