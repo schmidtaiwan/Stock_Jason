@@ -2917,6 +2917,224 @@
     };
   }
 
+  function twseNum(raw) {
+    if (raw == null) return null;
+    const s = String(raw).replace(/<[^>]+>/g, "").replace(/,/g, "").replace(/%/g, "").trim();
+    if (!s || s === "--" || s === "---" || s === "X") return null;
+    const n = Number(s);
+    return isFinite(n) ? n : null;
+  }
+
+  function twseSign(raw) {
+    const s = String(raw || "").replace(/<[^>]+>/g, "").trim();
+    if (s.indexOf("-") >= 0 || s.indexOf("－") >= 0 || s.indexOf("跌") >= 0) return -1;
+    if (s.indexOf("+") >= 0 || s.indexOf("＋") >= 0 || s.indexOf("漲") >= 0) return 1;
+    return 0;
+  }
+
+  function ymdAddDays(ymd, delta) {
+    const y = Number(String(ymd).slice(0, 4));
+    const m = Number(String(ymd).slice(4, 6)) - 1;
+    const d = Number(String(ymd).slice(6, 8));
+    const dt = new Date(Date.UTC(y, m, d + delta));
+    const yy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getUTCDate()).padStart(2, "0");
+    return "" + yy + mm + dd;
+  }
+
+  function taipeiYmd() {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date()).replace(/-/g, "");
+  }
+
+  async function twseFetchJson(path) {
+    const abs = path.indexOf("http") === 0 ? path : ("https://www.twse.com.tw" + path);
+    const urls = [
+      abs,
+      "https://corsproxy.io/?" + encodeURIComponent(abs),
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(abs),
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(abs)
+    ];
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 20000) : 0;
+        const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
+        if (timer) clearTimeout(timer);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        if (start < 0 || end <= start) continue;
+        return JSON.parse(text.slice(start, end + 1));
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error("證交所資料讀取失敗");
+  }
+
+  async function twseMiIndex(dateYmd) {
+    const json = await twseFetchJson(
+      "/rwd/zh/afterTrading/MI_INDEX?response=json&date=" + encodeURIComponent(dateYmd) + "&type=ALLBUT0999"
+    );
+    if (!json || String(json.stat || "").toUpperCase() !== "OK") {
+      return { ok: false, date: dateYmd, stat: json && json.stat, rows: [], indices: [] };
+    }
+    const tables = json.tables || [];
+    const priceTable = tables.find(function (t) {
+      return t && t.title && /每日收盤行情/.test(t.title);
+    });
+    const indexTable = tables.find(function (t) {
+      return t && t.title && /價格指數\(臺灣證券交易所\)|發行量加權/.test(t.title) && (t.data || []).length;
+    }) || tables[0];
+    const rows = ((priceTable && priceTable.data) || []).map(function (r) {
+      const sign = twseSign(r[9]);
+      const diff = twseNum(r[10]);
+      const close = twseNum(r[8]);
+      const chg = diff == null ? null : sign * Math.abs(diff);
+      const pct = close > 0 && chg != null && close !== chg ? (chg / (close - chg)) * 100 : null;
+      return {
+        code: String(r[0] || "").trim(),
+        name: String(r[1] || "").trim(),
+        volume: twseNum(r[2]),
+        amount: twseNum(r[4]),
+        open: twseNum(r[5]),
+        high: twseNum(r[6]),
+        low: twseNum(r[7]),
+        close: close,
+        change: chg,
+        pct: pct
+      };
+    }).filter(function (row) { return row.code; });
+    const indices = ((indexTable && indexTable.data) || []).map(function (r) {
+      const sign = twseSign(r[2]);
+      const pts = twseNum(r[3]);
+      return {
+        name: String(r[0] || "").trim(),
+        close: twseNum(r[1]),
+        change: pts == null ? null : sign * Math.abs(pts),
+        pct: twseNum(r[4])
+      };
+    }).filter(function (row) { return row.name; });
+    return { ok: true, date: String(json.date || dateYmd), rows: rows, indices: indices };
+  }
+
+  async function twseT86(dateYmd) {
+    const json = await twseFetchJson(
+      "/rwd/zh/fund/T86?response=json&date=" + encodeURIComponent(dateYmd) + "&selectType=ALLBUT0999"
+    );
+    if (!json || String(json.stat || "") !== "OK") {
+      return { ok: false, date: dateYmd, stat: json && json.stat, rows: [] };
+    }
+    const rows = (json.data || []).map(function (r) {
+      const foreign = twseNum(r[4]);
+      const foreignDealer = twseNum(r[7]);
+      const trust = twseNum(r[10]);
+      const dealer = twseNum(r[11]);
+      const total = twseNum(r[18]);
+      return {
+        code: String(r[0] || "").trim(),
+        name: String(r[1] || "").trim(),
+        foreignNet: foreign == null && foreignDealer == null ? null : (foreign || 0) + (foreignDealer || 0),
+        foreignOnly: foreign,
+        trustNet: trust,
+        dealerNet: dealer,
+        instNet: total
+      };
+    }).filter(function (row) { return row.code; });
+    return { ok: true, date: String(json.date || dateYmd), rows: rows };
+  }
+
+  async function twseDailyReport(opts) {
+    opts = opts || {};
+    const want = String(opts.date || "").replace(/\D/g, "") || taipeiYmd();
+    let mi = null;
+    let miDate = want;
+    for (let i = 0; i < 12; i++) {
+      const d = ymdAddDays(want, -i);
+      const hit = await twseMiIndex(d);
+      if (hit.ok && hit.rows.length) {
+        mi = hit;
+        miDate = hit.date;
+        break;
+      }
+    }
+    if (!mi) throw new Error("最近交易日的每日收盤行情讀不到");
+
+    let fund = null;
+    for (let i = 0; i < 12; i++) {
+      const d = ymdAddDays(miDate, -i);
+      const hit = await twseT86(d);
+      if (hit.ok && hit.rows.length) {
+        fund = hit;
+        break;
+      }
+    }
+
+    const fundMap = {};
+    (fund && fund.rows || []).forEach(function (row) { fundMap[row.code] = row; });
+    const merged = mi.rows.map(function (row) {
+      const f = fundMap[row.code] || {};
+      return {
+        code: row.code,
+        name: row.name || f.name || row.code,
+        close: row.close,
+        change: row.change,
+        pct: row.pct,
+        amount: row.amount,
+        volume: row.volume,
+        foreignNet: f.foreignNet != null ? f.foreignNet : null,
+        trustNet: f.trustNet != null ? f.trustNet : null,
+        dealerNet: f.dealerNet != null ? f.dealerNet : null,
+        instNet: f.instNet != null ? f.instNet : null
+      };
+    });
+
+    const twii = (mi.indices || []).find(function (x) {
+      return /發行量加權股價指數/.test(x.name);
+    }) || null;
+
+    return {
+      date: miDate,
+      fundDate: fund ? fund.date : "",
+      twii: twii,
+      indices: mi.indices || [],
+      rows: merged,
+      source: {
+        mi: "TWSE MI_INDEX ALLBUT0999",
+        fund: fund ? "TWSE T86 ALLBUT0999" : ""
+      }
+    };
+  }
+
+  function sortDailyReportRows(rows, mode) {
+    const list = (rows || []).slice();
+    const key = mode || "pctDown";
+    function cmpNum(a, b, dir) {
+      const av = a == null || !isFinite(a) ? (dir > 0 ? Infinity : -Infinity) : a;
+      const bv = b == null || !isFinite(b) ? (dir > 0 ? Infinity : -Infinity) : b;
+      return dir > 0 ? av - bv : bv - av;
+    }
+    list.sort(function (a, b) {
+      if (key === "pctUp") return cmpNum(a.pct, b.pct, 1);
+      if (key === "pctDown") return cmpNum(a.pct, b.pct, -1);
+      if (key === "foreignBuy") return cmpNum(a.foreignNet, b.foreignNet, -1);
+      if (key === "foreignSell") return cmpNum(a.foreignNet, b.foreignNet, 1);
+      if (key === "instBuy") return cmpNum(a.instNet, b.instNet, -1);
+      if (key === "instSell") return cmpNum(a.instNet, b.instNet, 1);
+      if (key === "amount") return cmpNum(a.amount, b.amount, -1);
+      return cmpNum(a.pct, b.pct, -1);
+    });
+    return list;
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -2944,6 +3162,8 @@
     hasCjk: hasCjk,
     cnyesQuotes: cnyesQuotes,
     bustLiveCaches: bustLiveCaches,
-    twPredict: twPredict
+    twPredict: twPredict,
+    twseDailyReport: twseDailyReport,
+    sortDailyReportRows: sortDailyReportRows
   };
 })(window);

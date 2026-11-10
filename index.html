@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=34">
+  <link rel="stylesheet" href="app.css?v=35">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -140,6 +140,7 @@
           <button type="button" data-tool="risk">5. 投資組合風險管理<small>配置、相關性、再平衡，以及大盤跌 20% 的避險</small></button>
           <button type="button" data-tool="journal">6. 交易日誌分析師<small>最近 20 筆的錯誤、錯過的機會與三條個人規則</small></button>
           <button type="button" data-tool="predict">7. 台股漲跌預測<small>八大類加權評分、歷史回測準確率、CSV 匯出</small></button>
+          <button type="button" data-tool="report">8. 盤後排序報表<small>證交所收盤＋外資／三大法人，依漲跌％或買賣超排序，可下載 HTML</small></button>
         </div>
       </section>
 
@@ -267,6 +268,49 @@
           <div id="predict-out" class="result"></div>
         </div>
 
+        <div id="panel-report" class="panel" hidden>
+          <p class="fine">讀證交所每日收盤行情（MI_INDEX）與三大法人買賣超（T86），合併後依你選的條件排序。法人資料若當日尚未公告，會自動改用最近有資料的交易日。</p>
+          <p class="fine">會上網：證交所公開報表（必要時經 CORS 代理）。</p>
+          <div class="grid2">
+            <div>
+              <label for="report-date">交易日（可空白＝最近）</label>
+              <input id="report-date" type="date">
+            </div>
+            <div>
+              <label for="report-sort">排序</label>
+              <select id="report-sort">
+                <option value="pctDown">漲跌％由高到低</option>
+                <option value="pctUp">漲跌％由低到高</option>
+                <option value="foreignBuy">外資買賣超（買超多）</option>
+                <option value="foreignSell">外資買賣超（賣超多）</option>
+                <option value="instBuy">三大法人買賣超（買超多）</option>
+                <option value="instSell">三大法人買賣超（賣超多）</option>
+                <option value="amount">成交金額由高到低</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label for="report-limit">列數</label>
+              <input id="report-limit" type="number" inputmode="numeric" min="20" max="500" step="10" value="50">
+            </div>
+            <div>
+              <label for="report-only">只看</label>
+              <select id="report-only">
+                <option value="all">全部（含 ETF）</option>
+                <option value="stock" selected>上市股票（4 碼）</option>
+                <option value="etf">ETF／特別股等</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <button id="report-run" class="primary" type="button">產生報表</button>
+            <button id="report-html" class="secondary" type="button" hidden>下載 HTML</button>
+          </div>
+          <p id="report-status" class="status" role="status"></p>
+          <div id="report-out" class="result report-out"></div>
+        </div>
+
         <div id="panel-journal" class="panel" hidden>
           <p class="fine">只讀你寫入的最近 20 筆日誌，統計勝率、情緒偏誤（追價、恐懼出場等），生出最多三條規則。</p>
           <p class="fine">不上網：純本機（或已同步的雲端檔）運算，不拉行情。</p>
@@ -314,9 +358,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=34"></script>
-  <script src="drive.js?v=34"></script>
-  <script src="market.js?v=34"></script>
-  <script src="app.js?v=34"></script>
+  <script src="google_config.js?v=35"></script>
+  <script src="drive.js?v=35"></script>
+  <script src="market.js?v=35"></script>
+  <script src="app.js?v=35"></script>
 </body>
 </html>

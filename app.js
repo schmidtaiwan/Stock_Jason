@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 34;
+  const PAGE_BUILD = 35;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -221,11 +221,12 @@
       test: "交易策略回測分析師",
       risk: "投資組合風險管理",
       journal: "交易日誌分析師",
-      predict: "台股漲跌預測"
+      predict: "台股漲跌預測",
+      report: "盤後排序報表"
     };
     state.tool = id;
     $("tool-title").textContent = titles[id] || "";
-    ["ideas", "tech", "news", "test", "risk", "journal", "predict"].forEach(function (key) {
+    ["ideas", "tech", "news", "test", "risk", "journal", "predict", "report"].forEach(function (key) {
       $("panel-" + key).hidden = key !== id;
     });
     setView("tool");
@@ -1748,6 +1749,143 @@
     URL.revokeObjectURL(a.href);
   }
 
+  let lastReport = null;
+
+  function reportSortLabel(mode) {
+    return ({
+      pctDown: "漲跌％由高到低",
+      pctUp: "漲跌％由低到高",
+      foreignBuy: "外資買賣超（買超多）",
+      foreignSell: "外資買賣超（賣超多）",
+      instBuy: "三大法人買賣超（買超多）",
+      instSell: "三大法人買賣超（賣超多）",
+      amount: "成交金額由高到低"
+    })[mode] || mode;
+  }
+
+  function fmtShareNet(n) {
+    if (n == null || !isFinite(n)) return "—";
+    const lots = n / 1000;
+    const sign = lots > 0 ? "+" : "";
+    return sign + lots.toLocaleString("zh-TW", { maximumFractionDigits: 0 }) + " 張";
+  }
+
+  function fmtAmt(n) {
+    if (n == null || !isFinite(n)) return "—";
+    if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + " 億";
+    if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(0) + " 萬";
+    return n.toLocaleString("zh-TW");
+  }
+
+  function filterReportRows(rows, only) {
+    return (rows || []).filter(function (row) {
+      const code = String(row.code || "");
+      // 4 碼且非 00xx（ETF 常見）視為一般上市股票
+      const isStock = /^\d{4}$/.test(code) && !/^00/.test(code);
+      if (only === "stock") return isStock;
+      if (only === "etf") return !isStock;
+      return true;
+    });
+  }
+
+  function reportTableHtml(rows, limit) {
+    const slice = rows.slice(0, limit);
+    return '<table class="report-table"><thead><tr>' +
+      "<th>#</th><th>代號</th><th>名稱</th><th>收盤</th><th>漲跌</th><th>漲跌％</th>" +
+      "<th>外資</th><th>三大法人</th><th>成交金額</th></tr></thead><tbody>" +
+      slice.map(function (row, i) {
+        const cls = pctClass((row.pct || 0) / 100);
+        const chg = row.change == null ? "—" :
+          ((row.change > 0 ? "+" : "") + Number(row.change).toFixed(2));
+        const p = row.pct == null ? "—" :
+          ((row.pct > 0 ? "+" : "") + Number(row.pct).toFixed(2) + "%");
+        return "<tr><td>" + (i + 1) + "</td><td>" + esc(row.code) + "</td><td>" + esc(row.name) +
+          "</td><td class=\"num\">" + (row.close == null ? "—" : fmt(row.close)) +
+          "</td><td class=\"num " + cls + "\">" + chg +
+          "</td><td class=\"num " + cls + "\">" + p +
+          "</td><td class=\"num " + pctClass(row.foreignNet || 0) + "\">" + fmtShareNet(row.foreignNet) +
+          "</td><td class=\"num " + pctClass(row.instNet || 0) + "\">" + fmtShareNet(row.instNet) +
+          "</td><td class=\"num\">" + fmtAmt(row.amount) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+
+  function buildReportView(pack, mode, only, limit) {
+    const filtered = filterReportRows(pack.rows, only);
+    const sorted = M.sortDailyReportRows(filtered, mode);
+    const twii = pack.twii;
+    const summary = '<div class="report-summary">' +
+      "<div><span>收盤行情日</span><strong>" + esc(pack.date) + "</strong></div>" +
+      "<div><span>法人買賣超日</span><strong>" + esc(pack.fundDate || "尚未公告") + "</strong></div>" +
+      "<div><span>加權收盤</span><strong class=\"" + (twii ? pctClass((twii.pct || 0) / 100) : "") + "\">" +
+      (twii && twii.close != null ? fmt(twii.close) : "—") + "</strong></div>" +
+      "<div><span>加權漲跌</span><strong class=\"" + (twii ? pctClass((twii.pct || 0) / 100) : "") + "\">" +
+      (twii && twii.change != null
+        ? ((twii.change > 0 ? "+" : "") + Number(twii.change).toFixed(2) +
+          "（" + (twii.pct > 0 ? "+" : "") + Number(twii.pct).toFixed(2) + "%）")
+        : "—") + "</strong></div></div>";
+    return {
+      sorted: sorted,
+      html: '<article class="card"><h3>' + esc(reportSortLabel(mode)) +
+        " · 前 " + Math.min(limit, sorted.length) + "／" + sorted.length + " 檔</h3>" +
+        summary + reportTableHtml(sorted, limit) +
+        '<p class="fine">來源：證交所 MI_INDEX、T86。買賣超以張（千股）顯示。</p></article>'
+    };
+  }
+
+  function reportStandaloneHtml(pack, mode, only, limit) {
+    const view = buildReportView(pack, mode, only, limit);
+    return "<!DOCTYPE html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\">" +
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+      "<title>盤後報表 " + esc(pack.date) + "</title>" +
+      "<style>body{font-family:\"Noto Sans TC\",\"Microsoft JhengHei\",sans-serif;background:#10151b;color:#e7eef6;margin:16px}" +
+      "table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #2c3846;padding:6px 4px;text-align:left}" +
+      "td.num{text-align:right}.up{color:#ff6b6b}.down{color:#3dbe7a}h1{font-size:20px}" +
+      ".fine{color:#93a0b0;font-size:12px}.summary{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}" +
+      ".summary div{background:#1a222c;border-radius:8px;padding:8px 10px}</style></head><body>" +
+      "<h1>三生有杏 · 盤後排序報表</h1>" +
+      "<p class=\"fine\">" + esc(reportSortLabel(mode)) + " · 行情 " + esc(pack.date) +
+      " · 法人 " + esc(pack.fundDate || "尚未公告") + "</p>" + view.html +
+      "</body></html>";
+  }
+
+  async function runReport() {
+    const dateVal = ($("report-date").value || "").replace(/-/g, "");
+    const mode = $("report-sort").value || "pctDown";
+    const only = $("report-only").value || "stock";
+    const limit = Math.max(20, Math.min(500, Number($("report-limit").value) || 50));
+    $("report-run").disabled = true;
+    $("report-html").hidden = true;
+    $("report-status").textContent = "正在讀證交所收盤與法人買賣超…";
+    $("report-out").innerHTML = "";
+    try {
+      const pack = await M.twseDailyReport({ date: dateVal });
+      lastReport = pack;
+      const view = buildReportView(pack, mode, only, limit);
+      $("report-out").innerHTML = view.html;
+      $("report-status").textContent = pack.fundDate && pack.fundDate !== pack.date
+        ? "行情日 " + pack.date + "；法人日 " + pack.fundDate + "（當日尚未公告則用最近日）。"
+        : "已產生 " + pack.date + " 報表。";
+      $("report-html").hidden = false;
+    } catch (err) {
+      $("report-status").textContent = err.message || "報表產生失敗";
+    } finally {
+      $("report-run").disabled = false;
+    }
+  }
+
+  function downloadReportHtml() {
+    if (!lastReport) return;
+    const mode = $("report-sort").value || "pctDown";
+    const only = $("report-only").value || "stock";
+    const limit = Math.max(20, Math.min(500, Number($("report-limit").value) || 50));
+    const blob = new Blob([reportStandaloneHtml(lastReport, mode, only, limit)], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "twse-report-" + lastReport.date + ".html";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function onPick(btn) {
     const row = {
       secid: btn.getAttribute("data-secid"),
@@ -1851,6 +1989,23 @@
   $("j-add").addEventListener("click", addJournal);
   $("j-run").addEventListener("click", runJournal);
   $("predict-run").addEventListener("click", runPredict);
+  $("report-run").addEventListener("click", runReport);
+  $("report-html").addEventListener("click", downloadReportHtml);
+  $("report-sort").addEventListener("change", function () {
+    if (!lastReport) return;
+    const mode = $("report-sort").value || "pctDown";
+    const only = $("report-only").value || "stock";
+    const limit = Math.max(20, Math.min(500, Number($("report-limit").value) || 50));
+    $("report-out").innerHTML = buildReportView(lastReport, mode, only, limit).html;
+  });
+  $("report-only").addEventListener("change", function () {
+    if (!lastReport) return;
+    $("report-sort").dispatchEvent(new Event("change"));
+  });
+  $("report-limit").addEventListener("change", function () {
+    if (!lastReport) return;
+    $("report-sort").dispatchEvent(new Event("change"));
+  });
   $("predict-csv").addEventListener("click", downloadPredictCsv);
   $("predict-horizon").addEventListener("change", syncPredictStockBox);
   $("tool-back").addEventListener("click", function () { setView("tools"); });
