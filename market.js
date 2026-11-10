@@ -2133,6 +2133,299 @@
     };
   }
 
+  function retMap(bars) {
+    const map = new Map();
+    for (let i = 1; i < bars.length; i++) {
+      const prev = bars[i - 1].c;
+      const day = String(bars[i].t).slice(0, 10);
+      if (prev > 0 && day) map.set(day, bars[i].c / prev - 1);
+    }
+    return map;
+  }
+
+  function scoreFromRet(r, scale) {
+    if (r == null || !isFinite(r)) return null;
+    const s = scale > 0 ? scale : 0.01;
+    const x = Math.max(-3, Math.min(3, r / s));
+    return Math.round(Math.tanh(x) * 100);
+  }
+
+  async function yahooDailyBars(symbol, rangeId) {
+    const q = {
+      "1y": "interval=1d&range=2y",
+      "3y": "interval=1d&range=5y",
+      "5y": "interval=1d&range=10y",
+      "10y": "interval=1d&range=10y"
+    }[rangeId] || "interval=1d&range=5y";
+    try {
+      return barsFromYahoo(await yahooChart(symbol, q));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async function institutionalSeries(days) {
+    const key = "inst|series|" + days;
+    if (cache.has(key)) return cache.get(key);
+    const url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockTotalInstitutionalInvestors&start_date=" +
+      encodeURIComponent(isoDaysAgo(Math.max(40, days + 40)));
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("法人買賣超讀取失敗");
+    const json = await res.json();
+    const byDay = {};
+    (json.data || []).forEach(function (row) {
+      if (!byDay[row.date]) byDay[row.date] = { date: row.date, foreign: 0, trust: 0, dealer: 0 };
+      const net = (num(row.buy) || 0) - (num(row.sell) || 0);
+      if (row.name === "Foreign_Investor" || row.name === "Foreign_Dealer_Self") byDay[row.date].foreign += net;
+      else if (row.name === "Investment_Trust") byDay[row.date].trust += net;
+      else if (row.name === "Dealer_self" || row.name === "Dealer_Hedging") byDay[row.date].dealer += net;
+    });
+    const out = Object.keys(byDay).sort().map(function (d) { return byDay[d]; });
+    cache.set(key, out);
+    return out;
+  }
+
+  function gradeOf(score) {
+    if (score >= 60) return { label: "強勢看多", band: "+60～+100" };
+    if (score >= 30) return { label: "偏多", band: "+30～+59" };
+    if (score > -30) return { label: "盤整", band: "-29～+29" };
+    if (score > -60) return { label: "偏空", band: "-30～-59" };
+    return { label: "強勢看空", band: "-60～-100" };
+  }
+
+  async function twPredict(opts) {
+    opts = opts || {};
+    const horizonKey = opts.horizon || "1d";
+    const histKey = opts.history || "3y";
+    const horizon = { "1d": 1, "5d": 5, "20d": 20, "stock": 1 }[horizonKey] || 1;
+    const need = { "1y": 280, "3y": 820, "5y": 1400, "10y": 2700 }[histKey] || 820;
+    const targetSecid = horizonKey === "stock" ? opts.secid : "100.TWII";
+    if (horizonKey === "stock" && !targetSecid) throw new Error("個股模式請先選標的");
+
+    const seriesSpecs = [
+      { id: "sox", label: "費半 SOX", group: "us", secid: "251.SOX", weight: 0.07, scale: 0.015 },
+      { id: "ndx", label: "那斯達克100", group: "us", secid: "100.NDX", weight: 0.06, scale: 0.012 },
+      { id: "spx", label: "標普500", group: "us", secid: "100.SPX", weight: 0.04, scale: 0.01 },
+      { id: "dji", label: "道瓊", group: "us", secid: "100.DJIA", weight: 0.02, scale: 0.01 },
+      { id: "nvda", label: "NVIDIA", group: "us", secid: "105.NVDA", weight: 0.03, scale: 0.025 },
+      { id: "tsm", label: "台積電 ADR", group: "us", secid: "105.TSM", weight: 0.03, scale: 0.02 },
+      { id: "n225", label: "日經225", group: "asia", secid: "100.N225", weight: 0.05, scale: 0.012 },
+      { id: "ks11", label: "韓國KOSPI", group: "asia", secid: "100.KS11", weight: 0.05, scale: 0.012 },
+      { id: "fx", label: "美元兌台幣", group: "fx", secid: "fx.USDTWD", weight: 0.1, scale: 0.004, invert: true },
+      { id: "twii", label: "加權指數動能", group: "local", secid: "100.TWII", weight: 0.04, scale: 0.01 }
+    ];
+    if (horizonKey === "stock") {
+      seriesSpecs.push({ id: "stock", label: opts.code || "個股", group: "local", secid: targetSecid, weight: 0.03, scale: 0.015 });
+    }
+
+    const loaded = await mapPool(seriesSpecs, 3, async function (spec) {
+      try {
+        let bars;
+        if (spec.secid === "fx.USDTWD") bars = await yahooDailyBars("TWD=X", histKey);
+        else bars = await kline(spec.secid, 101, need);
+        if (!bars || bars.length < 40) throw new Error("樣本不足");
+        return { spec: spec, bars: bars, rets: retMap(bars), ok: true };
+      } catch (err) {
+        return { spec: spec, bars: [], rets: new Map(), ok: false, reason: err.message || "讀取失敗" };
+      }
+    });
+
+    let vixRets = new Map();
+    let tnxRets = new Map();
+    try {
+      const vix = await yahooDailyBars("^VIX", histKey);
+      vixRets = retMap(vix);
+    } catch (err) { /* 可缺 */ }
+    try {
+      const tnx = await yahooDailyBars("^TNX", histKey);
+      tnxRets = retMap(tnx);
+    } catch (err) { /* 可缺 */ }
+
+    let inst = [];
+    try { inst = await institutionalSeries(need); } catch (err) { inst = []; }
+    const foreignMap = new Map();
+    const trustMap = new Map();
+    const dealerMap = new Map();
+    inst.forEach(function (row) {
+      foreignMap.set(row.date, row.foreign);
+      trustMap.set(row.date, row.trust);
+      dealerMap.set(row.date, row.dealer);
+    });
+
+    const target = loaded.find(function (row) {
+      return row.spec.secid === (horizonKey === "stock" ? targetSecid : "100.TWII") && row.ok;
+    }) || loaded.find(function (row) { return row.spec.id === "twii" && row.ok; });
+    if (!target || !target.ok) throw new Error("加權指數行情讀不到，無法預測");
+
+    const twBars = target.bars;
+    const twDays = twBars.map(function (b) { return String(b.t).slice(0, 10); });
+
+    function factorScoreOn(day, prevDay) {
+      const parts = [];
+      let wSum = 0;
+      let sSum = 0;
+      loaded.forEach(function (row) {
+        if (!row.ok) return;
+        const r = row.rets.get(prevDay);
+        if (r == null) return;
+        let sc = scoreFromRet(row.spec.invert ? -r : r, row.spec.scale);
+        if (sc == null) return;
+        parts.push({ id: row.spec.id, label: row.spec.label, group: row.spec.group, weight: row.spec.weight, score: sc, ret: r });
+        wSum += row.spec.weight;
+        sSum += row.spec.weight * sc;
+      });
+      const fr = foreignMap.get(prevDay);
+      const tr = trustMap.get(prevDay);
+      const dr = dealerMap.get(prevDay);
+      if (fr != null) {
+        const sc = scoreFromRet(fr / 1e10, 0.8);
+        parts.push({ id: "foreign", label: "外資現貨買賣超", group: "flow", weight: 0.08, score: sc, ret: fr });
+        wSum += 0.08; sSum += 0.08 * sc;
+      }
+      if (tr != null) {
+        const sc = scoreFromRet(tr / 1e9, 0.8);
+        parts.push({ id: "trust", label: "投信買賣超", group: "flow", weight: 0.04, score: sc, ret: tr });
+        wSum += 0.04; sSum += 0.04 * sc;
+      }
+      if (dr != null) {
+        const sc = scoreFromRet(dr / 1e9, 0.8);
+        parts.push({ id: "dealer", label: "自營商買賣超", group: "flow", weight: 0.03, score: sc, ret: dr });
+        wSum += 0.03; sSum += 0.03 * sc;
+      }
+      const vr = vixRets.get(prevDay);
+      if (vr != null) {
+        const sc = scoreFromRet(-vr, 0.08);
+        parts.push({ id: "vix", label: "VIX（反向）", group: "risk", weight: 0.04, score: sc, ret: vr });
+        wSum += 0.04; sSum += 0.04 * sc;
+      }
+      const nr = tnxRets.get(prevDay);
+      if (nr != null) {
+        const sc = scoreFromRet(-nr, 0.02);
+        parts.push({ id: "tnx", label: "美債10年（反向）", group: "risk", weight: 0.04, score: sc, ret: nr });
+        wSum += 0.04; sSum += 0.04 * sc;
+      }
+      // 台指期／選擇權公開即時序列此版先缺，權重併入已讀到的類別
+      if (!(wSum > 0)) return { score: 0, parts: [] };
+      const score = Math.round(sSum / wSum);
+      return { score: score, parts: parts, missingFutures: true };
+    }
+
+    const lastDay = twDays[twDays.length - 1];
+    const prevDay = twDays[twDays.length - 2] || lastDay;
+    const now = factorScoreOn(lastDay, prevDay);
+    const grade = gradeOf(now.score);
+
+    const combos = [];
+    function partScore(id) {
+      const hit = now.parts.find(function (p) { return p.id === id; });
+      return hit ? hit.score : null;
+    }
+    const sox = partScore("sox");
+    const tsm = partScore("tsm");
+    const nvda = partScore("nvda");
+    const foreign = partScore("foreign");
+    const fx = partScore("fx");
+    const vix = partScore("vix");
+    if (sox != null && tsm != null && sox > 20 && tsm > 20) combos.push("費半與台積電 ADR 同向偏多 → 隔日偏多假設");
+    if (sox != null && nvda != null && sox < -20 && nvda < -20) combos.push("費半與 NVIDIA 同向偏空 → 隔日偏空假設");
+    if (foreign != null && foreign > 20) combos.push("外資現貨偏買 → 資金流入假設");
+    if (foreign != null && foreign < -20) combos.push("外資現貨偏賣 → 資金流出假設");
+    if (fx != null && foreign != null && fx < -20 && foreign < -20) combos.push("美元升／台幣弱 + 外資賣超 → 匯出壓力假設");
+    if (vix != null && sox != null && vix < -20 && sox < -20) combos.push("VIX 升、費半弱 → 風險資產壓力假設");
+    if (!combos.length) combos.push("組合條件尚未同時達標，先看總分與各因子");
+
+    // 簡易回測：用前一日因子分數預測後 horizon 日的漲跌方向
+    let hits = 0;
+    let trials = 0;
+    let longHits = 0;
+    let longN = 0;
+    let shortHits = 0;
+    let shortN = 0;
+    const sampleRows = [];
+    for (let i = 60; i < twBars.length - horizon; i++) {
+      const day = twDays[i];
+      const prev = twDays[i - 1];
+      const pack = factorScoreOn(day, prev);
+      if (!pack.parts.length) continue;
+      const future = twBars[i + horizon].c / twBars[i].c - 1;
+      const predUp = pack.score >= 30;
+      const predDown = pack.score <= -30;
+      if (!predUp && !predDown) continue;
+      const actualUp = future > 0;
+      trials += 1;
+      if (predUp) {
+        longN += 1;
+        if (actualUp) { hits += 1; longHits += 1; }
+      } else {
+        shortN += 1;
+        if (!actualUp) { hits += 1; shortHits += 1; }
+      }
+      if (sampleRows.length < 12) {
+        sampleRows.push({
+          date: day,
+          score: pack.score,
+          pred: predUp ? "多" : "空",
+          actual: actualUp ? "漲" : "跌",
+          futurePct: future
+        });
+      }
+    }
+
+    const groups = {};
+    now.parts.forEach(function (p) {
+      if (!groups[p.group]) groups[p.group] = { score: 0, w: 0, items: [] };
+      groups[p.group].score += p.score * p.weight;
+      groups[p.group].w += p.weight;
+      groups[p.group].items.push(p);
+    });
+    const groupRows = Object.keys(groups).map(function (g) {
+      const names = {
+        us: "美股／半導體（建議權重 25%）",
+        asia: "亞股（建議權重 10%）",
+        flow: "三大法人現貨（建議權重 15%）",
+        fx: "匯率（建議權重 10%）",
+        risk: "VIX／美債（建議權重 8%）",
+        local: "台股內部動能（建議權重 7%）"
+      };
+      return {
+        group: g,
+        label: names[g] || g,
+        score: groups[g].w ? Math.round(groups[g].score / groups[g].w) : 0,
+        items: groups[g].items
+      };
+    }).sort(function (a, b) { return Math.abs(b.score) - Math.abs(a.score); });
+
+    return {
+      horizon: horizonKey,
+      horizonDays: horizon,
+      history: histKey,
+      target: horizonKey === "stock" ? (opts.code || targetSecid) : "加權指數",
+      asOf: lastDay,
+      score: now.score,
+      grade: grade.label,
+      band: grade.band,
+      parts: now.parts.sort(function (a, b) { return Math.abs(b.score) - Math.abs(a.score); }),
+      groups: groupRows,
+      combos: combos,
+      missing: [
+        "台指期近月／正逆價差／外資期貨淨部位／選擇權 PCR（此版尚未接期交所即時序列，權重已併入可讀資料）",
+        "上漲下跌家數、融資融券餘額（待接證交所廣度與信用交易）",
+        "完整產業基本面與總經（PMI、出口訂單）僅作中期參考，不納入隔日評分"
+      ],
+      weightsNote: "初始權重：美股25、期貨20、法人15、匯率10、亞股10、VIX美債8、台股內部7、產業5。期貨與廣度缺資料時自動重分配。",
+      backtest: {
+        trials: trials,
+        accuracy: trials ? hits / trials : null,
+        longAccuracy: longN ? longHits / longN : null,
+        shortAccuracy: shortN ? shortHits / shortN : null,
+        longN: longN,
+        shortN: shortN,
+        samples: sampleRows
+      },
+      csv: null
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -2156,6 +2449,7 @@
     historyBars: historyBars,
     toTW: toTW,
     cnyesQuotes: cnyesQuotes,
-    bustLiveCaches: bustLiveCaches
+    bustLiveCaches: bustLiveCaches,
+    twPredict: twPredict
   };
 })(window);

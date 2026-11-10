@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=22">
+  <link rel="stylesheet" href="app.css?v=23">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -121,6 +121,7 @@
           <button type="button" data-tool="test">4. 交易策略回測分析師<small>勝率、獲利因子、最大回撤與改進方向</small></button>
           <button type="button" data-tool="risk">5. 投資組合風險管理<small>配置、相關性、再平衡，以及大盤跌 20% 的避險</small></button>
           <button type="button" data-tool="journal">6. 交易日誌分析師<small>最近 20 筆的錯誤、錯過的機會與三條個人規則</small></button>
+          <button type="button" data-tool="predict">7. 台股漲跌預測<small>八大類加權評分、歷史回測準確率、CSV 匯出</small></button>
         </div>
       </section>
 
@@ -217,6 +218,37 @@
           <div id="risk-out" class="result"></div>
         </div>
 
+        <div id="panel-predict" class="panel" hidden>
+          <p class="fine">依八大類條件做「隔日／短中期」方向評分（−100～+100）：美股半導體、亞股、法人現貨、匯率、VIX／美債、台股動能等。期貨選擇權與市場廣度此版尚未接上，權重會自動重分配。</p>
+          <p class="fine">會上網：拉指數／個股 K 線、匯率、VIX、美債與 FinMind 三大法人；並用選定歷史期間做方向命中回測。可匯出 CSV 供 Excel／Python 再訓練。</p>
+          <label for="predict-horizon">預測目標</label>
+          <select id="predict-horizon">
+            <option value="1d">隔日台股大盤漲跌</option>
+            <option value="5d">未來 3～5 個交易日（以 5 日計）</option>
+            <option value="20d">未來約 1 個月（20 個交易日）</option>
+            <option value="stock">個別上市股票漲跌（隔日）</option>
+          </select>
+          <div id="predict-stock-box" hidden>
+            <label for="predict-q">個股標的</label>
+            <input id="predict-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
+            <div id="predict-hits"></div>
+            <p id="predict-pick" class="note">還沒選標的</p>
+          </div>
+          <label for="predict-history">歷史資料期間（回測）</label>
+          <select id="predict-history">
+            <option value="1y">過去 1 年</option>
+            <option value="3y" selected>過去 3 年</option>
+            <option value="5y">過去 5 年</option>
+            <option value="10y">過去 10 年</option>
+          </select>
+          <div class="row">
+            <button id="predict-run" class="primary" type="button">執行預測與回測</button>
+            <button id="predict-csv" class="secondary" type="button" hidden>下載 CSV</button>
+          </div>
+          <p id="predict-status" class="status" role="status"></p>
+          <div id="predict-out" class="result"></div>
+        </div>
+
         <div id="panel-journal" class="panel" hidden>
           <p class="fine">只讀你寫入的最近 20 筆日誌，統計勝率、情緒偏誤（追價、恐懼出場等），生出最多三條規則。</p>
           <p class="fine">不上網：純本機（或已同步的雲端檔）運算，不拉行情。</p>
@@ -264,9 +296,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="google_config.js?v=22"></script>
-  <script src="drive.js?v=22"></script>
-  <script src="market.js?v=22"></script>
-  <script src="app.js?v=22"></script>
+  <script src="google_config.js?v=23"></script>
+  <script src="drive.js?v=23"></script>
+  <script src="market.js?v=23"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

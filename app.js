@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 22;
+  const PAGE_BUILD = 23;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -162,17 +162,24 @@
       news: "新聞轉交易策略",
       test: "交易策略回測分析師",
       risk: "投資組合風險管理",
-      journal: "交易日誌分析師"
+      journal: "交易日誌分析師",
+      predict: "台股漲跌預測"
     };
     state.tool = id;
     $("tool-title").textContent = titles[id] || "";
-    ["ideas", "tech", "news", "test", "risk", "journal"].forEach(function (key) {
+    ["ideas", "tech", "news", "test", "risk", "journal", "predict"].forEach(function (key) {
       $("panel-" + key).hidden = key !== id;
     });
     setView("tool");
     if (id === "risk") renderHoldings();
     if (id === "journal") renderJournal();
+    if (id === "predict") syncPredictStockBox();
     syncMoney();
+  }
+
+  function syncPredictStockBox() {
+    const stock = $("predict-horizon").value === "stock";
+    $("predict-stock-box").hidden = !stock;
   }
 
   function syncMoney() {
@@ -1512,6 +1519,96 @@
       }).join("") + "</ol>" + (r.small ? "<p class=\"fine\">樣本不到 5 筆，規則先當起步約束。</p>" : "") + "</article>";
   }
 
+  let lastPredict = null;
+
+  function predictCsvText(r) {
+    const lines = [
+      "項目,數值",
+      "標的," + r.target,
+      "預測區間," + r.horizon,
+      "歷史期間," + r.history,
+      "資料日," + r.asOf,
+      "總分," + r.score,
+      "方向," + r.grade,
+      "回測筆數," + r.backtest.trials,
+      "方向命中率," + (r.backtest.accuracy == null ? "" : (r.backtest.accuracy * 100).toFixed(1) + "%"),
+      "",
+      "因子,類別,權重,分數,報酬或淨額"
+    ];
+    r.parts.forEach(function (p) {
+      lines.push([p.label, p.group, p.weight, p.score, p.ret].join(","));
+    });
+    lines.push("");
+    lines.push("回測日期,分數,預測,實際,後續報酬");
+    (r.backtest.samples || []).forEach(function (s) {
+      lines.push([s.date, s.score, s.pred, s.actual, (s.futurePct * 100).toFixed(2) + "%"].join(","));
+    });
+    return lines.join("\n");
+  }
+
+  async function runPredict() {
+    const horizon = $("predict-horizon").value;
+    const history = $("predict-history").value;
+    if (horizon === "stock" && !state.picks.predict) {
+      $("predict-status").textContent = "個股模式請先選標的。";
+      return;
+    }
+    $("predict-run").disabled = true;
+    $("predict-csv").hidden = true;
+    $("predict-status").textContent = "正在讀國際與法人資料…";
+    $("predict-out").innerHTML = "";
+    try {
+      const pick = state.picks.predict;
+      const r = await M.twPredict({
+        horizon: horizon,
+        history: history,
+        secid: pick && pick.secid,
+        code: pick && pick.code,
+        name: pick && pick.name
+      });
+      lastPredict = r;
+      const bt = r.backtest;
+      const acc = bt.accuracy == null ? "—" : (bt.accuracy * 100).toFixed(1) + "%";
+      $("predict-status").textContent = "";
+      $("predict-out").innerHTML = '<article class="card">' +
+        "<h3>" + esc(r.target) + " · " + esc(r.grade) + "（" + esc(r.band) + "）</h3>" +
+        "<p>總分 <strong>" + r.score + "</strong>／資料日 " + esc(r.asOf) +
+        " · 預測 " + esc(horizon) + " · 回測 " + esc(history) + "</p>" +
+        "<p>歷史方向命中 " + acc + "（僅評 |分|≥30 的交易日，共 " + bt.trials + " 筆；偏多 " +
+        bt.longN + "／偏空 " + bt.shortN + "）。這是方向強弱，不是漲跌機率保證。</p>" +
+        "<h3>類別分數</h3><ul>" + r.groups.map(function (g) {
+          return "<li>" + esc(g.label) + "：" + g.score + "</li>";
+        }).join("") + "</ul>" +
+        "<h3>主要因子</h3><table><tr><th>指標</th><th>分數</th></tr>" +
+        r.parts.slice(0, 12).map(function (p) {
+          return "<tr><td>" + esc(p.label) + "</td><td>" + p.score + "</td></tr>";
+        }).join("") + "</table>" +
+        "<h3>組合條件</h3><ul>" + r.combos.map(function (line) {
+          return "<li>" + esc(line) + "</li>";
+        }).join("") + "</ul>" +
+        "<h3>此版尚未納入</h3><ul>" + r.missing.map(function (line) {
+          return "<li>" + esc(line) + "</li>";
+        }).join("") + "</ul>" +
+        "<p class=\"fine\">" + esc(r.weightsNote) +
+        " CSV 可匯入 Excel；若要做 Logistic／XGBoost，請用同一份歷史因子另開 Python 訓練。</p></article>";
+      $("predict-csv").hidden = false;
+    } catch (err) {
+      $("predict-status").textContent = err.message || "預測失敗";
+    } finally {
+      $("predict-run").disabled = false;
+    }
+  }
+
+  function downloadPredictCsv() {
+    if (!lastPredict) return;
+    const blob = new Blob(["\ufeff" + predictCsvText(lastPredict)], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "tw-predict-" + (lastPredict.asOf || "out") + ".csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function onPick(btn) {
     const row = {
       secid: btn.getAttribute("data-secid"),
@@ -1538,9 +1635,15 @@
       return;
     }
     state.picks[key] = row;
-    const label = $(key === "tech" ? "tech-pick" : key === "news" ? "news-pick" : key === "test" ? "test-pick" : "j-pick");
+    const label = $({
+      tech: "tech-pick",
+      news: "news-pick",
+      test: "test-pick",
+      journal: "j-pick",
+      predict: "predict-pick"
+    }[key]);
     if (label) label.textContent = row.name + " " + row.code + " · " + row.market;
-    const hits = { tech: "tech-hits", news: "news-hits", test: "test-hits", journal: "j-hits" }[key];
+    const hits = { tech: "tech-hits", news: "news-hits", test: "test-hits", journal: "j-hits", predict: "predict-hits" }[key];
     if (hits) $(hits).innerHTML = "";
   }
 
@@ -1606,6 +1709,9 @@
   $("risk-run").addEventListener("click", runRisk);
   $("j-add").addEventListener("click", addJournal);
   $("j-run").addEventListener("click", runJournal);
+  $("predict-run").addEventListener("click", runPredict);
+  $("predict-csv").addEventListener("click", downloadPredictCsv);
+  $("predict-horizon").addEventListener("change", syncPredictStockBox);
   $("tool-back").addEventListener("click", function () { setView("tools"); });
   $("chart").addEventListener("pointermove", onChartPointer);
   $("chart").addEventListener("pointerleave", function () { $("hover").hidden = true; });
@@ -1723,6 +1829,7 @@
   bindSearch("test-q", "test-hits", "test", "台股");
   bindSearch("risk-q", "risk-hits", "risk", "台股");
   bindSearch("j-q", "j-hits", "journal", "台股");
+  bindSearch("predict-q", "predict-hits", "predict", "台股");
 
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
