@@ -2980,12 +2980,18 @@
     throw lastErr || new Error("證交所資料讀取失敗");
   }
 
+  const twseMiCache = new Map();
+  const twseT86Cache = new Map();
+
   async function twseMiIndex(dateYmd) {
+    if (twseMiCache.has(dateYmd)) return twseMiCache.get(dateYmd);
     const json = await twseFetchJson(
       "/rwd/zh/afterTrading/MI_INDEX?response=json&date=" + encodeURIComponent(dateYmd) + "&type=ALLBUT0999"
     );
     if (!json || String(json.stat || "").toUpperCase() !== "OK") {
-      return { ok: false, date: dateYmd, stat: json && json.stat, rows: [], indices: [] };
+      const miss = { ok: false, date: dateYmd, stat: json && json.stat, rows: [], indices: [] };
+      twseMiCache.set(dateYmd, miss);
+      return miss;
     }
     const tables = json.tables || [];
     const priceTable = tables.find(function (t) {
@@ -3023,15 +3029,20 @@
         pct: twseNum(r[4])
       };
     }).filter(function (row) { return row.name; });
-    return { ok: true, date: String(json.date || dateYmd), rows: rows, indices: indices };
+    const out = { ok: true, date: String(json.date || dateYmd), rows: rows, indices: indices };
+    twseMiCache.set(dateYmd, out);
+    return out;
   }
 
   async function twseT86(dateYmd) {
+    if (twseT86Cache.has(dateYmd)) return twseT86Cache.get(dateYmd);
     const json = await twseFetchJson(
       "/rwd/zh/fund/T86?response=json&date=" + encodeURIComponent(dateYmd) + "&selectType=ALLBUT0999"
     );
     if (!json || String(json.stat || "") !== "OK") {
-      return { ok: false, date: dateYmd, stat: json && json.stat, rows: [] };
+      const miss = { ok: false, date: dateYmd, stat: json && json.stat, rows: [] };
+      twseT86Cache.set(dateYmd, miss);
+      return miss;
     }
     const rows = (json.data || []).map(function (r) {
       const foreign = twseNum(r[4]);
@@ -3049,67 +3060,198 @@
         instNet: total
       };
     }).filter(function (row) { return row.code; });
-    return { ok: true, date: String(json.date || dateYmd), rows: rows };
+    const out = { ok: true, date: String(json.date || dateYmd), rows: rows };
+    twseT86Cache.set(dateYmd, out);
+    return out;
+  }
+
+  function twseWeekdayYmds(endYmd, maxCal) {
+    const out = [];
+    for (let i = 0; i < maxCal; i++) {
+      const d = ymdAddDays(endYmd, -i);
+      const y = Number(d.slice(0, 4));
+      const m = Number(d.slice(4, 6)) - 1;
+      const day = Number(d.slice(6, 8));
+      const wd = new Date(Date.UTC(y, m, day)).getUTCDay();
+      if (wd === 0 || wd === 6) continue;
+      out.push(d);
+    }
+    return out;
+  }
+
+  function pickTwii(indices) {
+    return (indices || []).find(function (x) {
+      return /發行量加權股價指數/.test(x.name);
+    }) || null;
   }
 
   async function twseDailyReport(opts) {
     opts = opts || {};
     const want = String(opts.date || "").replace(/\D/g, "") || taipeiYmd();
-    let mi = null;
-    let miDate = want;
+    const days = Math.max(1, Math.min(180, Number(opts.days) || 1));
+    const onProgress = typeof opts.onProgress === "function" ? opts.onProgress : null;
+
+    // 先定位最近有行情的交易日
+    let endYmd = want;
+    let endMi = null;
     for (let i = 0; i < 12; i++) {
       const d = ymdAddDays(want, -i);
       const hit = await twseMiIndex(d);
       if (hit.ok && hit.rows.length) {
-        mi = hit;
-        miDate = hit.date;
+        endMi = hit;
+        endYmd = hit.date;
         break;
       }
     }
-    if (!mi) throw new Error("最近交易日的每日收盤行情讀不到");
+    if (!endMi) throw new Error("最近交易日的每日收盤行情讀不到");
 
-    let fund = null;
-    for (let i = 0; i < 12; i++) {
-      const d = ymdAddDays(miDate, -i);
-      const hit = await twseT86(d);
-      if (hit.ok && hit.rows.length) {
-        fund = hit;
-        break;
+    let sessions = [];
+    if (days === 1) {
+      sessions = [endMi];
+    } else {
+      // 多抓一些平日候選，並行讀取後取最近 N 個有資料的交易日
+      let span = Math.min(320, Math.ceil(days * 1.65) + 10);
+      let candidates = twseWeekdayYmds(endYmd, span);
+      if (onProgress) onProgress({ phase: "mi", done: 0, need: days });
+      let hits = await mapPool(candidates, 4, async function (d, idx) {
+        if (onProgress && idx % 4 === 0) onProgress({ phase: "mi", done: idx, need: candidates.length, date: d });
+        return d === endYmd ? endMi : twseMiIndex(d);
+      });
+      let ok = hits.filter(function (h) { return h && h.ok && h.rows.length; })
+        .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+      if (ok.length < days && span < 320) {
+        span = Math.min(320, span + 80);
+        candidates = twseWeekdayYmds(endYmd, span);
+        hits = await mapPool(candidates, 4, async function (d) {
+          return d === endYmd ? endMi : twseMiIndex(d);
+        });
+        ok = hits.filter(function (h) { return h && h.ok && h.rows.length; })
+          .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
       }
+      sessions = ok.slice(0, days).reverse();
     }
 
-    const fundMap = {};
-    (fund && fund.rows || []).forEach(function (row) { fundMap[row.code] = row; });
-    const merged = mi.rows.map(function (row) {
-      const f = fundMap[row.code] || {};
-      return {
-        code: row.code,
-        name: row.name || f.name || row.code,
-        close: row.close,
-        change: row.change,
-        pct: row.pct,
-        amount: row.amount,
-        volume: row.volume,
-        foreignNet: f.foreignNet != null ? f.foreignNet : null,
-        trustNet: f.trustNet != null ? f.trustNet : null,
-        dealerNet: f.dealerNet != null ? f.dealerNet : null,
-        instNet: f.instNet != null ? f.instNet : null
-      };
+    if (!sessions.length) throw new Error("區間內沒有收盤行情");
+    const startYmd = sessions[0].date;
+    const miDate = sessions[sessions.length - 1].date;
+
+    if (onProgress) onProgress({ phase: "fund", done: 0, need: sessions.length });
+    const fundDays = await mapPool(sessions.map(function (s) { return s.date; }), 3, async function (d, idx) {
+      if (onProgress) onProgress({ phase: "fund", done: idx + 1, need: sessions.length, date: d });
+      return twseT86(d);
+    });
+    const fundOk = fundDays.filter(function (f) { return f && f.ok && f.rows.length; });
+    const fundDateFrom = fundOk.length ? fundOk[0].date : "";
+    const fundDateTo = fundOk.length ? fundOk[fundOk.length - 1].date : "";
+
+    const book = {};
+    sessions.forEach(function (sess) {
+      sess.rows.forEach(function (row) {
+        if (!book[row.code]) {
+          book[row.code] = {
+            code: row.code,
+            name: row.name,
+            firstClose: null,
+            close: null,
+            amount: 0,
+            volume: 0,
+            foreignNet: 0,
+            trustNet: 0,
+            dealerNet: 0,
+            instNet: 0,
+            hasForeign: false,
+            hasInst: false
+          };
+        }
+        const b = book[row.code];
+        if (row.name) b.name = row.name;
+        if (row.close != null) {
+          if (b.firstClose == null) b.firstClose = row.close;
+          b.close = row.close;
+        }
+        if (row.amount != null) b.amount += row.amount;
+        if (row.volume != null) b.volume += row.volume;
+      });
     });
 
-    const twii = (mi.indices || []).find(function (x) {
-      return /發行量加權股價指數/.test(x.name);
-    }) || null;
+    fundOk.forEach(function (fund) {
+      fund.rows.forEach(function (row) {
+        if (!book[row.code]) {
+          book[row.code] = {
+            code: row.code,
+            name: row.name,
+            firstClose: null,
+            close: null,
+            amount: 0,
+            volume: 0,
+            foreignNet: 0,
+            trustNet: 0,
+            dealerNet: 0,
+            instNet: 0,
+            hasForeign: false,
+            hasInst: false
+          };
+        }
+        const b = book[row.code];
+        if (row.name) b.name = row.name;
+        if (row.foreignNet != null) {
+          b.foreignNet += row.foreignNet;
+          b.hasForeign = true;
+        }
+        if (row.trustNet != null) b.trustNet += row.trustNet;
+        if (row.dealerNet != null) b.dealerNet += row.dealerNet;
+        if (row.instNet != null) {
+          b.instNet += row.instNet;
+          b.hasInst = true;
+        }
+      });
+    });
+
+    const merged = Object.keys(book).map(function (code) {
+      const b = book[code];
+      const change = b.close != null && b.firstClose != null ? b.close - b.firstClose : null;
+      const pct = b.close != null && b.firstClose > 0 ? (b.close / b.firstClose - 1) * 100 : null;
+      return {
+        code: b.code,
+        name: b.name || b.code,
+        close: b.close,
+        change: change,
+        pct: pct,
+        amount: b.amount || null,
+        volume: b.volume || null,
+        foreignNet: b.hasForeign ? b.foreignNet : null,
+        trustNet: b.trustNet || null,
+        dealerNet: b.dealerNet || null,
+        instNet: b.hasInst ? b.instNet : null
+      };
+    }).filter(function (row) { return row.close != null; });
+
+    const firstTwii = pickTwii(sessions[0].indices);
+    const lastTwii = pickTwii(sessions[sessions.length - 1].indices);
+    let twii = lastTwii;
+    if (firstTwii && lastTwii && firstTwii.close > 0 && lastTwii.close != null) {
+      const chg = lastTwii.close - firstTwii.close;
+      twii = {
+        name: lastTwii.name,
+        close: lastTwii.close,
+        change: chg,
+        pct: chg / firstTwii.close * 100
+      };
+    }
 
     return {
       date: miDate,
-      fundDate: fund ? fund.date : "",
+      startDate: startYmd,
+      days: sessions.length,
+      wantDays: days,
+      fundDate: fundDateTo || "",
+      fundDateFrom: fundDateFrom || "",
       twii: twii,
-      indices: mi.indices || [],
+      indices: sessions[sessions.length - 1].indices || [],
       rows: merged,
       source: {
         mi: "TWSE MI_INDEX ALLBUT0999",
-        fund: fund ? "TWSE T86 ALLBUT0999" : ""
+        fund: fundOk.length ? "TWSE T86 ALLBUT0999" : ""
       }
     };
   }

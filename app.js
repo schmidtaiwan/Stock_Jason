@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 36;
+  const PAGE_BUILD = 37;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1798,11 +1798,14 @@
     });
   }
 
-  function reportTableHtml(rows, limit) {
+  function reportTableHtml(rows, limit, days) {
     const slice = rows.slice(0, limit);
+    const multi = days > 1;
     return '<table class="report-table"><thead><tr>' +
-      "<th>#</th><th>代號</th><th>名稱</th><th>收盤</th><th>漲跌</th><th>漲跌％</th>" +
-      "<th>外資</th><th>三大法人</th><th>成交金額</th></tr></thead><tbody>" +
+      "<th>#</th><th>代號</th><th>名稱</th><th>收盤</th><th>" + (multi ? "區間漲跌" : "漲跌") + "</th><th>" +
+      (multi ? "區間％" : "漲跌％") + "</th>" +
+      "<th>" + (multi ? "外資合計" : "外資") + "</th><th>" + (multi ? "法人合計" : "三大法人") +
+      "</th><th>" + (multi ? "成交合計" : "成交金額") + "</th></tr></thead><tbody>" +
       slice.map(function (row, i) {
         const cls = pctClass((row.pct || 0) / 100);
         const chg = row.change == null ? "—" :
@@ -1823,12 +1826,20 @@
     const filtered = filterReportRows(pack.rows, only);
     const sorted = M.sortDailyReportRows(filtered, mode);
     const twii = pack.twii;
+    const days = pack.days || 1;
+    const rangeLabel = days > 1
+      ? (pack.startDate + "～" + pack.date + "（" + days + " 日）")
+      : pack.date;
+    const fundLabel = pack.fundDateFrom && pack.fundDateFrom !== pack.fundDate
+      ? (pack.fundDateFrom + "～" + pack.fundDate)
+      : (pack.fundDate || "尚未公告");
     const summary = '<div class="report-summary">' +
-      "<div><span>收盤行情日</span><strong>" + esc(pack.date) + "</strong></div>" +
-      "<div><span>法人買賣超日</span><strong>" + esc(pack.fundDate || "尚未公告") + "</strong></div>" +
+      "<div><span>行情區間</span><strong>" + esc(rangeLabel) + "</strong></div>" +
+      "<div><span>法人區間</span><strong>" + esc(fundLabel) + "</strong></div>" +
       "<div><span>加權收盤</span><strong class=\"" + (twii ? pctClass((twii.pct || 0) / 100) : "") + "\">" +
       (twii && twii.close != null ? fmt(twii.close) : "—") + "</strong></div>" +
-      "<div><span>加權漲跌</span><strong class=\"" + (twii ? pctClass((twii.pct || 0) / 100) : "") + "\">" +
+      "<div><span>" + (days > 1 ? "加權區間漲跌" : "加權漲跌") + "</span><strong class=\"" +
+      (twii ? pctClass((twii.pct || 0) / 100) : "") + "\">" +
       (twii && twii.change != null
         ? ((twii.change > 0 ? "+" : "") + Number(twii.change).toFixed(2) +
           "（" + (twii.pct > 0 ? "+" : "") + Number(twii.pct).toFixed(2) + "%）")
@@ -1836,9 +1847,9 @@
     return {
       sorted: sorted,
       html: '<article class="card"><h3>' + esc(reportSortLabel(mode)) +
-        " · 前 " + Math.min(limit, sorted.length) + "／" + sorted.length + " 檔</h3>" +
-        summary + reportTableHtml(sorted, limit) +
-        '<p class="fine">來源：證交所 MI_INDEX、T86。買賣超以張（千股）顯示。</p></article>'
+        " · " + days + " 日 · 前 " + Math.min(limit, sorted.length) + "／" + sorted.length + " 檔</h3>" +
+        summary + reportTableHtml(sorted, limit, days) +
+        '<p class="fine">來源：證交所 MI_INDEX、T86。區間漲跌＝迄日收盤相對區間首日收盤；買賣超／成交為區間加總（張＝千股）。</p></article>'
     };
   }
 
@@ -1846,35 +1857,50 @@
     const view = buildReportView(pack, mode, only, limit);
     return "<!DOCTYPE html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\">" +
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
-      "<title>盤後報表 " + esc(pack.date) + "</title>" +
+      "<title>盤後報表 " + esc(pack.date) + " " + (pack.days || 1) + "日</title>" +
       "<style>body{font-family:\"Noto Sans TC\",\"Microsoft JhengHei\",sans-serif;background:#10151b;color:#e7eef6;margin:16px}" +
       "table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #2c3846;padding:6px 4px;text-align:left}" +
       "td.num{text-align:right}.up{color:#ff6b6b}.down{color:#3dbe7a}h1{font-size:20px}" +
       ".fine{color:#93a0b0;font-size:12px}.summary{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}" +
       ".summary div{background:#1a222c;border-radius:8px;padding:8px 10px}</style></head><body>" +
       "<h1>三生有杏 · 盤後排序報表</h1>" +
-      "<p class=\"fine\">" + esc(reportSortLabel(mode)) + " · 行情 " + esc(pack.date) +
+      "<p class=\"fine\">" + esc(reportSortLabel(mode)) + " · " + (pack.days || 1) + " 日 · 行情 " +
+      esc(pack.startDate || pack.date) + "～" + esc(pack.date) +
       " · 法人 " + esc(pack.fundDate || "尚未公告") + "</p>" + view.html +
       "</body></html>";
   }
 
   async function runReport() {
     const dateVal = ($("report-date").value || "").replace(/-/g, "");
+    const days = Number($("report-range").value) || 1;
     const mode = $("report-sort").value || "pctDown";
     const only = $("report-only").value || "stock";
     const limit = Math.max(20, Math.min(500, Number($("report-limit").value) || 50));
     $("report-run").disabled = true;
     $("report-html").hidden = true;
-    $("report-status").textContent = "正在讀證交所收盤與法人買賣超…";
+    $("report-status").textContent = days > 1
+      ? "正在讀最近 " + days + " 個交易日（較久，請稍候）…"
+      : "正在讀證交所收盤與法人買賣超…";
     $("report-out").innerHTML = "";
     try {
-      const pack = await M.twseDailyReport({ date: dateVal });
+      const pack = await M.twseDailyReport({
+        date: dateVal,
+        days: days,
+        onProgress: function (p) {
+          if (!p) return;
+          if (p.phase === "mi") {
+            $("report-status").textContent = "讀收盤行情 " + (p.done || 0) + "／" + (p.need || days) +
+              (p.date ? "（" + p.date + "）" : "");
+          } else if (p.phase === "fund") {
+            $("report-status").textContent = "讀法人買賣超 " + (p.done || 0) + "／" + (p.need || days);
+          }
+        }
+      });
       lastReport = pack;
       const view = buildReportView(pack, mode, only, limit);
       $("report-out").innerHTML = view.html;
-      $("report-status").textContent = pack.fundDate && pack.fundDate !== pack.date
-        ? "行情日 " + pack.date + "；法人日 " + pack.fundDate + "（當日尚未公告則用最近日）。"
-        : "已產生 " + pack.date + " 報表。";
+      $("report-status").textContent = "已產生 " + (pack.startDate || pack.date) + "～" + pack.date +
+        "（" + pack.days + " 日）報表。";
       $("report-html").hidden = false;
     } catch (err) {
       $("report-status").textContent = err.message || "報表產生失敗";
@@ -1891,7 +1917,7 @@
     const blob = new Blob([reportStandaloneHtml(lastReport, mode, only, limit)], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "twse-report-" + lastReport.date + ".html";
+    a.download = "twse-report-" + lastReport.date + "-" + (lastReport.days || 1) + "d.html";
     a.click();
     URL.revokeObjectURL(a.href);
   }

@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=36">
+  <link rel="stylesheet" href="app.css?v=37">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -272,13 +272,25 @@
         </div>
 
         <div id="panel-report" class="panel" hidden>
-          <p class="fine">讀證交所每日收盤行情（MI_INDEX）與三大法人買賣超（T86），合併後依你選的條件排序。法人資料若當日尚未公告，會自動改用最近有資料的交易日。</p>
-          <p class="fine">會上網：證交所公開報表（必要時經 CORS 代理）。</p>
+          <p class="fine">讀證交所每日收盤行情（MI_INDEX）與三大法人買賣超（T86）。單日或 5／20／60／180 個交易日：漲跌％用區間首尾收盤，外資／法人／成交金額為區間加總。法人若某日未公告會跳過該日。</p>
+          <p class="fine">會上網：證交所公開報表（必要時經 CORS 代理）。區間愈長愈慢，資料會暫存在本頁記憶體。</p>
           <div class="grid2">
             <div>
-              <label for="report-date">交易日（可空白＝最近）</label>
+              <label for="report-date">迄日（可空白＝最近）</label>
               <input id="report-date" type="date">
             </div>
+            <div>
+              <label for="report-range">區間</label>
+              <select id="report-range">
+                <option value="1">1 日</option>
+                <option value="5">5 日</option>
+                <option value="20" selected>20 日</option>
+                <option value="60">60 日</option>
+                <option value="180">180 日</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid2">
             <div>
               <label for="report-sort">排序</label>
               <select id="report-sort">
@@ -291,20 +303,18 @@
                 <option value="amount">成交金額由高到低</option>
               </select>
             </div>
-          </div>
-          <div class="grid2">
             <div>
               <label for="report-limit">列數</label>
               <input id="report-limit" type="number" inputmode="numeric" min="20" max="500" step="10" value="50">
             </div>
-            <div>
-              <label for="report-only">只看</label>
-              <select id="report-only">
-                <option value="all">全部（含 ETF）</option>
-                <option value="stock" selected>上市股票（4 碼）</option>
-                <option value="etf">ETF／特別股等</option>
-              </select>
-            </div>
+          </div>
+          <div>
+            <label for="report-only">只看</label>
+            <select id="report-only">
+              <option value="all">全部（含 ETF）</option>
+              <option value="stock" selected>上市股票（4 碼）</option>
+              <option value="etf">ETF／特別股等</option>
+            </select>
           </div>
           <div class="row">
             <button id="report-run" class="primary" type="button">產生報表</button>
@@ -361,9 +371,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=36"></script>
-  <script src="drive.js?v=36"></script>
-  <script src="market.js?v=36"></script>
-  <script src="app.js?v=36"></script>
+  <script src="google_config.js?v=37"></script>
+  <script src="drive.js?v=37"></script>
+  <script src="market.js?v=37"></script>
+  <script src="app.js?v=37"></script>
 </body>
 </html>
