@@ -1549,6 +1549,67 @@
       return p;
     }
 
+    // 成本均價＝買入價（欄尾單價；以淨值／付出成本成對校準，避免把 1500 當總額）
+    function pickAvgCost(nums, shares) {
+      if (!(shares > 0) || !nums || !nums.length) return null;
+      const totals = nums.filter(function (n) {
+        return n !== shares && n >= shares * 2 && n / shares >= 0.5 && n / shares <= 20000;
+      }).sort(function (a, b) { return b - a; });
+      let paid = null;
+      for (let i = 0; i < totals.length - 1; i++) {
+        if (totals[i + 1] / totals[i] >= 0.9) {
+          paid = totals[i + 1];
+          break;
+        }
+      }
+      if (paid == null) {
+        for (let i = 0; i < totals.length; i++) {
+          const n = totals[i];
+          if (n >= Math.max(shares * 30, 20000) || (shares >= 1000 && n >= shares * 3)) {
+            paid = n;
+            break;
+          }
+        }
+      }
+      let paidAvg = null;
+      if (paid != null) {
+        const avg = paid / shares;
+        if (avg >= 0.2 && avg <= 20000) paidAvg = avg;
+      }
+      // 1) 欄尾單價：須接近付出成本均價（防下一列小數混入）
+      for (let i = nums.length - 1; i >= 0; i--) {
+        const n = nums[i];
+        if (n === shares || n < 0.2 || n > 20000) continue;
+        if (paid != null && n >= paid * 0.9) continue;
+        if (paidAvg != null) {
+          if (Math.abs(n - paidAvg) / paidAvg <= 0.08) return Math.round(n * 100) / 100;
+        } else if (Math.abs(n - Math.round(n)) > 1e-9) {
+          return n;
+        }
+      }
+      // 2) 沒印出均價時用付出成本 ÷ 股數
+      if (paidAvg != null) return Math.round(paidAvg * 100) / 100;
+      // 3) OCR 常丟小數：886→8.86、2404→24.04、30043→300.43
+      for (let i = nums.length - 1; i >= 0; i--) {
+        const n = nums[i];
+        if (n === shares || n !== Math.round(n)) continue;
+        if (n >= 10000 && n <= 9999999) {
+          const c = n / 100;
+          if (c >= 0.5 && c <= 20000) return Math.round(c * 100) / 100;
+        }
+        if (shares >= 1000 && n >= 100 && n < 100000) {
+          const c = n / 100;
+          if (c >= 0.5 && c <= 500) return Math.round(c * 100) / 100;
+        }
+      }
+      // 4) 整數單價（如 1500、750）
+      for (let i = nums.length - 1; i >= 0; i--) {
+        const n = nums[i];
+        if (n !== shares && n >= 1 && n <= 20000 && !lookLikeShare(n)) return n;
+      }
+      return null;
+    }
+
     // fromEnd：代號在後時，取最靠近代號的股數／％
     function pickSharesAndPnl(source, fromEnd) {
       const src = String(source || "");
@@ -1595,7 +1656,8 @@
       }
       // 沒有獲利率時，過小損益多半是 OCR 碎片（如 30、3）
       if (pnl != null && pct == null && Math.abs(pnl) < 20) pnl = null;
-      return { shares: shares, pnl: pnl, cost: null, pct: pct };
+      const cost = pickAvgCost(nums, shares);
+      return { shares: shares, pnl: pnl, cost: cost, pct: pct };
     }
 
     function parseBlock(block) {
@@ -1634,8 +1696,9 @@
         const code = normalizeInvCode(rawCode);
         if (!isTwInvCode(code)) continue;
         if (/^(?:100|200|500|1000|2000|3000|5000|10000)$/.test(code)) continue;
-        const afterNear = joined.slice(match.index + rawCode.length, match.index + rawCode.length + 36);
-        const afterFar = joined.slice(match.index + rawCode.length, match.index + rawCode.length + 90);
+        // 元大列：股數…淨值、付出成本、成本均價約 50～70 字；均價用付出成本校準防吃下一檔
+        const afterNear = joined.slice(match.index + rawCode.length, match.index + rawCode.length + 72);
+        const afterFar = joined.slice(match.index + rawCode.length, match.index + rawCode.length + 100);
         const head = joined.slice(Math.max(0, match.index - 24), match.index);
         const before = joined.slice(Math.max(0, match.index - 100), match.index);
         const known = aliasCodes[code];
@@ -1705,16 +1768,25 @@
         }
       });
       const pick = list.filter(function (r) { return r.shares === bestShares; })
-        .sort(function (a, b) { return (b.score || 0) - (a.score || 0); })[0] || list[0];
+        .sort(function (a, b) {
+          const ca = a.cost > 0 ? 2 : 0;
+          const cb = b.cost > 0 ? 2 : 0;
+          return (cb + (b.score || 0)) - (ca + (a.score || 0));
+        })[0] || list[0];
       // 非別名的四碼：至少要被兩個區塊看到，或分數夠高
       const known = aliasCodes[code];
       if (!known && !/[A-Z]$/.test(code) && list.length < 2 && (pick.score || 0) < 6) return;
+      let cost = pick.cost;
+      if (!(cost > 0)) {
+        const withCost = list.find(function (r) { return r.shares === bestShares && r.cost > 0; });
+        if (withCost) cost = withCost.cost;
+      }
       rows.push({
         code: code,
         name: pick.name || (known ? known.name : ""),
         shares: bestShares,
         pnl: pick.pnl,
-        cost: pick.cost,
+        cost: cost,
         pct: pick.pct
       });
     });

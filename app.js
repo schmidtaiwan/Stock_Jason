@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 28;
+  const PAGE_BUILD = 29;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1326,7 +1326,7 @@
       const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
-        item.note = "圖上成交均價";
+        item.note = "圖上成本均價";
       } else if (item.secid && (row.pct != null || row.pnl != null)) {
         try {
           const map = await M.quoteMap([item.secid]);
@@ -1390,7 +1390,7 @@
       }
       const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
       $("watch-status").textContent = priced
-        ? "讀到 " + parsed.length + " 檔，其中 " + priced + " 檔用圖上的成交均價。"
+        ? "讀到 " + parsed.length + " 檔，其中 " + priced + " 檔用圖上的成本均價當買價。"
         : "讀到 " + parsed.length + " 檔，正在查現價回推買價…";
       importRows = await resolveParsed(parsed);
       renderImport();
