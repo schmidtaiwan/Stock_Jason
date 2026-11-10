@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 30;
+  const PAGE_BUILD = 31;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -129,14 +129,10 @@
 
   function paintChrome() {
     const account = D.account();
-    $("who").textContent = account
-      ? account.email + " · 自選存在雲端 " + D.bookName(account.email)
-      : "尚未登入。自選與日誌先留在這次瀏覽，登入後改讀該 Gmail 的雲端檔。";
+    $("who").textContent = account ? account.email : "尚未登入";
     $("login").hidden = !!account;
     $("logout").hidden = !account;
-    $("watch-note").textContent = account
-      ? "現在讀的是 " + account.email + " 的自選股。"
-      : "登入後才會依 Gmail 讀寫 jason660803 雲端硬碟裡的自選股。";
+    $("watch-note").textContent = "";
     $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
     paintTwii();
   }
