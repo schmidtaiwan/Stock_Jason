@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 23;
+  const PAGE_BUILD = 24;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1114,72 +1114,34 @@
     });
   }
 
-  function findTableBand(data, w, h) {
-    const step = Math.max(1, Math.floor(w / 180));
-    const samples = Math.ceil(w / step);
-    let start = -1;
-    let gap = 0;
-    let darkRows = 0;
-    let best = null;
-    function close(end) {
-      const y1 = end - gap;
-      if (start >= 0 && y1 - start > 80 && darkRows > 8) {
-        if (!best || darkRows > best[2]) best = [start, y1, darkRows];
-      }
-      start = -1;
-      gap = 0;
-      darkRows = 0;
-    }
-    for (let y = 0; y < h; y++) {
-      let sum = 0;
-      let dark = 0;
-      for (let x = 0; x < w; x += step) {
-        const i = (y * w + x) * 4;
-        const L = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        sum += L;
-        if (L < 150) dark++;
-      }
-      const paper = sum / samples > 130;
-      const ink = dark / samples > 0.004;
-      if (paper && ink) {
-        if (start < 0) start = y;
-        gap = 0;
-        darkRows++;
-      } else if (start >= 0 && paper && gap < 36) {
-        gap++;
-      } else if (start >= 0) {
-        close(y);
-      }
-    }
-    if (start >= 0) close(h);
-    return best;
-  }
-
   function prepImage(file) {
     return new Promise(function (resolve, reject) {
       const img = new Image();
       img.onload = function () {
-        const src = document.createElement("canvas");
-        src.width = img.width;
-        src.height = img.height;
-        const sctx = src.getContext("2d", { willReadFrequently: true });
-        sctx.drawImage(img, 0, 0);
-        const frame = sctx.getImageData(0, 0, src.width, src.height);
-        const band = findTableBand(frame.data, src.width, src.height);
-        const top = band ? Math.max(0, band[0] - 8) : 0;
-        const bottom = band ? Math.min(src.height, band[1] + 8) : src.height;
+        // 券商截圖：略過頂部深藍標題與底部導覽，保留白色庫存表
+        const top = Math.round(img.height * 0.16);
+        const bottom = Math.round(img.height * 0.88);
         const cropH = Math.max(1, bottom - top);
-        const scale = src.width < 1600 ? 1600 / src.width : 1;
+        const scale = img.width < 2000 ? 2000 / img.width : 1;
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(src.width * scale);
+        canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(cropH * scale);
         const ctx = canvas.getContext("2d");
-        ctx.drawImage(src, 0, top, src.width, cropH, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, top, img.width, cropH, 0, 0, canvas.width, canvas.height);
         const out = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const px = out.data;
+        let min = 255;
+        let max = 0;
+        for (let i = 0; i < px.length; i += 4) {
+          const L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          if (L < min) min = L;
+          if (L > max) max = L;
+        }
+        const span = Math.max(1, max - min);
         for (let i = 0; i < px.length; i += 4) {
           let L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-          L = (L - 128) * 1.8 + 128;
+          L = ((L - min) / span) * 255;
+          L = (L - 128) * 1.35 + 128;
           L = L < 0 ? 0 : L > 255 ? 255 : L;
           px[i] = px[i + 1] = px[i + 2] = L;
         }
@@ -1245,15 +1207,24 @@
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
         item.note = "圖上成交均價";
-      } else if (item.secid && row.pnl != null) {
+      } else if (item.secid && (row.pct != null || row.pnl != null)) {
         try {
           const map = await M.quoteMap([item.secid]);
           const quote = map[item.secid];
           if (quote && quote.price > 0 && row.shares > 0) {
-            const cost = quote.price - row.pnl / row.shares;
+            let cost = null;
+            let note = "";
+            // 獲利率比損益數字穩，優先用％回推
+            if (row.pct != null && isFinite(row.pct) && Math.abs(row.pct) < 80 && row.pct !== -100) {
+              cost = quote.price / (1 + row.pct / 100);
+              note = "現價 " + fmt(quote.price) + "，獲利 " + row.pct + "%，回推買價";
+            } else if (row.pnl != null) {
+              cost = quote.price - row.pnl / row.shares;
+              note = "現價 " + fmt(quote.price) + "，損益 " + row.pnl + "，回推買價";
+            }
             if (cost > 0) {
               item.cost = (Math.round(cost * 100) / 100).toFixed(2);
-              item.note = "現價 " + fmt(quote.price) + "，損益 " + row.pnl + "，回推買價";
+              item.note = note;
             }
           }
         } catch (err) { /* 沒報價就讓使用者自己填買價 */ }
@@ -1280,12 +1251,19 @@
           }
         }
       });
-      await worker.setParameters({ tessedit_pageseg_mode: "6" });
       const canvas = await prepImage(file);
-      const ret = await worker.recognize(canvas);
-      const parsed = M.parseInventory(ret.data.text || "");
+      // 多種排版模式合併，提高券商表格讀取率
+      const texts = [];
+      for (let i = 0; i < 3; i++) {
+        const psm = ["6", "4", "11"][i];
+        $("watch-status").textContent = "辨識中（模式 " + (i + 1) + "/3）…";
+        await worker.setParameters({ tessedit_pageseg_mode: psm });
+        const ret = await worker.recognize(canvas);
+        if (ret && ret.data && ret.data.text) texts.push(ret.data.text);
+      }
+      const parsed = M.parseInventory(texts.join("\n"));
       if (!parsed.length) {
-        $("watch-status").textContent = "沒讀到代號和股數。請改用上方搜尋，或換一張庫存表。";
+        $("watch-status").textContent = "沒讀到代號和股數。請改用上方搜尋，或換一張較清晰、直式的庫存表。";
         importRows = [];
         renderImport();
         return;
