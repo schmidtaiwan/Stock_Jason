@@ -2231,13 +2231,46 @@
   }
 
   async function twiiQuote() {
+    // ^TWII 的 meta.previousClose 常是舊值（會算出 +3000 點這種錯漲跌），改用近兩日日線
+    try {
+      const json = await yahooChart("^TWII", "interval=1d&range=10d");
+      const result = json && json.chart && json.chart.result && json.chart.result[0];
+      if (result) {
+        const meta = result.meta || {};
+        const closes = (((result.indicators || {}).quote || [])[0] || {}).close || [];
+        const good = closes.filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
+          .map(Number);
+        const price = num(meta.regularMarketPrice) || good[good.length - 1] || 0;
+        const prev = good.length >= 2 ? good[good.length - 2] : num(meta.previousClose);
+        if (price > 0 && prev > 0) {
+          const change = price - prev;
+          return {
+            price: price,
+            change: change,
+            pct: change / prev * 100,
+            name: "加權指數"
+          };
+        }
+      }
+    } catch (err) { /* 改走通用報價 */ }
     const q = await yahooQuote("100.TWII");
     if (!q || !(q.price > 0)) throw new Error("加權指數讀不到");
-    const change = q.change != null ? q.change : (q.pct != null ? q.price * q.pct / (100 + q.pct) : null);
+    let change = q.change;
+    let pct = q.pct;
+    // 若 Yahoo 百分比與 previousClose 推得差太多，改信百分比（避免紅框顯示假大漲）
+    if (pct != null && isFinite(pct) && q.price > 0) {
+      const impliedPrev = q.price / (1 + pct / 100);
+      const impliedChg = q.price - impliedPrev;
+      if (change == null || !isFinite(change) || Math.abs(change - impliedChg) > Math.max(50, Math.abs(impliedChg) * 0.25)) {
+        change = impliedChg;
+      }
+    } else if (change == null && pct != null) {
+      change = q.price * pct / (100 + pct);
+    }
     return {
       price: q.price,
       change: change,
-      pct: q.pct,
+      pct: pct,
       name: "加權指數"
     };
   }
