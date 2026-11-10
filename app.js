@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 37;
+  const PAGE_BUILD = 38;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -243,6 +243,7 @@
     if (id === "risk") renderHoldings();
     if (id === "journal") renderJournal();
     if (id === "predict") syncPredictStockBox();
+    if (id === "report" && $("report-date")) $("report-date").value = taipeiDay();
     syncMoney();
   }
 
