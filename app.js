@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 21;
-  const PAGE_DATE = "2026-11-09";
+  const PAGE_BUILD = 22;
+  const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -1185,27 +1185,57 @@
     });
   }
 
+  function usefulWatchName(name) {
+    let n = String(name || "").replace(/現股/g, "").replace(/[時人之]+$/g, "").trim();
+    n = n.replace(/^(主動)/, "$1");
+    if (/野村台灣/.test(n)) n = "主動野村台灣50";
+    if (/統一台股增長/.test(n)) n = "主動統一台股增長";
+    if (/統一升級/.test(n)) n = "主動統一升級50";
+    if (/^廣達/.test(n)) n = "廣達";
+    if (/^欣興/.test(n)) n = "欣興";
+    if (/^智邦/.test(n)) n = "智邦";
+    return n.length >= 2 && /[\u4e00-\u9fff]/.test(n) ? n : "";
+  }
+
   async function resolveParsed(parsed) {
     const out = [];
     for (let i = 0; i < parsed.length; i++) {
       const row = parsed[i];
       let hit = null;
+      const want = String(row.code || "").toUpperCase();
       try {
         const found = await M.search(row.code);
-        hit = found.find(function (item) { return String(item.code).toUpperCase() === row.code && item.market === "台股"; })
-          || found.find(function (item) { return String(item.code).toUpperCase() === row.code; })
+        hit = found.find(function (item) { return String(item.code).toUpperCase() === want && item.market === "台股"; })
+          || found.find(function (item) { return String(item.code).toUpperCase() === want; })
           || null;
       } catch (err) { /* 單一代號失敗就留白，讓使用者改 */ }
+      const byName = usefulWatchName(row.name);
+      if (byName) {
+        try {
+          const named = await M.search(byName);
+          const nameHit = named.find(function (item) {
+            return item.market === "台股" && (
+              String(item.name || "").indexOf(byName.slice(0, 2)) >= 0 ||
+              byName.indexOf(String(item.name || "").slice(0, 2)) >= 0
+            );
+          }) || named.find(function (item) { return item.market === "台股"; }) || null;
+          if (nameHit) {
+            const codeOk = hit && String(hit.code).toUpperCase() === String(nameHit.code).toUpperCase();
+            if (!hit || !codeOk) hit = nameHit;
+          }
+        } catch (err) { /* 名稱備援失敗就用代號結果 */ }
+      }
       const item = {
-        code: row.code,
-        name: hit ? hit.name : (row.name || row.code),
+        code: hit ? hit.code : row.code,
+        name: hit ? hit.name : (byName || row.code),
         secid: hit ? hit.secid : "",
         market: hit ? hit.market : "台股",
         shares: row.shares,
         cost: "",
         note: ""
       };
-      if (row.cost > 0) {
+      const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
+      if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
         item.note = "圖上成交均價";
       } else if (item.secid && row.pnl != null) {

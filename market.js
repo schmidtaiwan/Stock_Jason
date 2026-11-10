@@ -1409,6 +1409,35 @@
     };
   }
 
+  function normalizeInvCode(token) {
+    let s = String(token || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    if (!s) return "";
+    const letter = /[A-Z]$/.test(s) ? s.slice(-1) : "";
+    let body = letter ? s.slice(0, -1) : s;
+    body = body
+      .replace(/O/g, "0")
+      .replace(/Q/g, "0")
+      .replace(/D/g, "0")
+      .replace(/I/g, "1")
+      .replace(/L/g, "1")
+      .replace(/Z/g, "2")
+      .replace(/S/g, "5")
+      .replace(/B/g, "8")
+      .replace(/G/g, "9")
+      .replace(/A/g, "5");
+    body = body.replace(/[^0-9]/g, "");
+    if (letter) {
+      if (body.length < 4 || body.length > 6) return "";
+      return body + letter;
+    }
+    if (!/^\d{4}$/.test(body)) return "";
+    return body;
+  }
+
+  function isTwInvCode(code) {
+    return /^\d{4}$/.test(code) || /^\d{4,6}[A-Z]$/.test(code);
+  }
+
   function parseInventory(raw) {
     let text = String(raw || "");
     text = text.replace(/[０-９]/g, function (ch) {
@@ -1416,35 +1445,47 @@
     });
     text = text.replace(/[—–−]/g, "-");
     text = text.replace(/([\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])/g, "$1");
-    text = text.replace(/[|「」“”"'【】\[\]_]/g, " ");
+    text = text.replace(/[|「」“”"'【】\[\]_。]/g, " ");
     text = text.replace(/(\d),(?=\d{3}(\D|$))/g, "$1");
     text = text.replace(/(\d)\.(\d{3})(?!\d)/g, "$1$2");
-    const noiseName = /返回|庫存|說明|帳務|損益|股票|交易|頁次|筆數|調整|成本|配息|融資|首頁|行情|桃園|反沖|重查|現買|現賣|股數|均價/;
+    const noiseName = /返回|庫存|說明|帳務|損益|股票|交易|頁次|筆數|調整|成本|配息|融資|首頁|行情|桃園|反沖|重查|現買|現賣|現股|股數|均價|類別|名稱|餘額|試算|利率|真次/;
     const lines = text.split(/\n/).map(function (line) {
       return line.replace(/\s+/g, " ").trim();
     }).filter(function (line) {
-      return line && !/帳號|總損益|頁次|返回|重查|成本扣息|調整帳務|其他庫存|帳務模式|先進先出|首頁|自選報價|交易帳務|市場行情|新增自選/.test(line);
+      return line && !/帳號|總損益|頁次|返回|重查|成本扣息|調整帳務|其他庫存|帳務模式|先進先出|首頁|自選報價|交易帳務|市場行情|新增自選|損益試算方式/.test(line);
     });
 
     function cleanName(source) {
-      const found = String(source || "").match(/[\u4e00-\u9fff][\u4e00-\u9fff0-9]{1,16}/g) || [];
+      const found = String(source || "").match(/[\u4e00-\u9fff][\u4e00-\u9fff0-9A-Za-z]{1,20}/g) || [];
       for (let i = found.length - 1; i >= 0; i--) {
-        if (!noiseName.test(found[i])) return found[i];
+        const name = found[i].replace(/現股/g, "");
+        if (name.length >= 2 && !noiseName.test(name)) return name;
       }
       return "";
     }
 
     function amounts(source) {
-      const tokens = String(source || "").match(/-?\d+(?:\.\d+)?/g) || [];
-      let pnl = null;
+      const src = String(source || "");
+      let pct = null;
+      const pctMatch = src.match(/([+-]?)(\d+(?:\.\d+)?)\s*%/);
+      if (pctMatch) {
+        let p = Number(pctMatch[2]);
+        if (!/\./.test(pctMatch[2]) && p >= 10) p = p / 100;
+        if (pctMatch[1] === "-") p = -Math.abs(p);
+        else if (pctMatch[1] === "+") p = Math.abs(p);
+        pct = p;
+      }
+      const cleaned = src.replace(/[+-]?\d+(?:\.\d+)?\s*%/g, " ");
+      const tokens = cleaned.match(/[+-]?\d+(?:\.\d+)?/g) || [];
+      let signedPnl = null;
       const pos = [];
       tokens.forEach(function (token) {
         const value = Number(token);
         if (!isFinite(value) || value === 0) return;
         const dec = token.indexOf(".") >= 0;
-        if (token.charAt(0) === "-") {
+        if (token.charAt(0) === "-" || token.charAt(0) === "+") {
           if (dec && Math.abs(value) < 100) return;
-          if (pnl == null) pnl = value;
+          if (signedPnl == null) signedPnl = value;
           return;
         }
         if (value > 0 && value < 10000000) pos.push({ value: value, dec: dec });
@@ -1467,24 +1508,29 @@
           }
         }
       }
-      const after = pos.slice(shareAt + 1);
-      while (after.length > 1 && !after[after.length - 1].dec && after[after.length - 1].value < 10) after.pop();
+      if (!(shares > 0)) return { shares: null, pnl: signedPnl, cost: null, pct: pct };
+      let after = pos.slice(shareAt + 1).filter(function (num) {
+        return !(num.value === shares && !num.dec);
+      });
+      while (after.length && !after[after.length - 1].dec && after[after.length - 1].value < 20) after.pop();
+      let pnl = signedPnl;
       let cost = null;
-      if (!(shares > 0)) return { shares: null, pnl: pnl, cost: null };
-      if (pnl != null) {
-        const kept = [];
-        after.forEach(function (num, idx) {
-          const laterPrice = after.slice(idx + 1).some(function (item) {
-            return item.dec ? item.value >= 5 : item.value >= 10;
-          });
-          if (num.dec && num.value < 30 && laterPrice) return;
-          if (!num.dec && num.value < 200 && num.value % 100 !== 0 && laterPrice) return;
-          if (!num.dec && num.value < 10) return;
-          kept.push(num);
+      if (pct != null) {
+        // 元大「即時未實現損益」：股數、昨日餘額、損益、獲利率，沒有成交均價欄
+        const cands = after.filter(function (num) {
+          return !num.dec && num.value !== shares && num.value >= 1;
         });
-        while (kept.length > 1 && !kept[kept.length - 1].dec && kept[kept.length - 1].value < 100 && kept[kept.length - 2].value >= 100) {
-          kept.pop();
-        }
+        if (pnl == null && cands.length) pnl = cands[cands.length - 1].value;
+        if (pnl != null && pct < 0 && pnl > 0) pnl = -pnl;
+        if (pnl != null && pct > 0 && pnl < 0) pnl = Math.abs(pnl);
+        return { shares: shares, pnl: pnl, cost: null, pct: pct };
+      }
+      if (pnl != null) {
+        const kept = after.filter(function (num) {
+          if (!num.dec && num.value < 10) return false;
+          if (num.dec && num.value < 5) return false;
+          return true;
+        });
         if (kept.length) cost = kept[kept.length - 1].value;
       } else if (after.length && !after[0].dec && after[0].value >= 50) {
         pnl = after[0].value;
@@ -1495,21 +1541,23 @@
       } else if (after.length === 1 && (after[0].dec || after[0].value >= 10)) {
         cost = after[0].value;
       }
-      return { shares: shares, pnl: pnl, cost: cost };
+      if (cost != null && (cost === shares || cost > 100000)) cost = null;
+      return { shares: shares, pnl: pnl, cost: cost, pct: pct };
     }
 
     const hits = [];
     lines.forEach(function (line, index) {
-      const re = /(?<![0-9A-Za-z])(\d{4,6}[A-Za-z]?)(?![0-9A-Za-z])/g;
+      const re = /(?<![0-9A-Za-z])([0-9OQIlSGBZodgaD]{3,6}[A-Za-z]|[0-9]{4})(?![0-9A-Za-z])/gi;
       let match;
       while ((match = re.exec(line))) {
-        const code = match[1].toUpperCase();
+        const code = normalizeInvCode(match[1]);
+        if (!isTwInvCode(code)) continue;
         const before = line.slice(Math.max(0, match.index - 24), match.index);
         if (line.charAt(match.index - 1) === "-") continue;
-        if (/總損益|帳號|頁次|筆數|電話/.test(before)) continue;
+        if (/總損益|帳號|頁次|筆數|電話|獲利/.test(before)) continue;
         const prevToken = before.trim().split(/\s+/).pop() || "";
-        if (!/[A-Za-z]/.test(code) && /^\d{2,}$/.test(prevToken)) continue;
-        if (!/[A-Za-z]/.test(code) && /現買|現賣|股數|買進/.test(before.slice(-8))) continue;
+        if (!/[A-Z]$/.test(code) && /^\d{2,}$/.test(prevToken)) continue;
+        if (!/[A-Z]$/.test(code) && /現買|現賣|股數|買進/.test(before.slice(-8))) continue;
         if (/^(?:100|200|500|1000|2000|3000|5000|10000)$/.test(code) && !/[\u4e00-\u9fff]{2,}\s*$/.test(before)) continue;
         hits.push({ code: code, line: index, at: match.index, end: match.index + match[1].length });
       }
@@ -1531,10 +1579,10 @@
       const money = amounts(blob);
       if (!(money.shares > 0)) return;
       let name = cleanName(line.slice(0, hit.at));
-      if (!name) name = cleanName(blob);
+      if (!name || name === "現股") name = cleanName(prev) || cleanName(blob);
       if (!name) {
         for (let i = hit.line - 1; i >= Math.max(0, hit.line - 2); i--) {
-          if (/\d{3,}/.test(lines[i])) continue;
+          if (/\d{4,}/.test(lines[i]) && /現股/.test(lines[i])) continue;
           name = cleanName(lines[i]);
           if (name) break;
         }
@@ -1545,15 +1593,9 @@
         shares: money.shares,
         pnl: money.pnl,
         cost: money.cost,
-        pct: null
+        pct: money.pct
       });
     });
-    const negatives = rows.filter(function (row) { return row.pnl != null && row.pnl < 0; }).length;
-    if (negatives && negatives >= rows.length - 1) {
-      rows.forEach(function (row) {
-        if (row.pnl != null && row.pnl > 0) row.pnl = -row.pnl;
-      });
-    }
     const seen = {};
     return rows.filter(function (row) {
       if (seen[row.code]) return false;
