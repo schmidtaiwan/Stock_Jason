@@ -2,6 +2,7 @@
 (function (global) {
   const cfg = global.GOOGLE_CONFIG || {};
   const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
+  const TOKEN_KEY = "sj-g-token";
 
   let tokenClient = null;
   let token = "";
@@ -11,6 +12,7 @@
   let folderId = "";
   let fileCache = new Map();
   let writeLock = Promise.resolve();
+  let readyPromise = null;
 
   function preferredEmail() {
     return String(cfg.preferredEmail || "").trim().toLowerCase();
@@ -56,69 +58,139 @@
           resolve();
           return;
         }
-        if (Date.now() - start > 15000) {
-          reject(new Error("Google 登入元件載入逾時，請重新整理"));
+        if (Date.now() - start > 20000) {
+          reject(new Error("Google 登入元件載入逾時，請重新整理後再試"));
           return;
         }
-        setTimeout(tick, 80);
+        setTimeout(tick, 50);
       })();
     });
   }
 
+  function saveSession() {
+    try {
+      if (!token || !(exp > Date.now()) || !account) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        return;
+      }
+      sessionStorage.setItem(TOKEN_KEY, JSON.stringify({
+        token: token,
+        exp: exp,
+        email: account.email,
+        name: account.name || ""
+      }));
+    } catch (e) { /* 無痕／額度滿就略過 */ }
+  }
+
+  function clearSession() {
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ }
+  }
+
+  function restoreSession() {
+    try {
+      const raw = sessionStorage.getItem(TOKEN_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data || !data.token || !(Number(data.exp) > Date.now() + 30000)) {
+        clearSession();
+        return false;
+      }
+      token = data.token;
+      exp = Number(data.exp);
+      account = { email: data.email || "", name: data.name || "" };
+      if (!account.email || !isAllowed(account.email)) {
+        token = "";
+        exp = 0;
+        account = null;
+        clearSession();
+        return false;
+      }
+      return true;
+    } catch (e) {
+      clearSession();
+      return false;
+    }
+  }
+
   function init() {
+    if (tokenClient) return Promise.resolve();
+    if (readyPromise) return readyPromise;
     const id = String(cfg.clientId || "").trim();
     if (!id) return Promise.reject(new Error("尚未設定 Google 用戶端 ID"));
-    if (tokenClient) return Promise.resolve();
-    return waitForGis().then(function () {
+    readyPromise = waitForGis().then(function () {
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: id,
         scope: SCOPES,
-        callback: function () {}
+        callback: function () {},
+        error_callback: function () {}
       });
+    }).catch(function (err) {
+      readyPromise = null;
+      throw err;
     });
+    return readyPromise;
   }
 
   function requestToken(prompt, hint) {
-    return init().then(function () {
-      return new Promise(function (resolve, reject) {
-        let settled = false;
-        const timer = setTimeout(function () {
-          if (settled) return;
-          settled = true;
-          reject(new Error("登入逾時。請再按一次；若沒有跳出 Google 視窗，請允許彈出視窗。"));
-        }, 40000);
-        tokenClient.callback = function (resp) {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          if (!resp || resp.error) {
-            reject(new Error((resp && (resp.error_description || resp.error)) || "登入未完成"));
-            return;
-          }
-          token = resp.access_token;
-          const sec = Number(resp.expires_in) || 3600;
-          exp = Date.now() + Math.max(60, sec - 120) * 1000;
-          resolve(token);
-        };
-        const req = {};
-        if (prompt) req.prompt = prompt;
-        if (hint) req.hint = hint;
-        tokenClient.requestAccessToken(req);
+    // 必須在使用者點擊的同一輪同步呼叫 requestAccessToken，否則手機常擋彈窗
+    if (!tokenClient) {
+      return init().then(function () {
+        return Promise.reject(new Error("登入元件剛就緒，請再按一次「用 Google 登入」。"));
       });
+    }
+    return new Promise(function (resolve, reject) {
+      let settled = false;
+      function finish(err, value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve(value);
+      }
+      const timer = setTimeout(function () {
+        finish(new Error("登入逾時。請再按一次；若沒有跳出 Google 視窗，請到瀏覽器允許此網站的彈出視窗。"));
+      }, 90000);
+      tokenClient.callback = function (resp) {
+        if (!resp || resp.error) {
+          finish(new Error((resp && (resp.error_description || resp.error)) || "登入未完成"));
+          return;
+        }
+        token = resp.access_token;
+        const sec = Number(resp.expires_in) || 3600;
+        exp = Date.now() + Math.max(60, sec - 120) * 1000;
+        finish(null, token);
+      };
+      tokenClient.error_callback = function (err) {
+        const type = (err && err.type) || "";
+        if (type === "popup_failed_to_open") {
+          finish(new Error("無法開啟 Google 登入視窗。請允許彈出視窗後再按一次。"));
+          return;
+        }
+        if (type === "popup_closed") {
+          finish(new Error("已取消登入"));
+          return;
+        }
+        finish(new Error((err && (err.message || err.type)) || "登入未完成"));
+      };
+      const req = {};
+      if (prompt != null && prompt !== "") req.prompt = prompt;
+      if (hint) {
+        req.hint = hint;
+        req.login_hint = hint;
+      }
+      try {
+        tokenClient.requestAccessToken(req);
+      } catch (e) {
+        finish(e instanceof Error ? e : new Error(String(e || "登入失敗")));
+      }
     });
   }
 
   function getToken(force) {
     if (!force && token && Date.now() < exp) return Promise.resolve(token);
     if (!force && inflight) return inflight;
-    const hint = account && account.email ? account.email : "";
-    const run = requestToken("", hint).catch(function () {
-      return requestToken("select_account", "");
-    });
-    inflight = run.finally(function () {
-      if (inflight === run) inflight = null;
-    });
-    return inflight;
+    // 背景刷新不能開彈窗；請使用者再按登入
+    return Promise.reject(new Error("登入已過期，請再按一次登入。"));
   }
 
   function driveFetch(url, options, retried) {
@@ -283,18 +355,29 @@
     const u = await info.json();
     if (!u.email) throw new Error("無法讀取 Google 帳號信箱");
     account = { email: u.email, name: u.name || "" };
+    saveSession();
     return account;
   }
 
-  async function login(opts) {
+  function login(opts) {
     opts = opts || {};
+    // 不可先 await：手機上離開點擊同步堆疊後彈窗會被擋
+    if (!tokenClient) {
+      return init().then(function () {
+        throw new Error("登入元件剛就緒，請再按一次「用 Google 登入」。");
+      });
+    }
     token = "";
     exp = 0;
     account = null;
     folderId = "";
     fileCache = new Map();
-    await requestToken(opts.prompt != null ? opts.prompt : "select_account", opts.hint || "");
-    return fetchAccount();
+    clearSession();
+    const hint = opts.hint || preferredEmail() || "";
+    const prompt = opts.prompt != null ? opts.prompt : "select_account";
+    return requestToken(prompt, hint).then(function () {
+      return fetchAccount();
+    });
   }
 
   function logout() {
@@ -304,6 +387,7 @@
     account = null;
     folderId = "";
     fileCache = new Map();
+    clearSession();
     if (old && global.google && google.accounts && google.accounts.oauth2) {
       try { google.accounts.oauth2.revoke(old, function () {}); } catch (e) { /* 忽略 */ }
     }
@@ -311,14 +395,22 @@
 
   function friendly(err) {
     const msg = (err && err.message) || "";
-    if (/idpiframe|origin/i.test(msg)) {
+    if (/idpiframe|origin|authorized javascript origins|redirect_uri/i.test(msg)) {
       return "這個網址還沒加入 Google 登入允許清單。請用 https://schmidtaiwan.github.io/Stock_Jason/ 開啟。";
     }
-    if (/popup_closed|access_denied|user_cancel|cancelled/i.test(msg)) return "已取消登入";
+    if (/popup_closed|access_denied|user_cancel|cancelled|已取消/i.test(msg)) return "已取消登入";
+    if (/popup_failed|無法開啟 Google/i.test(msg)) {
+      return "無法開啟 Google 登入視窗。請允許彈出視窗，或改用 Safari／Chrome 直接開啟網站再試。";
+    }
     return msg || "登入失敗";
   }
 
+  // 頁面一載入就預載 GIS，避免第一次點登入時錯過使用者手勢
+  init().catch(function () { /* 按鈕時再試 */ });
+  restoreSession();
+
   global.SJDrive = {
+    ready: init,
     login: login,
     logout: logout,
     account: function () { return account; },
@@ -328,6 +420,7 @@
     bookName: bookName,
     readBook: readBook,
     writeBook: writeBook,
-    friendly: friendly
+    friendly: friendly,
+    restoreSession: restoreSession
   };
 })(window);

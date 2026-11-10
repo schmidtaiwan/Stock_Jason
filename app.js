@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 31;
+  const PAGE_BUILD = 32;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -267,7 +267,10 @@
   }
 
   async function doLogin() {
-    $("gate-msg").textContent = "正在等 Google 授權…";
+    $("gate-msg").textContent = "正在開啟 Google 登入…";
+    $("gate-login").disabled = true;
+    const headerLogin = $("login");
+    if (headerLogin) headerLogin.disabled = true;
     try {
       const account = await D.login({ prompt: "select_account" });
       if (!D.isAllowed(account.email)) {
@@ -283,6 +286,12 @@
       paintChrome();
     } catch (err) {
       $("gate-msg").textContent = D.friendly(err);
+      if ($("app") && !$("app").hidden) {
+        $("who").textContent = D.friendly(err);
+      }
+    } finally {
+      $("gate-login").disabled = false;
+      if (headerLogin) headerLogin.disabled = false;
     }
   }
 
@@ -1951,6 +1960,11 @@
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
   showVer();
   buildToggles();
+  D.ready().catch(function () { /* 登入時再提示 */ });
+  if (D.account()) {
+    $("gate").hidden = true;
+    $("app").hidden = false;
+  }
   loadBook();
   paintChrome();
   startLiveClock();
