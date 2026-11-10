@@ -361,6 +361,39 @@
     return Array.from(String(text || "")).map(function (ch) { return NC[ch] || ch; }).join("");
   }
 
+  function hasCjk(text) {
+    return /[\u4e00-\u9fff]/.test(String(text || ""));
+  }
+
+  let codeNameMap = null;
+  function codeTwName(code) {
+    if (!codeNameMap) {
+      codeNameMap = {};
+      UNIVERSE.forEach(function (row) {
+        if (row.code && row.name) codeNameMap[String(row.code).toUpperCase()] = row.name;
+      });
+      // INV_ALIASES 在下方宣告；首次呼叫時通常已就緒
+      if (typeof INV_ALIASES !== "undefined") {
+        INV_ALIASES.forEach(function (row) {
+          if (row.code && row.name) codeNameMap[String(row.code).toUpperCase()] = row.name;
+        });
+      }
+      codeNameMap["3189"] = codeNameMap["3189"] || "景碩";
+      codeNameMap["2345"] = codeNameMap["2345"] || "智邦";
+    }
+    return codeNameMap[String(code || "").toUpperCase()] || "";
+  }
+
+  function preferTwName(current, incoming, code) {
+    const cur = toTW(current || "");
+    const inc = toTW(incoming || "");
+    const known = codeTwName(code);
+    if (hasCjk(cur)) return cur;
+    if (hasCjk(inc)) return inc;
+    if (known) return known;
+    return cur || inc || String(code || "");
+  }
+
   function indexRegion(code) {
     const map = { DJIA: "美股", SPX: "美股", NDX: "美股", SOX: "美股", TWII: "台股", N225: "日股", KS11: "韓股" };
     return map[code] || "指數";
@@ -2100,7 +2133,8 @@
         ? q.change
         : (price != null && pct != null ? price * pct / (100 + pct) : null);
       return {
-        name: toTW((q && q.name) || (item && item.name) || (item && item.code) || ""),
+        // 保留原中文名，避免 Yahoo 英文短名覆寫
+        name: preferTwName(item && item.name, q && q.name, item && item.code),
         price: price,
         change: change,
         pct: pct,
@@ -2801,6 +2835,8 @@
     findLevels: findLevels,
     historyBars: historyBars,
     toTW: toTW,
+    preferTwName: preferTwName,
+    hasCjk: hasCjk,
     cnyesQuotes: cnyesQuotes,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict

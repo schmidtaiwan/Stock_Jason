@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 27;
+  const PAGE_BUILD = 28;
   const PAGE_DATE = "2026-11-10";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -405,7 +405,7 @@
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
       if (!document.hidden) paintTwii();
       if (!document.hidden && state.view === "chart") await loadChart();
-      else if (!document.hidden && state.view === "watch") renderWatch();
+      else if (!document.hidden && state.view === "watch") paintWatchQuotes();
       else if (alertOn) await pollWatchAlerts();
     } catch (err) {
       /* 下一輪再試 */
@@ -882,11 +882,77 @@
     el.textContent = (sum > 0 ? "+" : "") + Math.round(sum).toLocaleString("zh-Hant");
   }
 
-  function renderWatch() {
+  function watchLabel(item) {
+    const name = M.preferTwName
+      ? M.preferTwName(item.name, "", item.code)
+      : twName(item.name || "");
+    item.name = name;
+    return name + (item.code || "");
+  }
+
+  function applyWatchQuoteRow(box, m, idx) {
+    const item = book.watch[idx];
+    const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
+    if (!row || !item) return;
+    // 只在缺中文名時才補名稱，绝不让 Yahoo 英文覆写
+    const nextName = M.preferTwName
+      ? M.preferTwName(item.name, m && m.name, item.code)
+      : twName(item.name || (m && m.name) || "");
+    if (nextName && nextName !== item.name) {
+      item.name = nextName;
+      const btn = row.querySelector("[data-open-watch]");
+      if (btn) btn.textContent = nextName + (item.code || "");
+    }
+    const priceCell = row.querySelector("[data-watch-price]");
+    if (priceCell) {
+      if (m && m.price != null && isFinite(m.price)) {
+        const cls = pctClass((m.pct || 0) / 100);
+        const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
+          " " + (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
+        priceCell.className = "watch-num " + cls;
+        priceCell.innerHTML = fmtPx(m.price) +
+          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
+        row.setAttribute("data-price", String(m.price));
+      } else {
+        priceCell.className = "watch-num";
+        priceCell.textContent = "—";
+        row.setAttribute("data-price", "");
+      }
+    }
+    paintWatchPnl(idx);
+  }
+
+  // 只更新目前價／損益／總損益，不重繪整張表（避免名稱變英文、輸入被清掉）
+  async function paintWatchQuotes() {
+    const box = $("watch-list");
+    if (!box || !book.watch.length) return;
+    if (!box.querySelector("[data-watch-row]")) {
+      renderWatch(true);
+      return;
+    }
+    const gen = (paintWatchQuotes.gen = (paintWatchQuotes.gen || 0) + 1);
+    try {
+      const rows = await M.watchBoard(book.watch);
+      if (gen !== paintWatchQuotes.gen) return;
+      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
+      paintWatchTotal();
+      checkWatchAlertsFromRows(book.watch, rows);
+    } catch (err) {
+      if (gen !== paintWatchQuotes.gen) return;
+      paintWatchTotal();
+    }
+  }
+
+  function renderWatch(force) {
     const box = $("watch-list");
     if (!book.watch.length) {
       box.innerHTML = '<p class="note">自選股還是空的。按右上角「加入」用代號或庫存圖新增。</p>';
       paintWatchTotal();
+      return;
+    }
+    // 表格已在且非強制重建：只刷新報價
+    if (!force && box.querySelector("[data-watch-row]")) {
+      paintWatchQuotes();
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
@@ -900,9 +966,8 @@
         const meta = NOTIFY_MODES[mode];
         const val = notifyValOf(item);
         const valText = val == null ? "" : String(val);
-        if (item.name) item.name = twName(item.name);
         if (item.market) item.market = twName(item.market);
-        const label = (item.name || "") + (item.code || "");
+        const label = watchLabel(item);
         const modeOpts = Object.keys(NOTIFY_MODES).map(function (key) {
           return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
             NOTIFY_MODES[key].label + "</option>";
@@ -931,33 +996,7 @@
       }).join("") + "</tbody></table></div>";
     M.watchBoard(book.watch).then(function (rows) {
       if (gen !== renderWatch.gen) return;
-      rows.forEach(function (m, idx) {
-        const item = book.watch[idx];
-        const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
-        if (!row || !item) return;
-        if (m && m.name && item.name !== m.name) {
-          item.name = m.name;
-          const btn = row.querySelector("[data-open-watch]");
-          if (btn) btn.textContent = m.name + (item.code || "");
-        }
-        const priceCell = row.querySelector("[data-watch-price]");
-        if (priceCell) {
-          if (m && m.price != null && isFinite(m.price)) {
-            const cls = pctClass((m.pct || 0) / 100);
-            const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
-              " " + (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
-            priceCell.className = "watch-num " + cls;
-            priceCell.innerHTML = fmtPx(m.price) +
-              (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
-            row.setAttribute("data-price", String(m.price));
-          } else {
-            priceCell.className = "watch-num";
-            priceCell.textContent = "—";
-            row.setAttribute("data-price", "");
-          }
-        }
-        paintWatchPnl(idx);
-      });
+      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
@@ -1035,7 +1074,7 @@
     } else book.watch.push(item);
     syncHolding(found || item);
     scheduleSave();
-    renderWatch();
+    renderWatch(true);
   }
 
   function lotsText(n) {
@@ -1734,7 +1773,7 @@
       const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
       if (removed) book.holdings = book.holdings.filter(function (item) { return item.secid !== removed.secid; });
       scheduleSave();
-      renderWatch();
+      renderWatch(true);
     } else if (t.dataset.delHold != null) {
       book.holdings.splice(Number(t.dataset.delHold), 1);
       scheduleSave();
@@ -1755,7 +1794,7 @@
     D.logout();
     book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
     paintChrome();
-    renderWatch();
+    renderWatch(true);
   });
   $("focus-clear").addEventListener("click", function () {
     const backWatch = state.focusFrom === "watch";
