@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 81;
+  const PAGE_BUILD = 82;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2250,8 +2250,8 @@
     if (!q) return null;
     let rows = [];
     try { rows = await M.search(q); } catch (err) { rows = []; }
-    const tw = rows.filter(function (row) { return row.market === "台股"; });
-    const list = tw.length ? tw : rows;
+    // 自選只接受台股，绝不回退到日股／美股
+    const list = rows.filter(function (row) { return row.market === "台股"; });
     const key = q.toUpperCase();
     const exact = list.find(function (row) { return String(row.code || "").toUpperCase() === key; });
     return exact || list[0] || null;
@@ -2275,8 +2275,8 @@
         try {
           let rows = await M.search(q);
           if (prefer) {
-            const hit = rows.filter(function (row) { return row.market === prefer; });
-            if (hit.length) rows = hit;
+            // 有指定市場時一律硬過濾，沒有台股就顯示找不到（不要改秀日股）
+            rows = rows.filter(function (row) { return row.market === prefer; });
           }
           $(hitId).innerHTML = rows.map(function (row) {
             return '<button type="button" class="hit" data-pick="' + key + '" data-secid="' + esc(row.secid) +
