@@ -585,23 +585,6 @@ textarea { min-height: 120px; resize: vertical; }
   padding: 6px 14px;
   border-radius: 999px;
 }
-.watch-head #watch-open-add.watch-add-icon {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-}
-.watch-add-glyph {
-  width: 22px;
-  height: 22px;
-  display: block;
-  color: var(--accent-ink);
-}
 #watch-mode-toggle[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
@@ -632,6 +615,12 @@ textarea { min-height: 120px; resize: vertical; }
   min-height: 32px;
   padding: 4px 10px;
   font-size: 12px;
+}
+.watch-group-add {
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .watch-group-icon {
   min-width: 32px;

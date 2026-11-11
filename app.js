@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 83;
+  const PAGE_BUILD = 84;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -603,7 +603,7 @@
         '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(g.name) +
         '<span class="watch-group-count">' + (g.items || []).length + "</span></button>";
     }).join("") +
-      '<button type="button" class="ghost watch-group-icon watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋</button>' +
+      '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋群組</button>' +
       '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
       (groups.length > 1
         ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
@@ -2128,7 +2128,7 @@
     const box = $("watch-list");
     paintWatchGroups();
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">這個群組還是空的。按右上角走勢圖示用代號或庫存圖新增。</p>';
+      box.innerHTML = '<p class="note">這個群組還是空的。按右上角「加入股票」用代號或庫存圖新增。</p>';
       paintWatchTotal();
       return;
     }
