@@ -541,7 +541,7 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-col-price .watch-lv {
   display: block;
-  font-size: 15px; /* 目前價 17px − 2pt */
+  font-size: 11px; /* 與漲跌％（.watch-px small）同大小 */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
