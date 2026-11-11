@@ -4178,7 +4178,104 @@
       ir: "https://mops.twse.com.tw/mops/web/t100sb07_1?co_id=" + id,
       insider: "https://mops.twse.com.tw/mops/web/stashare1?co_id=" + id,
       dividend: "https://mops.twse.com.tw/mops/web/t108sb27?co_id=" + id,
-      home: "https://mops.twse.com.tw/mops/web/index"
+      home: "https://mops.twse.com.tw/mops/web/index",
+      cmoneyForum: "https://www.cmoney.tw/forum/stock/" + id,
+      cmoneyStock: "https://www.cmoney.tw/finance/f00025.aspx?s=" + id,
+      cmoneyNoteRef: "https://www.cmoney.tw/notes/note-detail.aspx?nid=499697"
+    };
+  }
+
+  function parseCmoneyForumMarkdown(text, stockId) {
+    const out = [];
+    const seen = {};
+    const re = /\[([^\]]+)\]\(https:\/\/www\.cmoney\.tw\/forum\/article\/(\d+)\)/g;
+    let m;
+    const lines = String(text || "").split(/\r?\n/);
+    while ((m = re.exec(text))) {
+      const label = String(m[1] || "").trim();
+      const id = m[2];
+      if (seen[id]) continue;
+      const isTime = /前$|昨天|剛剛|^\d{1,2}:\d{2}$|^\d{4}[\/\-]\d{1,2}/.test(label);
+      let title = isTime ? "" : label;
+      if (!title || title.length < 4) {
+        const idx = text.slice(0, m.index).split(/\r?\n/).length - 1;
+        for (let i = idx; i >= Math.max(0, idx - 8); i--) {
+          const ln = (lines[i] || "").trim();
+          const hm = ln.match(/^#{1,3}\s+(.+)/);
+          if (hm && hm[1] && !/看過 .+ 的人也會看/.test(hm[1])) {
+            title = hm[1].trim();
+            break;
+          }
+        }
+      }
+      if (!title || title.length < 2) continue;
+      if (/發文者頭像|頭像|通知|追蹤|登入/.test(title)) continue;
+      seen[id] = true;
+      out.push({
+        title: title.slice(0, 120),
+        url: "https://www.cmoney.tw/forum/article/" + id,
+        source: "CMoney 爆料同學會",
+        date: isTime ? label : "",
+        kind: "cmoney"
+      });
+      if (out.length >= 12) break;
+    }
+    return out;
+  }
+
+  async function fetchCmoneyForumNews(stockId) {
+    const page = "https://www.cmoney.tw/forum/stock/" + encodeURIComponent(stockId);
+    try {
+      const res = await fetch("https://r.jina.ai/" + page);
+      if (!res.ok) return [];
+      const text = await res.text();
+      return parseCmoneyForumMarkdown(text, stockId);
+    } catch (err) {
+      return [];
+    }
+  }
+
+  async function fetchFinMindNews(stockId) {
+    const starts = [isoDaysAgo(14), isoDaysAgo(60), isoDaysAgo(180)];
+    for (let i = 0; i < starts.length; i++) {
+      try {
+        const rows = await finMind("TaiwanStockNews", stockId, starts[i]);
+        if (rows && rows.length) {
+          return rows.slice().reverse().slice(0, 15).map(function (row) {
+            return {
+              title: row.title || "",
+              url: row.link || "",
+              source: row.source || "媒體",
+              date: String(row.date || "").slice(0, 16),
+              kind: "media"
+            };
+          }).filter(function (row) { return row.title && row.url; });
+        }
+      } catch (err) { /* next window */ }
+    }
+    return [];
+  }
+
+  async function stockNews(stockId) {
+    const id = String(stockId || "").trim();
+    if (!id) return { ok: false, items: [], links: mopsLinks("") };
+    const links = mopsLinks(id);
+    const got = await Promise.all([
+      fetchCmoneyForumNews(id),
+      fetchFinMindNews(id)
+    ]);
+    const cmoney = got[0] || [];
+    const media = got[1] || [];
+    const items = cmoney.concat(media).slice(0, 20);
+    return {
+      ok: items.length > 0,
+      items: items,
+      links: {
+        forum: links.cmoneyForum,
+        stock: links.cmoneyStock,
+        noteRef: links.cmoneyNoteRef
+      },
+      note: "新聞以 CMoney 爆料同學會為主，並輔以 FinMind 彙整媒體標題；教學參考文見 CMoney 筆記。"
     };
   }
 
@@ -4232,8 +4329,10 @@
       finMind("TaiwanStockBalanceSheet", stockId, startFin).catch(function () { return []; }),
       finMind("TaiwanStockDividend", stockId, startDiv).catch(function () { return []; }),
       finMind("TaiwanStockDividendResult", stockId, startDiv).catch(function () { return []; }),
-      finMind("TaiwanStockShareholding", stockId, startOwn).catch(function () { return []; })
+      finMind("TaiwanStockShareholding", stockId, startOwn).catch(function () { return []; }),
+      stockNews(stockId).catch(function () { return null; })
     ]);
+    const newsPack = got[6];
     const revRows = revenueYoYMoM(got[0]).slice(0, 18);
     const fin = quarterBag(got[1]);
     const lastQ = fin.length ? fin[fin.length - 1] : null;
@@ -4338,6 +4437,16 @@
           ? "股利政策／除權息結果來自 FinMind。"
           : "尚無股利資料。"
       },
+      news: newsPack || {
+        ok: false,
+        items: [],
+        links: {
+          forum: links.cmoneyForum,
+          stock: links.cmoneyStock,
+          noteRef: links.cmoneyNoteRef
+        },
+        note: "新聞暫讀不到。"
+      },
       tip: "規則彙整公開資訊，非投資建議。重訊與法說以公司依法公告為準。"
     };
   }
@@ -4359,6 +4468,7 @@
     foreignNets: foreignNets,
     stockDetail: stockDetail,
     stockDisclose: stockDisclose,
+    stockNews: stockNews,
     twStockId: twStockId,
     watchMetrics: watchMetrics,
     watchBoard: watchBoard,

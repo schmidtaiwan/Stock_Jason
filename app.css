@@ -1051,6 +1051,32 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   margin: 4px 0 0;
   font-size: 16px;
 }
+.news-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.news-list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #10161e;
+}
+.news-list a {
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.news-list a:hover { color: var(--accent); }
+.news-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
 .mops-out .secondary {
   display: inline-block;
   margin-top: 6px;

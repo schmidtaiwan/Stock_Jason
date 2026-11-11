@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 73;
+  const PAGE_BUILD = 74;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3906,6 +3906,28 @@
     const fin = pack.financial || {};
     const div = pack.dividend || {};
     const own = pack.insider || {};
+    const news = pack.news || {};
+    const newsItems = news.items || [];
+    const newsHtml = (newsItems.length
+      ? '<ul class="news-list">' + newsItems.slice(0, 12).map(function (row) {
+        const href = row.url || "#";
+        return "<li><a href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">" +
+          esc(row.title || "（無標題）") + "</a>" +
+          "<small>" + esc((row.source || "") + (row.date ? " · " + row.date : "")) +
+          "</small></li>";
+      }).join("") + "</ul>"
+      : '<p class="note">目前沒抓到新聞標題。</p>') +
+      '<p class="fine">' + esc(news.note || "") + "</p>" +
+      '<p class="fine mops-links">' +
+      (news.links && news.links.forum
+        ? '<a href="' + esc(news.links.forum) + '" target="_blank" rel="noopener">CMoney 個股討論</a> · '
+        : "") +
+      (news.links && news.links.stock
+        ? '<a href="' + esc(news.links.stock) + '" target="_blank" rel="noopener">CMoney 個股頁</a> · '
+        : "") +
+      '<a href="' + esc((news.links && news.links.noteRef) ||
+        "https://www.cmoney.tw/notes/note-detail.aspx?nid=499697") +
+      '" target="_blank" rel="noopener">技術分析選股筆記</a></p>';
     const revTable = (rev.rows || []).length
       ? '<div class="watch-table-wrap"><table class="watch-table"><thead><tr><th>年月</th><th>營收</th><th>MoM</th><th>YoY</th></tr></thead><tbody>' +
         rev.rows.slice(0, 12).map(function (row) {
@@ -3956,6 +3978,7 @@
       '<h3 class="mops-stock-head">公開資訊觀測 · ' + esc(pack.stockId) + "</h3>" +
       '<p class="fine">' + esc(pack.tip || "") + "</p>" +
       mopsLinkRow(pack.links) +
+      mopsFold("news", "0. 相關新聞 · CMoney／媒體", newsHtml, true) +
       mopsFold("mat", "1. 重大訊息 · 董事會／資產／訂單／異動／警示",
         '<p class="fine">查證市場傳言唯一官源。' + esc((pack.material && pack.material.note) || "") + "</p>" +
         '<p><a class="secondary" href="' + esc(pack.links.material) + '" target="_blank" rel="noopener">開啟 MOPS 重訊</a></p>',
