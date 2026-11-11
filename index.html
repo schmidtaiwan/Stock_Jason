@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=43">
+  <link rel="stylesheet" href="app.css?v=44">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -76,11 +76,14 @@
           <div id="markets" class="chips"></div>
           <p class="fine">同一張圖可同時打開美股、費半、台股、日股、韓股，以及台幣對美金。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。匯率是 1 美元兌台幣。</p>
         </div>
-        <div class="card">
-          <div id="chart-styles" class="chips chart-styles" aria-label="圖表類型">
+        <div id="chart-styles" class="chart-styles" aria-label="圖表類型">
+          <span class="chart-styles-label">圖表</span>
+          <div class="chips">
             <button type="button" class="chip" data-chart-style="line" aria-pressed="true">線圖</button>
             <button type="button" class="chip" data-chart-style="candle" aria-pressed="false">K線</button>
           </div>
+        </div>
+        <div class="card">
           <canvas id="chart" width="640" height="520"></canvas>
           <p id="chart-status" class="status" role="status"></p>
           <div id="legend" class="legend"></div>
@@ -379,9 +382,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=43"></script>
-  <script src="drive.js?v=43"></script>
-  <script src="market.js?v=43"></script>
-  <script src="app.js?v=43"></script>
+  <script src="google_config.js?v=44"></script>
+  <script src="drive.js?v=44"></script>
+  <script src="market.js?v=44"></script>
+  <script src="app.js?v=44"></script>
 </body>
 </html>

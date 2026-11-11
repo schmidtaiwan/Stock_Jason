@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 43;
+  const PAGE_BUILD = 44;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -343,6 +343,11 @@
       });
     }
     syncDateInputs();
+  }
+
+  function setChartStyle(style) {
+    state.chartStyle = style === "candle" ? "candle" : "line";
+    buildToggles();
   }
 
   function syncDateInputs() {
@@ -1346,6 +1351,7 @@
     state.focusFrom = "watch";
     state.range = state.range === "1d" ? "1d" : "1y";
     state.custom = false;
+    state.chartStyle = "candle";
     setView("chart");
     buildToggles();
     paintFocus();
@@ -2134,8 +2140,7 @@
       buildToggles();
       loadChart();
     } else if (t.dataset.chartStyle) {
-      state.chartStyle = t.dataset.chartStyle === "candle" ? "candle" : "line";
-      buildToggles();
+      setChartStyle(t.dataset.chartStyle);
       loadChart();
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
