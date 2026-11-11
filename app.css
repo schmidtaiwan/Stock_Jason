@@ -360,21 +360,31 @@ canvas { width: 100%; height: 260px; display: block; touch-action: none; }
 }
 .menu-open { flex: 1 1 auto; min-width: 0; }
 .menu small, .menu-open small, .hit small { display: block; color: var(--muted); }
-.menu-move {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.menu-drag {
   flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: 12px;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: var(--muted);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.menu-move .ghost {
-  min-height: 36px;
-  min-width: 40px;
-  padding: 0 8px;
-  border-radius: 10px;
+.menu-row.is-dragging {
+  opacity: 0.88;
+  outline: 1px solid var(--accent);
+  border-radius: 14px;
 }
-.menu-move .ghost:disabled {
-  opacity: 0.35;
-  cursor: default;
+.menu-row.is-dragging .menu-drag {
+  cursor: grabbing;
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 
 label { display: block; margin: 10px 0 4px; color: var(--muted); font-size: 14px; }

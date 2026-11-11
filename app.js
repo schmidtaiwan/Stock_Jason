@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 52;
+  const PAGE_BUILD = 53;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -260,32 +260,70 @@
     book.toolOrder = normalizeToolOrder(book.toolOrder);
     const byId = {};
     TOOL_MENU.forEach(function (t) { byId[t.id] = t; });
-    box.innerHTML = book.toolOrder.map(function (id, idx) {
+    box.innerHTML = book.toolOrder.map(function (id) {
       const t = byId[id];
       if (!t) return "";
       return '<div class="menu-row" data-tool-row="' + t.id + '">' +
         '<button type="button" class="menu-open" data-tool="' + t.id + '">' +
         esc(t.title) + "<small>" + esc(t.desc) + "</small></button>" +
-        '<div class="menu-move" role="group" aria-label="調整順序">' +
-        '<button type="button" class="ghost menu-up" data-tool-move="up" data-tool-id="' + t.id + '"' +
-        (idx === 0 ? " disabled" : "") + ' aria-label="上移">↑</button>' +
-        '<button type="button" class="ghost menu-down" data-tool-move="down" data-tool-id="' + t.id + '"' +
-        (idx === book.toolOrder.length - 1 ? " disabled" : "") + ' aria-label="下移">↓</button>' +
-        "</div></div>";
+        '<button type="button" class="ghost menu-drag" data-tool-drag="' + t.id + '"' +
+        ' aria-label="拖曳調整順序" title="拖曳調整順序">⋮⋮</button></div>';
     }).join("");
   }
 
-  function moveTool(id, dir) {
-    book.toolOrder = normalizeToolOrder(book.toolOrder);
-    const i = book.toolOrder.indexOf(id);
-    if (i < 0) return;
-    const j = dir === "up" ? i - 1 : i + 1;
-    if (j < 0 || j >= book.toolOrder.length) return;
-    const tmp = book.toolOrder[i];
-    book.toolOrder[i] = book.toolOrder[j];
-    book.toolOrder[j] = tmp;
-    paintToolMenu();
-    scheduleSave();
+  let toolDrag = null;
+
+  function syncToolOrderFromDom() {
+    const box = $("tool-menu");
+    if (!box) return;
+    const ids = Array.prototype.map.call(box.querySelectorAll("[data-tool-row]"), function (row) {
+      return row.getAttribute("data-tool-row");
+    });
+    book.toolOrder = normalizeToolOrder(ids);
+  }
+
+  function bindToolMenuDrag() {
+    const box = $("tool-menu");
+    if (!box || box.dataset.dragBound) return;
+    box.dataset.dragBound = "1";
+
+    function endToolDrag() {
+      if (!toolDrag) return;
+      const id = toolDrag.id;
+      toolDrag = null;
+      const row = box.querySelector('[data-tool-row="' + id + '"]');
+      if (row) row.classList.remove("is-dragging");
+      syncToolOrderFromDom();
+      scheduleSave();
+    }
+
+    box.addEventListener("pointerdown", function (ev) {
+      const handle = ev.target.closest("[data-tool-drag]");
+      if (!handle || !box.contains(handle)) return;
+      const id = handle.getAttribute("data-tool-drag");
+      const row = handle.closest("[data-tool-row]");
+      if (!id || !row) return;
+      toolDrag = { id: id, pointerId: ev.pointerId };
+      row.classList.add("is-dragging");
+      try { handle.setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+      ev.preventDefault();
+    });
+
+    box.addEventListener("pointermove", function (ev) {
+      if (!toolDrag) return;
+      const dragging = box.querySelector('[data-tool-row="' + toolDrag.id + '"]');
+      if (!dragging) return;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const over = el && el.closest ? el.closest("#tool-menu [data-tool-row]") : null;
+      if (!over || over === dragging || !box.contains(over)) return;
+      const rect = over.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (ev.clientY < mid) box.insertBefore(dragging, over);
+      else box.insertBefore(dragging, over.nextSibling);
+    });
+
+    box.addEventListener("pointerup", endToolDrag);
+    box.addEventListener("pointercancel", endToolDrag);
   }
 
   function openTool(id) {
@@ -2447,9 +2485,7 @@
     const t = ev.target.closest("button");
     if (!t) return;
     if (t.dataset.pick) onPick(t);
-    else if (t.dataset.toolMove) {
-      moveTool(t.dataset.toolId, t.dataset.toolMove);
-    } else if (t.id === "k-pick-clear") clearKSelection();
+    else if (t.id === "k-pick-clear") clearKSelection();
     else if (t.dataset.adviseWatch != null) {
       const item = book.watch[Number(t.dataset.adviseWatch)];
       if (!item) return;
@@ -2712,6 +2748,7 @@
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
   buildToggles();
+  bindToolMenuDrag();
   D.ready().catch(function () { /* 登入時再提示 */ });
   if (D.account()) {
     $("gate").hidden = true;
