@@ -1,8 +1,11 @@
 (function () {
-  const PAGE_BUILD = 70;
+  const PAGE_BUILD = 71;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
+  let usBoardOpen = true;
+  let usBriefOpen = true;
+  let usRowsOpen = true;
   let chipCostLines = null;
   let stockChipCostLines = null;
   const $ = function (id) { return document.getElementById(id); };
@@ -353,7 +356,6 @@
     });
     if (name === "chart") {
       loadChart();
-      loadUsBoard();
     }
     if (name === "stock") {
       buildStockToggles();
@@ -362,7 +364,11 @@
       loadStockChart();
       if (state.stock) loadStockDetail(state.stock);
     }
-    if (name === "pulse") loadPulse();
+    if (name === "pulse") {
+      syncUsBoardFoldUi();
+      loadPulse();
+      loadUsBoard();
+    }
     if (name === "watch") {
       setWatchCompose(false);
       renderWatch();
@@ -3709,17 +3715,25 @@
       '<div class="pulse-cell wide"><span>融資解讀</span><strong class="pulse-note">' +
       esc(chips.marginNote || "") + "</strong></div>";
 
+    function foldCard(key, titleHtml, bodyHtml) {
+      return '<article class="card pulse-card" data-pulse-card="' + key + '">' +
+        '<button type="button" class="pulse-card-fold" data-pulse-fold="' + key +
+        '" aria-expanded="true"><span class="pulse-card-title">' + titleHtml +
+        '</span><span class="chart-fold-chevron" aria-hidden="true">▾</span></button>' +
+        '<div class="pulse-card-body" data-pulse-body="' + key + '">' + bodyHtml + "</div></article>";
+    }
+
     box.innerHTML =
-      '<article class="card pulse-card"><h3>一、盤前定調 <span class="tag ' +
-      ((pre.bias && pre.bias.cls) || "") + '">' + esc((pre.bias && pre.bias.label) || "—") +
-      "</span></h3><p class=\"fine\">" + esc(pre.tip || "") +
-      '</p><div class="pulse-grid">' + usHtml + nightHtml + "</div></article>" +
-      '<article class="card pulse-card"><h3>二、盤中強弱</h3><p class="fine">' + esc(sess.tip || "") +
-      '</p><div class="pulse-grid">' + sessionHtml + "</div></article>" +
-      '<article class="card pulse-card"><h3>三、盤後籌碼 <span class="fine">' +
-      esc(chips.date || "") + "</span></h3><p class=\"fine\">" + esc(chips.tip || "") +
-      '</p><div class="pulse-grid">' + chipsHtml + "</div>" +
-      '<p class="fine">' + esc(pack.note || "") + "</p></article>";
+      foldCard("pre",
+        "一、盤前定調 <span class=\"tag " + ((pre.bias && pre.bias.cls) || "") + '">' +
+        esc((pre.bias && pre.bias.label) || "—") + "</span>",
+        '<p class="fine">' + esc(pre.tip || "") + '</p><div class="pulse-grid">' + usHtml + nightHtml + "</div>") +
+      foldCard("sess", "二、盤中強弱",
+        '<p class="fine">' + esc(sess.tip || "") + '</p><div class="pulse-grid">' + sessionHtml + "</div>") +
+      foldCard("chips",
+        "三、盤後籌碼 <span class=\"fine\">" + esc(chips.date || "") + "</span>",
+        '<p class="fine">' + esc(chips.tip || "") + '</p><div class="pulse-grid">' + chipsHtml + "</div>" +
+        '<p class="fine">' + esc(pack.note || "") + "</p>");
   }
 
   async function loadPulse() {
@@ -3738,6 +3752,32 @@
       if (box) box.innerHTML = "";
       if (status) status.textContent = err.message || "動向讀取失敗";
     }
+  }
+
+  function syncFoldBtn(btn, open, openLabel, closedLabel) {
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", open ? "true" : "false");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    const label = btn.querySelector(".chart-fold-label");
+    const chev = btn.querySelector(".chart-fold-chevron");
+    if (label) label.textContent = open ? openLabel : (closedLabel || ("展開" + openLabel));
+    if (chev) chev.textContent = open ? "▾" : "▸";
+  }
+
+  function syncUsBoardFoldUi() {
+    const body = $("us-board-body");
+    const brief = $("us-brief");
+    const rows = $("us-board-rows");
+    if (body) body.hidden = !usBoardOpen;
+    if (brief) brief.hidden = !usBriefOpen;
+    if (rows) rows.hidden = !usRowsOpen;
+    syncFoldBtn($("us-board-fold"), usBoardOpen, "美股觀察指標", "展開美股觀察");
+    syncFoldBtn($("us-brief-fold"), usBriefOpen, "節奏解讀", "展開節奏解讀");
+    syncFoldBtn($("us-rows-fold"), usRowsOpen, "報價一覽", "展開報價一覽");
+    const briefFold = $("us-brief-fold");
+    const rowsFold = $("us-rows-fold");
+    if (briefFold) briefFold.hidden = !usBoardOpen;
+    if (rowsFold) rowsFold.hidden = !usBoardOpen;
   }
 
   function renderUsBrief(brief) {
@@ -3931,7 +3971,34 @@
   }
 
   if ($("us-board-refresh")) $("us-board-refresh").addEventListener("click", loadUsBoard);
-  if ($("pulse-refresh")) $("pulse-refresh").addEventListener("click", loadPulse);
+  if ($("pulse-refresh")) $("pulse-refresh").addEventListener("click", function () {
+    loadPulse();
+    loadUsBoard();
+  });
+  if ($("us-board-fold")) $("us-board-fold").addEventListener("click", function () {
+    usBoardOpen = !usBoardOpen;
+    syncUsBoardFoldUi();
+  });
+  if ($("us-brief-fold")) $("us-brief-fold").addEventListener("click", function () {
+    usBriefOpen = !usBriefOpen;
+    syncUsBoardFoldUi();
+  });
+  if ($("us-rows-fold")) $("us-rows-fold").addEventListener("click", function () {
+    usRowsOpen = !usRowsOpen;
+    syncUsBoardFoldUi();
+  });
+  if ($("pulse-out")) $("pulse-out").addEventListener("click", function (ev) {
+    const btn = ev.target.closest("[data-pulse-fold]");
+    if (!btn || !$("pulse-out").contains(btn)) return;
+    const key = btn.getAttribute("data-pulse-fold");
+    const body = $("pulse-out").querySelector('[data-pulse-body="' + key + '"]');
+    if (!body) return;
+    const open = body.hidden;
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    const chev = btn.querySelector(".chart-fold-chevron");
+    if (chev) chev.textContent = open ? "▾" : "▸";
+  });
   if ($("chipx-token-save")) $("chipx-token-save").addEventListener("click", function () {
     if (!C) return;
     C.setToken($("chipx-token").value || "");
@@ -3964,5 +4031,5 @@
   paintChrome(true);
   paintTwii(true);
   startLiveClock();
-  loadUsBoard();
+  syncUsBoardFoldUi();
 })();

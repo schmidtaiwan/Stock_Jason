@@ -1018,7 +1018,7 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 }
 
 .us-board {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1032,6 +1032,42 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   margin-bottom: 8px;
 }
 .us-board-head strong { font-size: 14px; }
+.pulse-fold-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pulse-fold-bar .pulse-fold-btn {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+.pulse-fold-bar .ghost {
+  flex: 0 0 auto;
+}
+.us-board-body { display: grid; gap: 8px; }
+.pulse-subfold { margin-top: 0; }
+.pulse-card-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pulse-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.pulse-card-title .fine { font-weight: 500; }
+.pulse-card h3 { margin: 0; }
 .us-brief {
   margin: 0 0 10px;
   display: grid;

@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=70">
+  <link rel="stylesheet" href="app.css?v=71">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -97,15 +97,6 @@
           <div id="markets" class="chips"></div>
           <p class="fine">同一張圖可同時打開美股、費半、台股、日股、韓股，以及台幣對美金。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。匯率是 1 美元兌台幣。</p>
         </div>
-        <div id="us-board" class="us-board" aria-label="美股觀察">
-          <div class="us-board-head">
-            <strong>美股觀察指標</strong>
-            <button id="us-board-refresh" class="ghost" type="button">更新</button>
-          </div>
-          <p class="fine">早盤 3 分鐘：看費半／台積電 ADR 方向 → VIX 力道 → 美債／美元資金。夏令 21:30–04:00、冬令 22:30–05:00（台灣時間）。</p>
-          <div id="us-brief" class="us-brief"></div>
-          <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
-        </div>
       </section>
 
       <section id="view-stock" hidden>
@@ -153,7 +144,29 @@
       <section id="view-pulse" hidden>
         <div class="watch-head">
           <h2>台股動向</h2>
-          <button id="pulse-refresh" class="ghost" type="button">更新</button>
+          <button id="pulse-refresh" class="ghost" type="button">全部更新</button>
+        </div>
+        <div id="us-board" class="us-board pulse-block" aria-label="美股觀察">
+          <div class="pulse-fold-bar">
+            <button id="us-board-fold" class="ghost chart-fold-btn pulse-fold-btn" type="button" aria-pressed="true" aria-expanded="true" aria-controls="us-board-body">
+              <span class="chart-fold-label">美股觀察指標</span>
+              <span class="chart-fold-chevron" aria-hidden="true">▾</span>
+            </button>
+            <button id="us-board-refresh" class="ghost" type="button">更新</button>
+          </div>
+          <div id="us-board-body" class="us-board-body">
+            <p class="fine">早盤 3 分鐘：看費半／台積電 ADR 方向 → VIX 力道 → 美債／美元資金。夏令 21:30–04:00、冬令 22:30–05:00（台灣時間）。</p>
+            <button id="us-brief-fold" class="ghost chart-fold-btn pulse-subfold" type="button" aria-pressed="true" aria-expanded="true" aria-controls="us-brief">
+              <span class="chart-fold-label">節奏解讀</span>
+              <span class="chart-fold-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div id="us-brief" class="us-brief"></div>
+            <button id="us-rows-fold" class="ghost chart-fold-btn pulse-subfold" type="button" aria-pressed="true" aria-expanded="true" aria-controls="us-board-rows">
+              <span class="chart-fold-label">報價一覽</span>
+              <span class="chart-fold-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
+          </div>
         </div>
         <p class="fine">盤前看美股／費半／台積電 ADR／台指期夜盤；盤中看量能、櫃買、漲跌家數、匯率；盤後看外資現貨＋期貨與融資餘額。</p>
         <p id="pulse-status" class="status" role="status">載入中…</p>
@@ -503,11 +516,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=70"></script>
-  <script src="drive.js?v=70"></script>
-  <script src="sakata.js?v=70"></script>
-  <script src="market.js?v=70"></script>
-  <script src="chips.js?v=70"></script>
-  <script src="app.js?v=70"></script>
+  <script src="google_config.js?v=71"></script>
+  <script src="drive.js?v=71"></script>
+  <script src="sakata.js?v=71"></script>
+  <script src="market.js?v=71"></script>
+  <script src="chips.js?v=71"></script>
+  <script src="app.js?v=71"></script>
 </body>
 </html>
