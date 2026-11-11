@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 64;
+  const PAGE_BUILD = 65;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let chipCostLines = null;
@@ -298,6 +298,7 @@
   function setView(name) {
     state.view = name;
     $("view-chart").hidden = name !== "chart";
+    if ($("view-pulse")) $("view-pulse").hidden = name !== "pulse";
     $("view-watch").hidden = name !== "watch";
     $("view-tools").hidden = name !== "tools";
     $("view-tool").hidden = name !== "tool";
@@ -310,6 +311,7 @@
       loadChart();
       loadUsBoard();
     }
+    if (name === "pulse") loadPulse();
     if (name === "watch") {
       setWatchCompose(false);
       renderWatch();
@@ -3195,6 +3197,118 @@
   bindSearch("advise-q", "advise-hits", "advise", "台股");
   bindSearch("chipx-q", "chipx-hits", "chipx", "台股");
 
+  function pulsePct(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return (n > 0 ? "+" : "") + Number(n).toFixed(2) + "%";
+  }
+
+  function pulseCls(n) {
+    if (n == null || !isFinite(n) || n === 0) return "";
+    return n > 0 ? "up" : "down";
+  }
+
+  function renderPulse(pack) {
+    const box = $("pulse-out");
+    if (!box) return;
+    if (!pack || !pack.ok) {
+      box.innerHTML = '<p class="note">動向資料讀不到。</p>';
+      return;
+    }
+    const pre = pack.pre || {};
+    const sess = pack.session || {};
+    const chips = pack.chips || {};
+    const usHtml = (pre.us || []).map(function (row) {
+      return '<div class="pulse-cell"><span>' + esc(row.name) + '</span>' +
+        '<strong class="' + pulseCls(row.pct) + '">' + (row.price != null ? fmt(row.price) : "—") + "</strong>" +
+        '<small class="' + pulseCls(row.pct) + '">' + pulsePct(row.pct) + "</small></div>";
+    }).join("");
+    const night = pre.night;
+    const nightHtml = night
+      ? '<div class="pulse-cell wide"><span>台指期' + (night.isNight ? "夜盤" : "") +
+        " · " + esc(String(night.date || "").slice(5)) + "</span>" +
+        '<strong class="' + pulseCls(night.pct) + '">' + fmt(night.close) + "</strong>" +
+        '<small class="' + pulseCls(night.pct) + '">' + pulsePct(night.pct) +
+        (night.change != null ? "（" + (night.change > 0 ? "+" : "") + night.change.toFixed(0) + "）" : "") +
+        "</small></div>"
+      : '<div class="pulse-cell wide"><span>台指期夜盤</span><strong>—</strong></div>';
+
+    const tw = sess.twii;
+    const otc = sess.otc;
+    const fx = sess.fx;
+    const br = sess.breadth || {};
+    const sessionHtml =
+      '<div class="pulse-cell"><span>加權</span><strong class="' + pulseCls(tw && tw.pct) + '">' +
+      (tw && tw.price != null ? fmt(tw.price) : "—") + '</strong><small class="' + pulseCls(tw && tw.pct) + '">' +
+      pulsePct(tw && tw.pct) + "</small></div>" +
+      '<div class="pulse-cell"><span>櫃買</span><strong class="' + pulseCls(otc && otc.pct) + '">' +
+      (otc && otc.price != null ? fmt(otc.price) : "—") + '</strong><small class="' + pulseCls(otc && otc.pct) + '">' +
+      pulsePct(otc && otc.pct) + "</small></div>" +
+      '<div class="pulse-cell"><span>成交金額</span><strong>' +
+      (sess.amountYi != null ? sess.amountYi.toFixed(0) + " 億" : "—") +
+      "</strong><small>" + esc(sess.miDate ? String(sess.miDate).replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3") : "") +
+      "</small></div>" +
+      '<div class="pulse-cell"><span>漲跌家數</span><strong class="' +
+      ((br.adl > 0) ? "up" : (br.adl < 0) ? "down" : "") + '">' +
+      (br.up != null ? br.up : "—") + "／" + (br.down != null ? br.down : "—") +
+      "</strong><small>ADL " + (br.adl != null ? ((br.adl > 0 ? "+" : "") + br.adl) : "—") + "</small></div>" +
+      '<div class="pulse-cell"><span>匯率 TWD</span><strong class="' + pulseCls(fx && fx.pct) + '">' +
+      (fx && fx.price != null ? Number(fx.price).toFixed(2) : "—") +
+      '</strong><small class="' + pulseCls(fx && fx.pct) + '">' + pulsePct(fx && fx.pct) + "</small></div>" +
+      '<div class="pulse-cell wide"><span>結構</span><strong>' + esc((sess.structure && sess.structure.note) || "—") +
+      "</strong></div>";
+
+    const chipsHtml =
+      '<div class="pulse-cell"><span>外資現貨</span><strong class="' +
+      pulseCls(chips.foreignSpot) + '">' +
+      (chips.foreignSpotYi != null ? ((chips.foreignSpotYi > 0 ? "+" : "") + chips.foreignSpotYi.toFixed(1) + " 億") : "—") +
+      "</strong></div>" +
+      '<div class="pulse-cell"><span>外資期貨淨口數</span><strong class="' +
+      pulseCls(chips.foreignFutNet) + '">' +
+      (chips.foreignFutNet != null ? chips.foreignFutNet.toLocaleString("zh-Hant") : "—") +
+      "</strong><small>" +
+      (chips.foreignFutDelta != null ? ("變化 " + (chips.foreignFutDelta > 0 ? "+" : "") + chips.foreignFutDelta.toLocaleString("zh-Hant")) : "") +
+      "</small></div>" +
+      '<div class="pulse-cell"><span>籌碼格局</span><strong>' + esc(chips.bias || "—") +
+      "</strong><small>" + esc(chips.note || "") + "</small></div>" +
+      '<div class="pulse-cell"><span>融資餘額</span><strong>' +
+      (chips.marginBalance != null ? Math.round(chips.marginBalance / 1e8) + " 億股" : "—") +
+      "</strong><small class=\"" + pulseCls(chips.marginChg) + '">' +
+      (chips.marginChg != null ? pulsePct(chips.marginChg * 100) : "") +
+      " · " + esc(chips.marginBias || "") + "</small></div>" +
+      '<div class="pulse-cell wide"><span>融資解讀</span><strong class="pulse-note">' +
+      esc(chips.marginNote || "") + "</strong></div>";
+
+    box.innerHTML =
+      '<article class="card pulse-card"><h3>一、盤前定調 <span class="tag ' +
+      ((pre.bias && pre.bias.cls) || "") + '">' + esc((pre.bias && pre.bias.label) || "—") +
+      "</span></h3><p class=\"fine\">" + esc(pre.tip || "") +
+      '</p><div class="pulse-grid">' + usHtml + nightHtml + "</div></article>" +
+      '<article class="card pulse-card"><h3>二、盤中強弱</h3><p class="fine">' + esc(sess.tip || "") +
+      '</p><div class="pulse-grid">' + sessionHtml + "</div></article>" +
+      '<article class="card pulse-card"><h3>三、盤後籌碼 <span class="fine">' +
+      esc(chips.date || "") + "</span></h3><p class=\"fine\">" + esc(chips.tip || "") +
+      '</p><div class="pulse-grid">' + chipsHtml + "</div>" +
+      '<p class="fine">' + esc(pack.note || "") + "</p></article>";
+  }
+
+  async function loadPulse() {
+    const status = $("pulse-status");
+    const box = $("pulse-out");
+    if (!M || !M.twPulse) {
+      if (status) status.textContent = "動向模組未載入。";
+      return;
+    }
+    if (status) status.textContent = "正在讀美股、夜盤、大盤與籌碼…";
+    try {
+      const pack = await M.twPulse();
+      renderPulse(pack);
+      if (status) status.textContent = "更新完成。";
+    } catch (err) {
+      if (box) box.innerHTML = "";
+      if (status) status.textContent = err.message || "動向讀取失敗";
+    }
+  }
+
   async function loadUsBoard() {
     const box = $("us-board-rows");
     if (!box || !C || !C.usBoard) return;
@@ -3352,6 +3466,7 @@
   }
 
   if ($("us-board-refresh")) $("us-board-refresh").addEventListener("click", loadUsBoard);
+  if ($("pulse-refresh")) $("pulse-refresh").addEventListener("click", loadPulse);
   if ($("chipx-token-save")) $("chipx-token-save").addEventListener("click", function () {
     if (!C) return;
     C.setToken($("chipx-token").value || "");

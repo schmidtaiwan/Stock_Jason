@@ -939,6 +939,37 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 }
 .fail { color: var(--down); }
 
+.pulse-out { display: grid; gap: 12px; margin-top: 8px; }
+.pulse-card h3 { margin: 0 0 6px; font-size: 16px; }
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.pulse-cell {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #141b24;
+}
+.pulse-cell.wide { grid-column: 1 / -1; }
+.pulse-cell span { color: var(--muted); font-size: 12px; }
+.pulse-cell strong { font-size: 16px; font-variant-numeric: tabular-nums; line-height: 1.25; }
+.pulse-cell small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.pulse-cell strong.pulse-note {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+@media (min-width: 720px) {
+  .pulse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .us-board {
   margin: 0 0 10px;
   padding: 10px;

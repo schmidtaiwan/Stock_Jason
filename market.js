@@ -3279,6 +3279,44 @@
     const indexTable = tables.find(function (t) {
       return t && t.title && /價格指數\(臺灣證券交易所\)|發行量加權/.test(t.title) && (t.data || []).length;
     }) || tables[0];
+    const statsTable = tables.find(function (t) {
+      return t && t.title && /大盤統計資訊/.test(t.title);
+    });
+    const breadthTable = tables.find(function (t) {
+      return t && t.title && /漲跌證券數合計/.test(t.title);
+    });
+    function parseParenCount(text) {
+      const s = String(text || "").replace(/,/g, "");
+      const m = s.match(/^(\d+)/);
+      return m ? Number(m[1]) : null;
+    }
+    let amount = null;
+    ((statsTable && statsTable.data) || []).forEach(function (r) {
+      const label = String(r[0] || "");
+      if (/合計|總計/.test(label) || /^11\./.test(label)) amount = twseNum(r[1]);
+    });
+    if (amount == null) {
+      let sum = 0;
+      let hit = false;
+      ((statsTable && statsTable.data) || []).forEach(function (r) {
+        const label = String(r[0] || "");
+        if (/一般股票|ETF/.test(label)) {
+          const v = twseNum(r[1]);
+          if (v != null) { sum += v; hit = true; }
+        }
+      });
+      if (hit) amount = sum;
+    }
+    let up = null;
+    let down = null;
+    let flat = null;
+    ((breadthTable && breadthTable.data) || []).forEach(function (r) {
+      const label = String(r[0] || "");
+      const stockCol = r[2] != null ? r[2] : r[1];
+      if (/^上漲/.test(label)) up = parseParenCount(stockCol);
+      else if (/^下跌/.test(label)) down = parseParenCount(stockCol);
+      else if (/持平/.test(label)) flat = parseParenCount(stockCol);
+    });
     const rows = ((priceTable && priceTable.data) || []).map(function (r) {
       const sign = twseSign(r[9]);
       const diff = twseNum(r[10]);
@@ -3308,7 +3346,14 @@
         pct: twseNum(r[4])
       };
     }).filter(function (row) { return row.name; });
-    const out = { ok: true, date: String(json.date || dateYmd), rows: rows, indices: indices };
+    const out = {
+      ok: true,
+      date: String(json.date || dateYmd),
+      rows: rows,
+      indices: indices,
+      amount: amount,
+      breadth: { up: up, down: down, flat: flat }
+    };
     twseMiCache.set(dateYmd, out);
     return out;
   }
@@ -3818,6 +3863,269 @@
     };
   }
 
+  async function yahooSymbolQuote(symbol) {
+    const queries = ["interval=1m&range=1d", "interval=1d&range=5d"];
+    for (let q = 0; q < queries.length; q++) {
+      try {
+        const json = await yahooChart(symbol, queries[q]);
+        const result = json && json.chart && json.chart.result && json.chart.result[0];
+        if (!result) continue;
+        const meta = result.meta || {};
+        const closes = ((((result.indicators || {}).quote || [])[0] || {}).close || [])
+          .filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
+          .map(Number);
+        const lastBar = closes.length ? closes[closes.length - 1] : null;
+        const price = (q === 0 && lastBar > 0 ? lastBar : null) ||
+          num(meta.regularMarketPrice) || num(meta.postMarketPrice) || lastBar;
+        if (!(price > 0)) continue;
+        const prev = num(meta.previousClose) || num(meta.chartPreviousClose);
+        let pct = prev ? (price / prev - 1) * 100 : num(meta.regularMarketChangePercent);
+        let change = prev ? price - prev : num(meta.regularMarketChange);
+        return {
+          symbol: symbol,
+          price: price,
+          change: change,
+          pct: pct,
+          name: toTW(meta.shortName || meta.symbol || symbol)
+        };
+      } catch (err) { /* next */ }
+    }
+    return null;
+  }
+
+  async function txNightLatest() {
+    try {
+      const rows = await finMindRaw("TaiwanFuturesDaily", isoDaysAgo(10), "TX");
+      const byDay = {};
+      rows.forEach(function (row) {
+        const close = num(row.close);
+        const vol = num(row.volume) || 0;
+        if (!(close > 0)) return;
+        if (String(row.contract_date || "").indexOf("/") >= 0) return;
+        const session = String(row.trading_session || "");
+        // 夜盤優先
+        const pref = session === "after_market" ? 2 : session === "regular" ? 1 : 0;
+        const cur = byDay[row.date];
+        if (!cur || pref > cur.pref || (pref === cur.pref && vol > cur.volume)) {
+          byDay[row.date] = {
+            date: row.date,
+            close: close,
+            volume: vol,
+            pref: pref,
+            session: session || "—",
+            basisPct: num(row.spread_per),
+            contract: row.contract_date
+          };
+        }
+      });
+      const days = Object.keys(byDay).sort();
+      if (!days.length) return null;
+      const last = byDay[days[days.length - 1]];
+      const prev = days.length > 1 ? byDay[days[days.length - 2]] : null;
+      const change = prev && prev.close ? last.close - prev.close : null;
+      const pct = prev && prev.close ? (last.close / prev.close - 1) * 100 : null;
+      return {
+        date: last.date,
+        close: last.close,
+        change: change,
+        pct: pct,
+        session: last.session,
+        basisPct: last.basisPct,
+        contract: last.contract,
+        isNight: last.session === "after_market"
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function pulseTone(pct, goodIsUp) {
+    if (pct == null || !isFinite(pct)) return { label: "—", cls: "" };
+    const up = goodIsUp !== false;
+    if (Math.abs(pct) < 0.15) return { label: "中立", cls: "" };
+    if (pct > 0) return { label: up ? "偏多" : "偏空", cls: up ? "up" : "down" };
+    return { label: up ? "偏空" : "偏多", cls: up ? "down" : "up" };
+  }
+
+  async function twPulse() {
+    const usList = [
+      { key: "dji", symbol: "^DJI", name: "道瓊" },
+      { key: "spx", symbol: "^GSPC", name: "標普500" },
+      { key: "ndx", symbol: "^NDX", name: "那斯達克100" },
+      { key: "sox", symbol: "^SOX", name: "費半" },
+      { key: "nvda", symbol: "NVDA", name: "輝達" },
+      { key: "tsm", symbol: "TSM", name: "台積電ADR" }
+    ];
+    const got = await Promise.all([
+      Promise.all(usList.map(async function (item) {
+        const q = await yahooSymbolQuote(item.symbol).catch(function () { return null; });
+        return {
+          key: item.key,
+          name: item.name,
+          symbol: item.symbol,
+          price: q && q.price,
+          pct: q && q.pct,
+          change: q && q.change,
+          tone: pulseTone(q && q.pct, true)
+        };
+      })),
+      txNightLatest().catch(function () { return null; }),
+      twiiQuote().catch(function () { return null; }),
+      yahooSymbolQuote("^TWOII").catch(function () { return null; }),
+      yahooQuote("fx.USDTWD").catch(function () { return null; }),
+      latestTwseT86(12).catch(function () { return { ok: false }; }),
+      txForeignFutSeries(40).catch(function () { return []; }),
+      marginSeries(40).catch(function () { return []; }),
+      (async function () {
+        const end = taipeiYmd();
+        const candidates = twseWeekdayYmds(end, 8);
+        for (let i = 0; i < candidates.length; i++) {
+          const hit = await twseMiIndex(candidates[i]);
+          if (hit && hit.ok) return hit;
+        }
+        return { ok: false };
+      })(),
+      foreignNets().catch(function () { return {}; }),
+      breadthProxySeries(20).catch(function () { return []; })
+    ]);
+
+    const us = got[0];
+    const night = got[1];
+    const twii = got[2];
+    const otcQ = got[3];
+    const fx = got[4];
+    const t86 = got[5];
+    const futOi = got[6] || [];
+    const margins = got[7] || [];
+    const mi = got[8] || {};
+    const foreign = got[9] || {};
+    const breadth = got[10] || [];
+
+    let foreignSpot = null;
+    if (t86 && t86.ok && t86.rows && t86.rows.length) {
+      foreignSpot = t86.rows.reduce(function (a, r) {
+        return a + (num(r.foreignNet) || 0);
+      }, 0);
+    } else if (foreign["1d"] != null) {
+      foreignSpot = foreign["1d"] * 1e8;
+    }
+
+    const lastFut = futOi.length ? futOi[futOi.length - 1] : null;
+    const lastMargin = margins.length ? margins[margins.length - 1] : null;
+    const prevMargin = margins.length > 1 ? margins[margins.length - 2] : null;
+    const marginDeltaAmt = lastMargin && prevMargin
+      ? lastMargin.balance - prevMargin.balance
+      : null;
+
+    const amount = mi.amount;
+    // 近 5 日量能（用加權成交金額近似：有多日 MI 才準；此版用當日＋備註）
+    const up = mi.breadth && mi.breadth.up;
+    const down = mi.breadth && mi.breadth.down;
+    const adl = (up != null && down != null) ? (up - down) : null;
+
+    const otcPct = otcQ && otcQ.pct;
+    const twPct = twii && twii.pct;
+    const structure = {
+      pullWeighted: (twPct != null && otcPct != null && twPct > 0.3 && otcPct < -0.2),
+      broadUp: (twPct != null && otcPct != null && twPct > 0 && otcPct > 0),
+      note: ""
+    };
+    if (structure.pullWeighted) structure.note = "加權漲、櫃買弱 → 留意權值拉積盤";
+    else if (structure.broadUp) structure.note = "加權與櫃買同向偏多 → 結構較健康";
+    else if (twPct != null && otcPct != null && twPct < 0 && otcPct < 0) structure.note = "加權與櫃買同弱";
+    else structure.note = "結構中性／待觀察";
+
+    let chipBias = "中性";
+    let chipNote = "";
+    const futNet = lastFut && lastFut.netOi;
+    const futDelta = lastFut && lastFut.delta;
+    if (foreignSpot != null && futNet != null) {
+      const spotBuy = foreignSpot > 0;
+      const futLong = futNet > 0;
+      if (spotBuy && futLong && (futDelta == null || futDelta >= 0)) {
+        chipBias = "雙多";
+        chipNote = "外資現貨偏買且期貨淨多單偏多／增持";
+      } else if (spotBuy && futNet < -20000) {
+        chipBias = "避險警訊";
+        chipNote = "現貨買、期貨淨空單偏高，留意拉回";
+      } else if (!spotBuy && !futLong) {
+        chipBias = "偏空";
+        chipNote = "現貨與期貨同偏空";
+      } else {
+        chipBias = "分歧";
+        chipNote = "現貨與期貨方向不一致";
+      }
+    }
+
+    let marginBias = "—";
+    let marginNote = "公開免費源暫無融資維持率％，改看融資餘額變化。";
+    if (lastMargin && lastMargin.chg != null) {
+      if (lastMargin.chg < -0.02) {
+        marginBias = "洗盤／去槓桿";
+        marginNote = "融資餘額明顯下降，接近恐慌去槓桿區時反而常是反彈觀察點（非投資建議）。";
+      } else if (lastMargin.chg > 0.015) {
+        marginBias = "融資增溫";
+        marginNote = "融資餘額上升，散戶追價意味較濃。";
+      } else {
+        marginBias = "平穩";
+        marginNote = "融資餘額變化不大。";
+      }
+    }
+
+    const sox = us.find(function (x) { return x.key === "sox"; });
+    const tsm = us.find(function (x) { return x.key === "tsm"; });
+    const preBiasScore =
+      (sox && sox.pct != null ? sox.pct * 1.2 : 0) +
+      (tsm && tsm.pct != null ? tsm.pct * 1.0 : 0) +
+      (night && night.pct != null ? night.pct * 1.4 : 0);
+    const preBias = pulseTone(preBiasScore, true);
+
+    return {
+      ok: true,
+      updatedAt: Date.now(),
+      pre: {
+        us: us,
+        night: night,
+        bias: preBias,
+        tip: "費半／台積電 ADR／台指期夜盤偏多 → 開高機率升；反之開低機率升。"
+      },
+      session: {
+        twii: twii,
+        otc: otcQ ? { price: otcQ.price, pct: otcQ.pct, change: otcQ.change, name: "櫃買" } : null,
+        fx: fx ? {
+          price: fx.price,
+          pct: fx.pct,
+          change: fx.change,
+          // TWD=X 數字變大＝台幣貶（匯出）
+          tone: pulseTone(fx.pct, false),
+          tip: "匯率數字變小＝台幣升值／熱錢偏流入；變大＝貶值／偏匯出。"
+        } : null,
+        amount: amount,
+        amountYi: amount != null ? amount / 1e8 : null,
+        breadth: { up: up, down: down, flat: mi.breadth && mi.breadth.flat, adl: adl },
+        structure: structure,
+        miDate: mi.date || "",
+        tip: "上漲要看櫃買與漲跌家數是否同步；只漲權值、櫃買／下跌家數偏多＝賺指數賠差價風險。"
+      },
+      chips: {
+        date: (t86 && t86.date) || (lastFut && lastFut.date) || "",
+        foreignSpot: foreignSpot,
+        foreignSpotYi: foreignSpot != null ? foreignSpot / 1e8 : null,
+        foreignFutNet: futNet,
+        foreignFutDelta: futDelta,
+        bias: chipBias,
+        note: chipNote,
+        marginBalance: lastMargin && lastMargin.balance,
+        marginChg: lastMargin && lastMargin.chg,
+        marginDelta: marginDeltaAmt,
+        marginBias: marginBias,
+        marginNote: marginNote,
+        tip: "雙多（現貨買＋期貨淨多）最穩；現貨買但淨空單擴大＝避險警訊。"
+      },
+      note: "規則試算，非投資建議。夜盤／法人以 FinMind／證交所為主；盤中櫃買若 Yahoo 代號異動可能暫缺。"
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -3855,6 +4163,7 @@
     explainKRange: explainKRange,
     watchChips: watchChips,
     stockAdvice: stockAdvice,
+    twPulse: twPulse,
     latestTwseT86: latestTwseT86,
     twseT86Days: async function (days) {
       const n = Math.max(1, Math.min(20, Number(days) || 5));
