@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 38;
-  const PAGE_DATE = "2026-11-10";
+  const PAGE_BUILD = 39;
+  const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -1376,7 +1376,7 @@
       const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
-        item.note = "圖上成本均價";
+        item.note = row.note || "圖上成本均價";
       } else if (item.secid && (row.pct != null || row.pnl != null)) {
         try {
           const map = await M.quoteMap([item.secid]);
@@ -1403,6 +1403,33 @@
       out.push(item);
     }
     return out;
+  }
+
+  async function readFubonHoldingsJson(file) {
+    $("watch-json-btn").disabled = true;
+    $("watch-status").textContent = "正在讀富邦庫存 JSON…";
+    try {
+      const text = await file.text();
+      const parsed = M.parseFubonHoldingsJson(text).map(function (row) {
+        return Object.assign({}, row, { note: row.cost > 0 ? "富邦 JSON 成本" : "" });
+      });
+      if (!parsed.length) {
+        $("watch-status").textContent = "JSON 裡沒有可用的代號與股數。請確認是 StockJason 匯出的富邦庫存檔。";
+        importRows = [];
+        renderImport();
+        return;
+      }
+      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
+      $("watch-status").textContent = "讀到 " + parsed.length + " 檔" +
+        (priced ? "，其中 " + priced + " 檔有成本。" : "，部分沒有成本請補買價。");
+      importRows = await resolveParsed(parsed);
+      renderImport();
+      $("watch-status").textContent = "確認股數與買價後按匯入。JSON 只在這台裝置讀取，不會上傳。";
+    } catch (err) {
+      $("watch-status").textContent = err.message || "JSON 讀取失敗";
+    } finally {
+      $("watch-json-btn").disabled = false;
+    }
   }
 
   async function readInventoryPhoto(file) {
@@ -1981,6 +2008,7 @@
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
+    else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
       const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
@@ -2149,6 +2177,11 @@
     const file = $("watch-photo").files && $("watch-photo").files[0];
     $("watch-photo").value = "";
     if (file) readInventoryPhoto(file);
+  });
+  $("watch-json").addEventListener("change", function () {
+    const file = $("watch-json").files && $("watch-json").files[0];
+    $("watch-json").value = "";
+    if (file) readFubonHoldingsJson(file);
   });
   $("risk-list").addEventListener("change", function (ev) {
     const shares = ev.target.getAttribute("data-shares");

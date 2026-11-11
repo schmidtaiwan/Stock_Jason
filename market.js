@@ -1509,6 +1509,51 @@
     { re: /2330|台積電/, code: "2330", name: "台積電" }
   ];
 
+  // StockJason／富邦匯出：{ source, holdings:[{code,todayQty,tradableQty,costPrice,raw}] }
+  function parseFubonHoldingsJson(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      try { data = JSON.parse(raw); } catch (err) { return []; }
+    }
+    if (!data || typeof data !== "object") return [];
+    const list = Array.isArray(data.holdings) ? data.holdings
+      : (Array.isArray(data) ? data : []);
+    const out = [];
+    const seen = {};
+    list.forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      const code = String(row.code || row.stock_no || (row.raw && row.raw.stock_no) || "")
+        .trim().toUpperCase();
+      if (!code || seen[code]) return;
+      const shares = Number(row.tradableQty != null ? row.tradableQty
+        : (row.todayQty != null ? row.todayQty
+          : (row.raw && (row.raw.tradable_qty != null ? row.raw.tradable_qty : row.raw.today_qty))));
+      if (!(shares > 0)) return;
+      let cost = Number(row.costPrice != null ? row.costPrice
+        : (row.raw && row.raw.cost_price));
+      if (!(cost > 0) && row.raw && Number(row.raw.buy_value) > 0) {
+        cost = Number(row.raw.buy_value) / shares;
+      }
+      let pnl = null;
+      if (row.raw) {
+        const up = Number(row.raw.unrealized_profit);
+        const down = Number(row.raw.unrealized_loss);
+        if (up > 0) pnl = up;
+        else if (down > 0) pnl = -down;
+      }
+      seen[code] = true;
+      out.push({
+        code: code,
+        name: String(row.name || "").trim(),
+        shares: shares,
+        cost: cost > 0 ? cost : null,
+        pnl: pnl,
+        pct: null
+      });
+    });
+    return out;
+  }
+
   function parseInventory(raw) {
     let text = String(raw || "");
     text = text.replace(/[０-９]/g, function (ch) {
@@ -3284,6 +3329,7 @@
     search: search,
     quoteMap: quoteMap,
     parseInventory: parseInventory,
+    parseFubonHoldingsJson: parseFubonHoldingsJson,
     scan: scan,
     technical: technical,
     newsPlan: newsPlan,
