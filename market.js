@@ -549,6 +549,7 @@
 
   async function yahooQuote(secid) {
     const symbols = yahooCandidates(secid);
+    // 先 1 分 K 取盤中最新成交；日線備援。避免代理快取把「昨收」當成現價。
     const queries = ["interval=1m&range=1d", "interval=1d&range=5d"];
     for (let i = 0; i < symbols.length; i++) {
       for (let q = 0; q < queries.length; q++) {
@@ -556,12 +557,34 @@
           const json = await yahooChart(symbols[i], queries[q]);
           const chart = json && json.chart;
           if (!chart || (chart.error && chart.error !== null) || !chart.result || !chart.result.length) continue;
-          const meta = chart.result[0].meta || {};
-          const price = num(meta.regularMarketPrice) || num(meta.postMarketPrice);
+          const result = chart.result[0] || {};
+          const meta = result.meta || {};
+          const closes = ((((result.indicators || {}).quote || [])[0] || {}).close || [])
+            .filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
+            .map(Number);
+          const lastBar = closes.length ? closes[closes.length - 1] : null;
+          const metaPx = num(meta.regularMarketPrice) || num(meta.postMarketPrice);
+          // 1 分 K 最後一筆通常比 meta／代理快取新
+          let price = q === 0 && lastBar > 0 ? lastBar : (metaPx || lastBar);
           if (!(price > 0)) continue;
           const prev = num(meta.previousClose) || num(meta.chartPreviousClose);
-          const change = prev ? price - prev : num(meta.regularMarketChange);
-          const pct = prev ? (price - prev) / prev * 100 : num(meta.regularMarketChangePercent);
+          const metaPct = num(meta.regularMarketChangePercent);
+          let change = prev ? price - prev : num(meta.regularMarketChange);
+          let pct = prev ? (price - prev) / prev * 100 : metaPct;
+          // previousClose 過舊時改信 Yahoo 百分比／近兩根日線
+          if (metaPct != null && isFinite(metaPct) && prev > 0) {
+            const impliedPrev = price / (1 + metaPct / 100);
+            if (Math.abs(prev - impliedPrev) / price > 0.02) {
+              if (closes.length >= 2 && q === 1) {
+                const dayPrev = closes[closes.length - 2];
+                change = price - dayPrev;
+                pct = change / dayPrev * 100;
+              } else {
+                pct = metaPct;
+                change = price - impliedPrev;
+              }
+            }
+          }
           const code = String(secid).slice(String(secid).indexOf(".") + 1).toUpperCase();
           return {
             secid: secid,
@@ -2238,19 +2261,39 @@
   async function watchBoard(items) {
     const list = items || [];
     if (!list.length) return [];
-    // 自選表只要即時價：優先 Yahoo，失敗才退回其他來源
-    const secids = list.map(function (item) { return item && item.secid; }).filter(Boolean);
-    let quotes = {};
-    try { quotes = await quoteMap(secids); } catch (err) { quotes = {}; }
+    // 台股自選：先鉅亨（較不易卡昨收），再 Yahoo／其他；一律用代號對齊，避免 178.xxx / tw.xxx 對不上
+    const codes = [];
+    const secids = [];
+    list.forEach(function (item) {
+      if (!item) return;
+      const code = String(item.code || twStockId(item.secid, "") || "").toUpperCase();
+      if (code && codes.indexOf(code) < 0) codes.push(code);
+      if (item.secid) secids.push(item.secid);
+    });
+    bustLiveCaches(secids);
+    let byCode = {};
+    try {
+      byCode = await cnyesQuotes(codes);
+    } catch (err) {
+      byCode = {};
+    }
+    const needYahoo = list.filter(function (item) {
+      const code = String(item && item.code || "").toUpperCase();
+      return !(byCode[code] && byCode[code].price > 0);
+    }).map(function (item) { return item.secid; }).filter(Boolean);
+    let bySecid = {};
+    if (needYahoo.length) {
+      try { bySecid = await quoteMap(needYahoo); } catch (err) { bySecid = {}; }
+    }
     return list.map(function (item) {
-      const q = (item && item.secid && quotes[item.secid]) || null;
+      const code = String(item && item.code || "").toUpperCase();
+      const q = (code && byCode[code]) || (item && item.secid && bySecid[item.secid]) || null;
       const price = q && q.price != null && isFinite(q.price) ? q.price : null;
       const pct = q && q.pct != null && isFinite(q.pct) ? q.pct : null;
       const change = q && q.change != null && isFinite(q.change)
         ? q.change
         : (price != null && pct != null ? price * pct / (100 + pct) : null);
       return {
-        // 保留原中文名，避免 Yahoo 英文短名覆寫
         name: preferTwName(item && item.name, q && q.name, item && item.code),
         price: price,
         change: change,
@@ -2270,7 +2313,7 @@
         targetLow: null,
         breakout: null,
         support: null,
-        source: q && q.source ? q.source : (q ? "yahoo" : "")
+        source: q && q.source ? q.source : (q ? (byCode[code] ? "cnyes" : "yahoo") : "")
       };
     });
   }
