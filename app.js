@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 54;
+  const PAGE_BUILD = 55;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -422,7 +422,17 @@
     paintToolMenu();
   }
 
+  function warnEmbeddedLogin() {
+    if (!D.isEmbeddedBrowser || !D.isEmbeddedBrowser()) return false;
+    const url = (D.liveUrl && D.liveUrl()) || "https://schmidtaiwan.github.io/Stock_Jason/";
+    const msg = "Cursor 右側瀏覽器無法顯示 Google 登入（會變白頁）。請用 Chrome／Edge 開啟 " + url + " 再登入；這裡仍可按「先看走勢」看圖。";
+    if ($("gate-msg")) $("gate-msg").textContent = msg;
+    if ($("who") && $("app") && !$("app").hidden) $("who").textContent = msg;
+    return true;
+  }
+
   async function doLogin() {
+    if (warnEmbeddedLogin()) return;
     $("gate-msg").textContent = "正在開啟 Google 登入…";
     $("gate-login").disabled = true;
     const headerLogin = $("login");
@@ -2584,6 +2594,14 @@
   showVer();
   $("enter").addEventListener("click", function () { showApp(); });
   $("gate-login").addEventListener("click", doLogin);
+  if (D.isEmbeddedBrowser && D.isEmbeddedBrowser()) {
+    warnEmbeddedLogin();
+    const ext = $("gate-open-browser");
+    if (ext) ext.hidden = false;
+  } else {
+    const ext = $("gate-open-browser");
+    if (ext) ext.hidden = true;
+  }
 
   $("range-from").addEventListener("change", applyCustomDates);
   $("range-to").addEventListener("change", applyCustomDates);

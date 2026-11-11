@@ -65,6 +65,18 @@ h3 { font-size: 16px; margin: 16px 0 6px; }
 .primary { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .secondary, .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+a.gate-ext {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  text-align: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+a.gate-ext[hidden] { display: none !important; }
 
 .top {
   position: sticky;

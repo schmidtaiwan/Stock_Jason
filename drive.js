@@ -14,8 +14,27 @@
   let writeLock = Promise.resolve();
   let readyPromise = null;
 
+  const LIVE_URL = "https://schmidtaiwan.github.io/Stock_Jason/";
+
   function preferredEmail() {
     return String(cfg.preferredEmail || "").trim().toLowerCase();
+  }
+
+  /** Cursor／VS Code 內建瀏覽器無法完整跑 Google OAuth（常變白頁）。 */
+  function isEmbeddedBrowser() {
+    try {
+      if (window.top !== window.self) return true;
+    } catch (e) {
+      return true;
+    }
+    if (location.protocol === "file:") return true;
+    const ua = navigator.userAgent || "";
+    if (/Cursor\/|VSCode|Electron\//i.test(ua)) return true;
+    return false;
+  }
+
+  function liveUrl() {
+    return LIVE_URL;
   }
 
   function accountEmail() {
@@ -361,6 +380,11 @@
 
   function login(opts) {
     opts = opts || {};
+    if (isEmbeddedBrowser()) {
+      return Promise.reject(new Error(
+        "Cursor／IDE 右側瀏覽器無法顯示 Google 登入（會變白頁）。請用 Chrome 或 Edge 開啟 " + LIVE_URL + " 再登入。"
+      ));
+    }
     // 不可先 await：手機上離開點擊同步堆疊後彈窗會被擋
     if (!tokenClient) {
       return init().then(function () {
@@ -395,12 +419,13 @@
 
   function friendly(err) {
     const msg = (err && err.message) || "";
+    if (/Cursor|IDE 右側|內建瀏覽器|變白頁/i.test(msg)) return msg;
     if (/idpiframe|origin|authorized javascript origins|redirect_uri/i.test(msg)) {
-      return "這個網址還沒加入 Google 登入允許清單。請用 https://schmidtaiwan.github.io/Stock_Jason/ 開啟。";
+      return "這個網址還沒加入 Google 登入允許清單。請用 " + LIVE_URL + " 開啟。";
     }
     if (/popup_closed|access_denied|user_cancel|cancelled|已取消/i.test(msg)) return "已取消登入";
-    if (/popup_failed|無法開啟 Google/i.test(msg)) {
-      return "無法開啟 Google 登入視窗。請允許彈出視窗，或改用 Safari／Chrome 直接開啟網站再試。";
+    if (/popup_failed|無法開啟 Google|登入逾時/i.test(msg)) {
+      return "無法開啟 Google 登入視窗。請改用 Chrome／Edge 開啟 " + LIVE_URL + "（Cursor 右側預覽常會白頁）。";
     }
     return msg || "登入失敗";
   }
@@ -421,6 +446,8 @@
     readBook: readBook,
     writeBook: writeBook,
     friendly: friendly,
-    restoreSession: restoreSession
+    restoreSession: restoreSession,
+    isEmbeddedBrowser: isEmbeddedBrowser,
+    liveUrl: liveUrl
   };
 })(window);
