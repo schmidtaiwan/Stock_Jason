@@ -543,6 +543,35 @@ textarea { min-height: 120px; resize: vertical; }
   margin-bottom: 8px;
 }
 .watch-head h2 { margin: 0; }
+.watch-pnl-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 8px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  user-select: none;
+  cursor: pointer;
+}
+.watch-pnl-toggle input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.watch-pnl-toggle:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+#watch-board.watch-hide-pnl .watch-total,
+#watch-board.watch-hide-pnl .watch-col-pnl {
+  display: none !important;
+}
 .watch-head-actions {
   display: flex;
   align-items: center;

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 80;
+  const PAGE_BUILD = 81;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -71,6 +71,7 @@
       watchGroups: [{ id: gid, name: "預設", items: [] }],
       watchGroupId: gid,
       watchMode: "full",
+      watchShowPnl: true,
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -176,6 +177,7 @@
       watchGroups: groups,
       watchGroupId: gid,
       watchMode: src.watchMode === "mini" ? "mini" : "full",
+      watchShowPnl: src.watchShowPnl !== false,
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -205,6 +207,20 @@
 
   function isWatchMini() {
     return book.watchMode === "mini";
+  }
+
+  function isWatchShowPnl() {
+    return book.watchShowPnl !== false;
+  }
+
+  function syncWatchPnlUi() {
+    const on = isWatchShowPnl();
+    const cb = $("watch-pnl-toggle");
+    if (cb) cb.checked = on;
+    const board = $("watch-board");
+    if (board) board.classList.toggle("watch-hide-pnl", !on);
+    const total = $("watch-total");
+    if (total) total.hidden = !on;
   }
 
   function esc(s) {
@@ -593,6 +609,7 @@
         ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
         : "");
     syncWatchModeBtn();
+    syncWatchPnlUi();
   }
 
   function syncWatchModeBtn() {
@@ -602,6 +619,14 @@
     btn.setAttribute("aria-pressed", mini ? "true" : "false");
     btn.textContent = mini ? "詳細" : "極簡";
     btn.title = mini ? "切換為詳細列表" : "切換為極簡並排";
+  }
+
+  function toggleWatchShowPnl() {
+    const cb = $("watch-pnl-toggle");
+    book.watchShowPnl = !!(cb && cb.checked);
+    scheduleSave();
+    syncWatchPnlUi();
+    if (book.watchShowPnl) paintWatchTotal();
   }
 
   function switchWatchGroup(id) {
@@ -1941,6 +1966,8 @@
   function paintWatchTotal() {
     const el = $("watch-total-pnl");
     if (!el) return;
+    syncWatchPnlUi();
+    if (!isWatchShowPnl()) return;
     const box = $("watch-list");
     if (!book.watch.length) {
       el.className = "";
@@ -2053,7 +2080,7 @@
 
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      "<th>標的</th><th>目前</th><th>買價</th><th>損益</th><th>股數</th><th></th><th>通知</th>" +
+      '<th>標的</th><th>目前</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -3429,6 +3456,7 @@
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
+    else if (t.id === "watch-pnl-toggle") toggleWatchShowPnl();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-del") deleteWatchGroup();
