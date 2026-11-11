@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=63">
+  <link rel="stylesheet" href="app.css?v=64">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -111,8 +111,12 @@
       <section id="view-watch" hidden>
         <div class="watch-head">
           <h2>自選股</h2>
-          <button id="watch-open-add" class="primary" type="button">加入</button>
+          <div class="watch-head-actions">
+            <button id="watch-mode-toggle" class="ghost" type="button" aria-pressed="false">極簡</button>
+            <button id="watch-open-add" class="primary" type="button">加入</button>
+          </div>
         </div>
+        <div id="watch-groups" class="watch-groups" aria-label="自選群組"></div>
         <div id="watch-board">
           <div class="watch-summary">
             <p id="watch-note" class="note" hidden></p>
@@ -446,11 +450,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=63"></script>
-  <script src="drive.js?v=63"></script>
-  <script src="sakata.js?v=63"></script>
-  <script src="market.js?v=63"></script>
-  <script src="chips.js?v=63"></script>
-  <script src="app.js?v=63"></script>
+  <script src="google_config.js?v=64"></script>
+  <script src="drive.js?v=64"></script>
+  <script src="sakata.js?v=64"></script>
+  <script src="market.js?v=64"></script>
+  <script src="chips.js?v=64"></script>
+  <script src="app.js?v=64"></script>
 </body>
 </html>

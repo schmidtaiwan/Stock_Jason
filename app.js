@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 63;
+  const PAGE_BUILD = 64;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let chipCostLines = null;
@@ -43,9 +43,17 @@
     kDrag: null
   };
 
+  function newWatchGroupId() {
+    return "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
   function emptyBook() {
+    const gid = "default";
     return {
       watch: [],
+      watchGroups: [{ id: gid, name: "預設", items: [] }],
+      watchGroupId: gid,
+      watchMode: "full",
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -125,8 +133,32 @@
       if (out.market != null) out.market = twName(out.market);
       return normalizeNotify(out);
     }
+    let groups = Array.isArray(src.watchGroups) ? src.watchGroups : null;
+    if (!groups || !groups.length) {
+      groups = [{
+        id: "default",
+        name: "預設",
+        items: Array.isArray(src.watch) ? src.watch.map(fixRow) : []
+      }];
+    } else {
+      groups = groups.map(function (g, i) {
+        const items = Array.isArray(g && g.items) ? g.items.map(fixRow)
+          : (i === 0 && Array.isArray(src.watch) ? src.watch.map(fixRow) : []);
+        return {
+          id: String((g && g.id) || ("g" + i)),
+          name: String((g && g.name) || ("群組" + (i + 1))).trim().slice(0, 16) || ("群組" + (i + 1)),
+          items: items
+        };
+      });
+    }
+    let gid = String(src.watchGroupId || groups[0].id);
+    if (!groups.some(function (g) { return g.id === gid; })) gid = groups[0].id;
+    const active = groups.find(function (g) { return g.id === gid; }) || groups[0];
     return {
-      watch: Array.isArray(src.watch) ? src.watch.map(fixRow) : [],
+      watch: active.items,
+      watchGroups: groups,
+      watchGroupId: gid,
+      watchMode: src.watchMode === "mini" ? "mini" : "full",
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -134,6 +166,28 @@
       profile: src.profile || "穩健",
       toolOrder: normalizeToolOrder(src.toolOrder)
     };
+  }
+
+  function activeWatchGroup() {
+    const groups = book.watchGroups || [];
+    let g = groups.find(function (row) { return row.id === book.watchGroupId; });
+    if (!g) g = groups[0];
+    return g || null;
+  }
+
+  function flushWatchToGroup() {
+    const g = activeWatchGroup();
+    if (!g) return;
+    g.items = book.watch || [];
+  }
+
+  function loadWatchFromGroup() {
+    const g = activeWatchGroup();
+    book.watch = g && Array.isArray(g.items) ? g.items : [];
+  }
+
+  function isWatchMini() {
+    return book.watchMode === "mini";
   }
 
   function esc(s) {
@@ -427,11 +481,96 @@
 
   async function persist() {
     try {
+      flushWatchToGroup();
       if (D.account()) await D.writeBook(book);
       else sessionStorage.setItem("sj-book", JSON.stringify(book));
     } catch (err) {
       $("who").textContent = "雲端寫入失敗：" + (err.message || err);
     }
+  }
+
+  function paintWatchGroups() {
+    const box = $("watch-groups");
+    if (!box) return;
+    flushWatchToGroup();
+    const groups = book.watchGroups || [];
+    box.innerHTML = groups.map(function (g) {
+      const on = g.id === book.watchGroupId;
+      return '<button type="button" class="chip watch-group-chip" data-watch-group="' + esc(g.id) +
+        '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(g.name) +
+        '<span class="watch-group-count">' + (g.items || []).length + "</span></button>";
+    }).join("") +
+      '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組">＋群組</button>' +
+      '<button type="button" class="ghost watch-group-rename" id="watch-group-rename" title="重新命名目前群組">改名</button>' +
+      (groups.length > 1
+        ? '<button type="button" class="ghost danger watch-group-del" id="watch-group-del" title="刪除目前群組">刪群組</button>'
+        : "");
+    syncWatchModeBtn();
+  }
+
+  function syncWatchModeBtn() {
+    const btn = $("watch-mode-toggle");
+    if (!btn) return;
+    const mini = isWatchMini();
+    btn.setAttribute("aria-pressed", mini ? "true" : "false");
+    btn.textContent = mini ? "詳細" : "極簡";
+    btn.title = mini ? "切換為詳細列表" : "切換為極簡並排";
+  }
+
+  function switchWatchGroup(id) {
+    if (!id || id === book.watchGroupId) return;
+    flushWatchToGroup();
+    if (!(book.watchGroups || []).some(function (g) { return g.id === id; })) return;
+    book.watchGroupId = id;
+    loadWatchFromGroup();
+    scheduleSave();
+    paintWatchGroups();
+    renderWatch(true);
+  }
+
+  function addWatchGroup() {
+    flushWatchToGroup();
+    const name = window.prompt("新群組名稱", "群組" + ((book.watchGroups || []).length + 1));
+    if (name == null) return;
+    const label = String(name).trim().slice(0, 16) || ("群組" + ((book.watchGroups || []).length + 1));
+    const id = newWatchGroupId();
+    book.watchGroups.push({ id: id, name: label, items: [] });
+    book.watchGroupId = id;
+    loadWatchFromGroup();
+    scheduleSave();
+    paintWatchGroups();
+    renderWatch(true);
+  }
+
+  function renameWatchGroup() {
+    const g = activeWatchGroup();
+    if (!g) return;
+    const name = window.prompt("群組名稱", g.name || "");
+    if (name == null) return;
+    g.name = String(name).trim().slice(0, 16) || g.name;
+    scheduleSave();
+    paintWatchGroups();
+  }
+
+  function deleteWatchGroup() {
+    flushWatchToGroup();
+    if (!(book.watchGroups || []).length || book.watchGroups.length <= 1) return;
+    const g = activeWatchGroup();
+    if (!g) return;
+    if (!window.confirm("刪除群組「" + g.name + "」？群組內標的一併移除。")) return;
+    book.watchGroups = book.watchGroups.filter(function (row) { return row.id !== g.id; });
+    book.watchGroupId = book.watchGroups[0].id;
+    loadWatchFromGroup();
+    scheduleSave();
+    paintWatchGroups();
+    renderWatch(true);
+  }
+
+  function toggleWatchMode() {
+    book.watchMode = isWatchMini() ? "full" : "mini";
+    scheduleSave();
+    syncWatchModeBtn();
+    renderWatch(true);
   }
 
   async function loadBook() {
@@ -1432,8 +1571,8 @@
 
   function paintWatchPnl(idx) {
     const box = $("watch-list");
-    if (!box) return;
-    const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
+    if (!box || isWatchMini()) return;
+    const row = box.querySelector('[data-watch-row="' + idx + '"]');
     const item = book.watch[idx];
     if (!row || !item) return;
     const price = Number(row.getAttribute("data-price"));
@@ -1456,7 +1595,7 @@
     let sum = 0;
     let n = 0;
     book.watch.forEach(function (item, idx) {
-      const row = box && box.querySelector('tr[data-watch-row="' + idx + '"]');
+      const row = box && box.querySelector('[data-watch-row="' + idx + '"]');
       const price = row ? Number(row.getAttribute("data-price")) : NaN;
       const pnl = watchPnl(price, item.cost, item.shares, item.code);
       if (pnl.value == null || !isFinite(pnl.value)) return;
@@ -1482,7 +1621,7 @@
 
   function applyWatchQuoteRow(box, m, idx) {
     const item = book.watch[idx];
-    const row = box.querySelector('tr[data-watch-row="' + idx + '"]');
+    const row = box.querySelector('[data-watch-row="' + idx + '"]');
     if (!row || !item) return;
     // 只在缺中文名時才補名稱，绝不让 Yahoo 英文覆写
     const nextName = M.preferTwName
@@ -1491,14 +1630,17 @@
     if (nextName && nextName !== item.name) {
       item.name = nextName;
       const btn = row.querySelector("[data-open-watch]");
-      if (btn) btn.textContent = nextName + (item.code || "");
+      const nameEl = row.querySelector("[data-watch-name]");
+      const label = nextName + (item.code || "");
+      if (btn && !nameEl) btn.textContent = label;
+      if (nameEl) nameEl.textContent = label;
     }
     const priceCell = row.querySelector("[data-watch-price]");
     if (priceCell) {
       if (m && m.price != null && isFinite(m.price)) {
         const cls = pctClass((m.pct || 0) / 100);
         const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
-          " " + (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
+          (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
         priceCell.className = "watch-px watch-num " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
           (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
@@ -1509,7 +1651,7 @@
         row.setAttribute("data-price", "");
       }
     }
-    paintWatchPnl(idx);
+    if (!isWatchMini()) paintWatchPnl(idx);
   }
 
   // 只更新目前價／損益／總損益／籌碼／突支，不重繪整張表（避免名稱變英文、輸入被清掉）
@@ -1521,17 +1663,18 @@
       return;
     }
     const gen = (paintWatchQuotes.gen = (paintWatchQuotes.gen || 0) + 1);
+    const mini = isWatchMini();
     try {
       const got = await Promise.all([
         M.watchBoard(book.watch),
-        M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null),
-        M.watchLevels ? M.watchLevels(book.watch).catch(function () { return null; }) : Promise.resolve(null)
+        !mini && M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null),
+        !mini && M.watchLevels ? M.watchLevels(book.watch).catch(function () { return null; }) : Promise.resolve(null)
       ]);
       if (gen !== paintWatchQuotes.gen) return;
       const rows = got[0] || [];
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      if (got[1]) paintWatchChipRows(box, got[1]);
-      if (got[2]) paintWatchLevelRows(box, got[2]);
+      if (!mini && got[1]) paintWatchChipRows(box, got[1]);
+      if (!mini && got[2]) paintWatchLevelRows(box, got[2]);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     } catch (err) {
@@ -1540,19 +1683,19 @@
     }
   }
 
-  function renderWatch(force) {
-    const box = $("watch-list");
-    if (!book.watch.length) {
-      box.innerHTML = '<p class="note">自選股還是空的。按右上角「加入」用代號或庫存圖新增。</p>';
-      paintWatchTotal();
-      return;
-    }
-    // 表格已在且非強制重建：只刷新報價
-    if (!force && box.querySelector("[data-watch-row]")) {
-      paintWatchQuotes();
-      return;
-    }
-    const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
+  function renderWatchMini(box) {
+    box.innerHTML = '<div class="watch-mini-grid">' + book.watch.map(function (item, idx) {
+      if (item.market) item.market = twName(item.market);
+      const label = watchLabel(item);
+      return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
+        '" data-open-watch="' + idx + '" data-price="">' +
+        '<span class="watch-mini-name" data-watch-name="' + idx + '">' + esc(label) + "</span>" +
+        '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
+        "</button>";
+    }).join("") + "</div>";
+  }
+
+  function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       "<th>標的</th><th>目前</th><th>買價</th><th>損益</th><th>股數</th><th></th><th>通知</th>" +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
@@ -1596,18 +1739,38 @@
           "</label></div></td>" +
           "</tr>";
       }).join("") + "</tbody></table></div>";
+  }
+
+  function renderWatch(force) {
+    const box = $("watch-list");
+    paintWatchGroups();
+    if (!book.watch.length) {
+      box.innerHTML = '<p class="note">這個群組還是空的。按右上角「加入」用代號或庫存圖新增。</p>';
+      paintWatchTotal();
+      return;
+    }
+    const mini = isWatchMini();
+    // 表格／極簡卡已在且非強制重建：只刷新報價
+    if (!force && box.querySelector("[data-watch-row]") &&
+        !!box.querySelector(".watch-mini-grid") === mini) {
+      paintWatchQuotes();
+      return;
+    }
+    const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
+    if (mini) renderWatchMini(box);
+    else renderWatchFull(box);
     Promise.all([
       M.watchBoard(book.watch),
-      M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} }),
-      M.watchLevels ? M.watchLevels(book.watch).catch(function () { return []; }) : Promise.resolve([])
+      !mini && M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} }),
+      !mini && M.watchLevels ? M.watchLevels(book.watch).catch(function () { return []; }) : Promise.resolve([])
     ]).then(function (got) {
       if (gen !== renderWatch.gen) return;
       const rows = got[0] || [];
-      const chips = got[1] || { date: "", byCode: {} };
-      const levels = got[2] || [];
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      paintWatchChipRows(box, chips);
-      paintWatchLevelRows(box, levels);
+      if (!mini) {
+        paintWatchChipRows(box, got[1] || { date: "", byCode: {} });
+        paintWatchLevelRows(box, got[2] || []);
+      }
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
@@ -1758,6 +1921,7 @@
       found.market = item.market;
     } else book.watch.push(item);
     syncHolding(found || item);
+    flushWatchToGroup();
     scheduleSave();
     renderWatch(true);
   }
@@ -2784,10 +2948,16 @@
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "watch-json-btn") $("watch-json").click();
+    else if (t.id === "watch-mode-toggle") toggleWatchMode();
+    else if (t.id === "watch-group-add") addWatchGroup();
+    else if (t.id === "watch-group-rename") renameWatchGroup();
+    else if (t.id === "watch-group-del") deleteWatchGroup();
+    else if (t.dataset.watchGroup) switchWatchGroup(t.dataset.watchGroup);
     else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
       const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
       if (removed) book.holdings = book.holdings.filter(function (item) { return item.secid !== removed.secid; });
+      flushWatchToGroup();
       scheduleSave();
       renderWatch(true);
     } else if (t.dataset.delHold != null) {
