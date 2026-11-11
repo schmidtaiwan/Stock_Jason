@@ -2565,9 +2565,33 @@
   }
 
   async function misFetchRaw(exCh) {
+    // 瀏覽器直連 MIS 常被 CORS 擋；優先 jina，單次逾時要短，避免加權卡在「讀取中」
     const abs = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=" +
       encodeURIComponent(exCh) + "&json=1&delay=0";
-    return twseFetchJson(abs);
+    const urls = [
+      "https://r.jina.ai/" + abs,
+      abs,
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(abs)
+    ];
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 5000) : 0;
+        const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
+        if (timer) clearTimeout(timer);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        if (start < 0 || end <= start) continue;
+        const json = JSON.parse(text.slice(start, end + 1));
+        if (json && (json.msgArray || String(json.rtcode) === "0000")) return json;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error("MIS 報價讀取失敗");
   }
 
   function misCacheGet(code) {
@@ -2646,6 +2670,28 @@
       delayMin: 0,
       source: "mis"
     };
+  }
+
+  function withTimeout(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      let done = false;
+      const timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error("timeout"));
+      }, ms);
+      Promise.resolve(promise).then(function (value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      }, function (err) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
   }
 
   async function watchBoard(items) {
@@ -2727,9 +2773,9 @@
   }
 
   async function twiiQuote() {
-    // 優先證交所 MIS 加權（tse_t00），幾乎即時；失敗再退 Yahoo
+    // 優先證交所 MIS 加權（tse_t00）；最多等 6 秒，逾時立刻改 Yahoo，避免 UI 卡死
     try {
-      const mis = await misTwiiQuote();
+      const mis = await withTimeout(misTwiiQuote(), 6000);
       if (mis && mis.price > 0) return mis;
     } catch (errMis) { /* 改走 Yahoo */ }
     // ^TWII 的 meta.previousClose 常是舊值（會算出 +3000 點這種錯漲跌），改用近兩日日線

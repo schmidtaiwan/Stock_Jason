@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 78;
+  const PAGE_BUILD = 79;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -309,16 +309,18 @@
     if (twiiBusy && !force) return;
     const seq = ++twiiSeq;
     twiiBusy = true;
-    if (force) {
+    const hadPrice = priceEl.textContent && priceEl.textContent !== "—" && priceEl.textContent !== "…";
+    if (force && !hadPrice) {
       priceEl.textContent = "…";
       priceEl.className = "";
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
       if ($("twii-src")) $("twii-src").textContent = "來源 …";
+    } else if (force && $("twii-src") && !hadPrice) {
+      $("twii-src").textContent = "來源 …";
     }
     try {
-      if (M.bustLiveCaches) M.bustLiveCaches(["100.TWII"]);
       const q = await M.twiiQuote();
       if (seq !== twiiSeq) return;
       const cls = pctClass((q.pct || 0) / 100);
@@ -334,12 +336,16 @@
       paintTwiiSource(q);
     } catch (err) {
       if (seq !== twiiSeq) return;
-      priceEl.textContent = "—";
-      priceEl.className = "";
-      chgEl.className = "twii-chg";
-      chgEl.textContent = "加權讀取失敗";
+      if (!hadPrice) {
+        priceEl.textContent = "—";
+        priceEl.className = "";
+        chgEl.className = "twii-chg";
+        chgEl.textContent = "加權讀取失敗";
+        paintTwiiSource(null);
+      } else {
+        chgEl.textContent = (chgEl.textContent || "").replace(/（更新失敗）$/, "") + "（更新失敗）";
+      }
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
-      paintTwiiSource(null);
     } finally {
       if (seq === twiiSeq) twiiBusy = false;
     }
