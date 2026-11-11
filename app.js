@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 45;
+  const PAGE_BUILD = 46;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -902,15 +902,15 @@
       box.innerHTML = "";
       return;
     }
-    const rows = M.kPatterns(item.bars).slice(0, 12);
+    const rows = M.kPatterns(item.bars).slice(0, 16);
+    const ref = '<p class="fine">型態對照 <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=291749" target="_blank" rel="noopener">CMoney 15種基本K線</a>（大陽／大陰／十字／錘頭／抵抗／阻力／墓碑／試探／一字／T字／白三兵／三烏鴉／黃昏之星等）。偏多／偏空是提示，不是下單建議。</p>';
     if (!rows.length) {
       box.hidden = false;
-      box.innerHTML = "<h3>K線分析</h3><p class=\"fine\">這段區間沒抓到明顯型態（長紅／長黑／十字／錘頭／吞沒等）。</p>";
+      box.innerHTML = "<h3>K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯型態。</p>';
       return;
     }
     box.hidden = false;
-    box.innerHTML = "<h3>K線分析 · " + esc(item.name) + "</h3>" +
-      '<p class="fine">依可見K線辨識常見型態；偏多／偏空是型態提示，不是下單建議。</p><ul>' +
+    box.innerHTML = "<h3>K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
       rows.map(function (row) {
         const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
         return "<li><span class=\"k-date\">" + esc(row.date.slice(5)) + "</span>" +

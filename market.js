@@ -3397,12 +3397,13 @@
     return list;
   }
 
-  // K 線型態（台股慣例：紅漲綠跌）。回傳由新到舊。
+  // K 線型態（台股紅漲綠跌）。對照 CMoney 15 種基本形態 + 常見組合。回傳由新到舊。
+  // 參考：https://www.cmoney.tw/notes/note-detail.aspx?nid=291749
   function kPatterns(bars) {
     const rows = (bars || []).filter(function (b) {
       return b && isFinite(b.o) && isFinite(b.h) && isFinite(b.l) && isFinite(b.c);
     });
-    if (rows.length < 3) return [];
+    if (rows.length < 2) return [];
     function bodyOf(b) { return Math.abs(b.c - b.o); }
     function avgBody(i, n) {
       let sum = 0;
@@ -3423,7 +3424,19 @@
         detail: detail
       });
     }
-    for (let i = 1; i < rows.length; i++) {
+    function nearZero(v, range) {
+      return v <= Math.max(range * 0.05, 1e-9);
+    }
+    function recentFell(i) {
+      const recent = rows.slice(Math.max(0, i - 5), i);
+      return recent.length >= 2 && recent[0].c > recent[recent.length - 1].c;
+    }
+    function recentRose(i) {
+      const recent = rows.slice(Math.max(0, i - 5), i);
+      return recent.length >= 2 && recent[0].c < recent[recent.length - 1].c;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
       const b = rows[i];
       const o = b.o;
       const h = b.h;
@@ -3438,44 +3451,100 @@
       const ab = avgBody(i, 14) || body;
       const up = c > o;
       const down = c < o;
-      const prev = rows[i - 1];
-      const prevBody = bodyOf(prev);
-      const prevUp = prev.c > prev.o;
-      const prevDown = prev.c < prev.o;
+      const flat = !up && !down;
+      const noUp = nearZero(upper, range);
+      const noDn = nearZero(lower, range);
+      const longBody = body >= Math.max(ab * 1.6, range * 0.55) && body / range >= 0.55;
 
-      if (body >= Math.max(ab * 2.1, range * 0.55) && body / range >= 0.55) {
+      // 1–12 單K（由嚴到寬，一棒通常只掛一個主型態）
+      if (nearZero(range, Math.abs(c) || 1) || (nearZero(body, range) && noUp && noDn)) {
+        push(i, "一字線", "中", "開高低收幾乎同一價，冷門或鎖死常見。");
+      } else if (flat && noUp && !noDn) {
+        push(i, "T字線", recentFell(i) ? "多" : "中",
+          "開收＝最高，曾下殺後拉回；低檔較偏多。");
+      } else if (flat && noDn && !noUp) {
+        push(i, "倒T字線", recentRose(i) ? "空" : "中",
+          "開收＝最低，曾衝高後回落；高檔較偏空（墓碑十字）。");
+      } else if (flat || body / range <= 0.08) {
+        push(i, "十字線", "中",
+          upper >= lower * 1.4 ? "上影較長，多頭攻勢受阻。" :
+            lower >= upper * 1.4 ? "下影較長，空頭殺勢受阻。" :
+              "多空暫時均衡。");
+      } else if (up && noUp && noDn && longBody) {
+        push(i, "大陽線", "多", "幾乎無影線的長紅K，買方一路主導到收盤。");
+      } else if (down && noUp && noDn && longBody) {
+        push(i, "大陰線", "空", "幾乎無影線的長黑K，賣方一路主導到收盤。");
+      } else if (up && noUp && lower >= Math.max(body * 1.2, range * 0.35)) {
+        push(i, "錘子型", recentFell(i) ? "多" : "中",
+          "紅K僅下影，先跌後漲；下跌後出現較有止跌意味。");
+      } else if (down && noUp && lower >= Math.max(body * 1.0, range * 0.3)) {
+        push(i, "下跌抵抗型", "多", "黑K僅下影，低檔有人接；後市可能反彈。");
+      } else if (up && noDn && upper >= Math.max(body * 1.0, range * 0.3)) {
+        push(i, "上升阻力型", "多", "紅K僅上影，上漲中遇賣壓，整體仍偏多。");
+      } else if (down && noDn && upper >= Math.max(body * 1.2, range * 0.35)) {
+        push(i, "先漲後跌型", "空", "黑K僅上影（墓碑型），衝高後被空頭壓回。");
+      } else if (up && !noUp && !noDn) {
+        if (longBody) {
+          push(i, "長紅棒", "多", "實體放大的紅K，買盤偏強。");
+        } else {
+          push(i, "反轉試探型", recentRose(i) ? "空" : recentFell(i) ? "多" : "中",
+            "紅K帶上下影；大漲後偏警戒、大跌後偏反彈試探。");
+        }
+      } else if (down && !noUp && !noDn) {
+        if (longBody) {
+          push(i, "長黑棒", "空", "實體放大的黑K，賣壓偏重。");
+        } else {
+          push(i, "彈升試探型", recentFell(i) ? "多" : recentRose(i) ? "空" : "中",
+            "黑K帶上下影；大跌後偏承接、大漲後偏轉弱。");
+        }
+      } else if (longBody) {
         push(i, up ? "長紅棒" : "長黑棒", up ? "多" : "空",
           up ? "實體明顯放大，買盤強。" : "實體明顯放大，賣壓重。");
       }
-      if (body / range <= 0.1) {
-        push(i, "十字線", "中", "實體極小，多空猶豫。");
-      } else if (body / range <= 0.32 && upper > body * 0.55 && lower > body * 0.55) {
-        push(i, "紡錘線", "中", "上下影線都長，力道發散。");
-      }
-      if (body > 0 && lower >= body * 2 && upper <= body * 0.5) {
-        const recent = rows.slice(Math.max(0, i - 5), i);
-        const fell = recent.length >= 2 && recent[0].c > recent[recent.length - 1].c;
-        push(i, fell ? "錘頭" : "上吊線", fell ? "多" : "空",
-          fell ? "下跌後下影線長，有止跌意味。" : "上漲後下影線長，留意轉弱。");
-      }
-      if (body > 0 && upper >= body * 2 && lower <= body * 0.5) {
-        push(i, "射擊之星", "空", "上影線長，高檔賣壓。");
-      }
-      if (prevDown && up && o <= prev.c && c >= prev.o && body > prevBody * 1.05) {
-        push(i, "紅K吞沒", "多", "紅K吃掉前一根黑K實體。");
-      }
-      if (prevUp && down && o >= prev.c && c <= prev.o && body > prevBody * 1.05) {
-        push(i, "黑K吞沒", "空", "黑K吃掉前一根紅K實體。");
+
+      // 組合型態
+      if (i >= 1) {
+        const prev = rows[i - 1];
+        const prevBody = bodyOf(prev);
+        const prevUp = prev.c > prev.o;
+        const prevDown = prev.c < prev.o;
+        if (prevDown && up && o <= prev.c && c >= prev.o && body > prevBody * 1.05) {
+          push(i, "紅K吞沒", "多", "紅K吃掉前一根黑K實體。");
+        }
+        if (prevUp && down && o >= prev.c && c <= prev.o && body > prevBody * 1.05) {
+          push(i, "黑K吞沒", "空", "黑K吃掉前一根紅K實體。");
+        }
       }
       if (i >= 2) {
         const a = rows[i - 2];
         const m = rows[i - 1];
         const ab3 = avgBody(i, 14) || body;
-        if (a.c > a.o && m.c > m.o && up && m.c > a.c && c > m.c && bodyOf(a) > ab3 * 0.6 && bodyOf(m) > ab3 * 0.6 && body > ab3 * 0.6) {
-          push(i, "三白兵", "多", "連續三根紅K抬高，攻勢延續。");
+        const aUp = a.c > a.o;
+        const mUp = m.c > m.o;
+        const aDown = a.c < a.o;
+        const mDown = m.c < m.o;
+        // 白三兵／三隻烏鴉（CMoney）
+        if (aUp && mUp && up && m.c > a.c && c > m.c &&
+            bodyOf(a) > ab3 * 0.55 && bodyOf(m) > ab3 * 0.55 && body > ab3 * 0.55) {
+          push(i, "白三兵", "多", "連續三根紅K抬高，多頭主導。");
         }
-        if (a.c < a.o && m.c < m.o && down && m.c < a.c && c < m.c && bodyOf(a) > ab3 * 0.6 && bodyOf(m) > ab3 * 0.6 && body > ab3 * 0.6) {
-          push(i, "三烏鴉", "空", "連續三根黑K走低，賣壓延續。");
+        if (aDown && mDown && down && m.c < a.c && c < m.c &&
+            bodyOf(a) > ab3 * 0.55 && bodyOf(m) > ab3 * 0.55 && body > ab3 * 0.55) {
+          push(i, "三隻烏鴉", "空", "連續三根黑K走低，空頭主導。");
+        }
+        // 黃昏之星：長紅 → 小實體 → 長黑，收進第一根實體中段
+        const midBody = bodyOf(m);
+        const aBody = bodyOf(a);
+        const aTop = Math.max(a.o, a.c);
+        const aBot = Math.min(a.o, a.c);
+        if (aUp && aBody > ab3 * 0.9 && midBody <= Math.max(aBody * 0.45, ab3 * 0.5) &&
+            down && body > ab3 * 0.7 && c < (aBot + aTop) / 2 && c < m.c) {
+          push(i, "黃昏之星", "空", "長紅後出現小K再長黑，上漲末端轉弱訊號。");
+        }
+        // 晨星（黃昏之星的多頭對應，實務常用）
+        if (aDown && aBody > ab3 * 0.9 && midBody <= Math.max(aBody * 0.45, ab3 * 0.5) &&
+            up && body > ab3 * 0.7 && c > (aBot + aTop) / 2 && c > m.c) {
+          push(i, "晨星", "多", "長黑後出現小K再長紅，下跌末端轉強訊號。");
         }
       }
     }
