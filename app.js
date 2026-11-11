@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 74;
+  const PAGE_BUILD = 75;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
