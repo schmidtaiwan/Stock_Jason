@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 75;
+  const PAGE_BUILD = 76;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -663,7 +663,7 @@
     const headerLogin = $("login");
     if (headerLogin) headerLogin.disabled = true;
     try {
-      const account = await D.login({ prompt: "select_account" });
+      const account = await D.login({ prompt: "select_account", hint: "" });
       if (!D.isAllowed(account.email)) {
         const want = D.allowedEmails().join(" 或 ");
         $("gate-msg").textContent = "現在登入的是 " + account.email + "。請改用 " + want + "。";
@@ -671,14 +671,23 @@
         paintChrome();
         return;
       }
+      // 先顯示主畫面，避免雲端／行情等待時看起來像登入後白屏卡住
       $("gate-msg").textContent = "";
       $("gate").hidden = true;
       $("app").hidden = false;
       paintChrome(true);
-      await paintTwii(true);
-      await loadBook();
+      if ($("who")) $("who").textContent = account.email + " · 正在同步自選…";
+      paintTwii(true).catch(function () { /* 失敗時 paintTwii 已寫狀態 */ });
+      try {
+        await loadBook();
+      } catch (bookErr) {
+        book = emptyBook();
+        if ($("who")) $("who").textContent = "讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr);
+      }
       paintChrome(true);
       if (state.view === "chart") loadChart();
+      else if (state.view === "pulse") loadPulse();
+      else if (state.view === "watch") renderWatch(true);
     } catch (err) {
       $("gate-msg").textContent = D.friendly(err);
       if ($("app") && !$("app").hidden) {

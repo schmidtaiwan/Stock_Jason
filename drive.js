@@ -277,22 +277,25 @@
     if (folderId) return folderId;
     const name = folderName();
     const owner = preferredEmail();
+    const me = accountEmail();
+    if (!isAllowed(me)) {
+      throw new Error("這個帳號沒有權限讀寫自選資料。");
+    }
     const q = "mimeType='application/vnd.google-apps.folder' and name='" + qEscape(name) + "' and trashed=false";
     const found = await listFiles(q);
     const owned = found.filter(function (file) {
       const emails = (file.owners || []).map(function (item) {
         return String(item.emailAddress || "").trim().toLowerCase();
       });
-      return emails.indexOf(owner) >= 0 || (file.ownedByMe && accountEmail() === owner);
+      return emails.indexOf(owner) >= 0 || (file.ownedByMe && me === owner);
     });
     owned.sort(function (a, b) {
       return String(a.createdTime || "").localeCompare(String(b.createdTime || ""));
     });
-    let id = owned[0] && owned[0].id;
+    // 優先主帳號資料夾；否則用目前帳號看得到的同名資料夾（含共用）
+    let id = (owned[0] && owned[0].id) || (found[0] && found[0].id) || "";
     if (!id) {
-      if (accountEmail() !== owner) {
-        throw new Error("還沒找到 " + owner + " 的「" + name + "」資料夾。請先用那個帳號登入一次。");
-      }
+      // 編輯者也可先在自己雲端建一份，避免登入後卡死無畫面
       const res = await driveFetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -306,7 +309,7 @@
       const created = await res.json();
       id = created.id;
     }
-    if (accountEmail() === owner) {
+    if (me === owner && id) {
       const others = allowedEmails().filter(function (email) { return email !== owner; });
       for (let i = 0; i < others.length; i++) {
         try { await grantWriter(id, others[i]); } catch (e) { console.error(e); }
@@ -397,8 +400,10 @@
     folderId = "";
     fileCache = new Map();
     clearSession();
-    const hint = opts.hint || preferredEmail() || "";
+    // select_account 不要帶主帳 hint，否則編輯者帳號常被鎖住或回調卡住
     const prompt = opts.prompt != null ? opts.prompt : "select_account";
+    const hint = opts.hint != null ? opts.hint
+      : (prompt === "select_account" ? "" : (preferredEmail() || ""));
     return requestToken(prompt, hint).then(function () {
       return fetchAccount();
     });
