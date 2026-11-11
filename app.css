@@ -534,16 +534,31 @@ textarea { min-height: 120px; resize: vertical; }
   text-align: left;
   min-height: 28px;
 }
-.watch-lv {
-  flex: 0 0 auto;
-  font-size: 12px;
+.watch-col-price {
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.watch-col-price .watch-lv {
+  display: block;
+  font-size: 15px; /* 目前價 17px − 2pt */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  line-height: 1.2;
+  line-height: 1.15;
+  min-height: 1.15em;
 }
-.watch-lv-brk { font-size: 13px; }
-.watch-lv-sup { font-size: 11px; }
+.watch-px {
+  font-size: 17px; /* 原約 13px + 4pt */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.watch-px small {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+}
 .watch-chips {
   display: flex;
   flex-wrap: wrap;
@@ -567,11 +582,6 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-num {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-.watch-num small {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
 }
 .watch-input {
   width: 72px;

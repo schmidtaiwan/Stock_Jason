@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 56;
+  const PAGE_BUILD = 57;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1359,12 +1359,12 @@
         const cls = pctClass((m.pct || 0) / 100);
         const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
           " " + (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
-        priceCell.className = "watch-num " + cls;
+        priceCell.className = "watch-px watch-num " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
           (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
         row.setAttribute("data-price", String(m.price));
       } else {
-        priceCell.className = "watch-num";
+        priceCell.className = "watch-px watch-num";
         priceCell.textContent = "—";
         row.setAttribute("data-price", "");
       }
@@ -1431,12 +1431,13 @@
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name"><div class="watch-name-row">' +
-          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button>" +
-          '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span></div>' +
+          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button></div>" +
           '<div class="watch-chip-row"><div class="watch-chips" data-watch-chips="' + idx + '">' +
-          '<span class="note">籌碼…</span></div>' +
-          '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></div></td>' +
-          '<td class="watch-num watch-col-price" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
+          '<span class="note">籌碼…</span></div></div></td>' +
+          '<td class="watch-col-price">' +
+          '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span>' +
+          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div>' +
+          '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></td>' +
           '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
@@ -1472,7 +1473,7 @@
     }).catch(function () {
       if (gen !== renderWatch.gen) return;
       box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
-        cell.className = "watch-num";
+        cell.className = "watch-px watch-num";
         cell.textContent = "—";
       });
       paintWatchTotal();
