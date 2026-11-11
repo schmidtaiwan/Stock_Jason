@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 88;
+  const PAGE_BUILD = 89;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2761,6 +2761,14 @@
     if (/野村台灣/.test(n)) n = "主動野村台灣50";
     if (/統一台股增長/.test(n)) n = "主動統一台股增長";
     if (/統一升級/.test(n)) n = "主動統一升級50";
+    if (/統一\s*FANG|FANG\+|FANG＋/i.test(n)) n = "統一FANG+";
+    if (/國泰永續|永續高股息/.test(n)) n = "國泰永續高股息";
+    if (/復華台灣科技|科技優息/.test(n)) n = "復華台灣科技優息";
+    if (/^台達電/.test(n)) n = "台達電";
+    if (/^台積電/.test(n)) n = "台積電";
+    if (/^金寶/.test(n)) n = "金寶";
+    if (/^吉茂/.test(n)) n = "吉茂";
+    if (/^永豐金/.test(n)) n = "永豐金";
     if (/^廣達/.test(n)) n = "廣達";
     if (/^欣興/.test(n)) n = "欣興";
     if (/^智邦/.test(n)) n = "智邦";
@@ -2891,7 +2899,7 @@
       }
       const parsed = M.parseInventory(texts.join("\n"));
       if (!parsed.length) {
-        $("watch-status").textContent = "沒讀到代號和股數。請改用上方搜尋，或換一張較清晰、直式的庫存表。";
+        $("watch-status").textContent = "沒讀到商品與股數。請上傳較清晰的庫存／未實現損益截圖，或改用上方搜尋。";
         importRows = [];
         renderImport();
         return;
