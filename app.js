@@ -1,6 +1,7 @@
 (function () {
-  const PAGE_BUILD = 61;
+  const PAGE_BUILD = 62;
   const PAGE_DATE = "2026-11-11";
+  let chartDetailsOn = true;
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -926,24 +927,73 @@
 
   function drawCandles(ctx, s, xOf, yOf, n) {
     const slot = n <= 1 ? 10 : Math.abs(xOf(Math.min(1, n - 1)) - xOf(0));
-    const w = Math.max(2, Math.min(12, slot * 0.72));
+    const w = Math.max(3, Math.min(14, slot * 0.72));
+    let prevC = null;
+    // 台股五分 K 常開＝高＝低＝收，補前收當影線並畫收盤連線，才看得到走勢
     (s.ohlc || []).forEach(function (bar, i) {
       if (!bar) return;
-      const up = bar.c >= bar.o;
+      let o = bar.o;
+      let h = bar.h;
+      let l = bar.l;
+      const c = bar.c;
+      if (Math.abs(h - l) < 1e-9 && prevC != null && Math.abs(prevC - c) > 1e-9) {
+        o = prevC;
+        h = Math.max(prevC, c);
+        l = Math.min(prevC, c);
+      }
+      const up = c >= o;
       const color = up ? "#ff1f1f" : "#3dbe7a";
       const x = xOf(i);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = Math.max(1.5, Math.min(2.5, w * 0.22));
       ctx.beginPath();
-      ctx.moveTo(x, yOf(bar.h));
-      ctx.lineTo(x, yOf(bar.l));
+      ctx.moveTo(x, yOf(h));
+      ctx.lineTo(x, yOf(l));
       ctx.stroke();
-      const y1 = yOf(Math.max(bar.o, bar.c));
-      const y2 = yOf(Math.min(bar.o, bar.c));
-      const bh = Math.max(1, y2 - y1);
+      const y1 = yOf(Math.max(o, c));
+      const y2 = yOf(Math.min(o, c));
+      let bh = y2 - y1;
       ctx.fillStyle = color;
-      ctx.fillRect(x - w / 2, y1, w, bh);
+      if (bh < 2.5) {
+        const mid = (y1 + y2) / 2;
+        bh = 2.5;
+        ctx.fillRect(x - w / 2, mid - bh / 2, w, bh);
+      } else {
+        ctx.fillRect(x - w / 2, y1, w, bh);
+      }
+      prevC = c;
     });
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(231, 238, 246, 0.45)";
+    ctx.lineWidth = 1.25;
+    let open = false;
+    (s.ohlc || []).forEach(function (bar, i) {
+      if (!bar) { open = false; return; }
+      const x = xOf(i);
+      const y = yOf(bar.c);
+      if (!open) { ctx.moveTo(x, y); open = true; }
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  function syncChartDetailsUi() {
+    const view = $("view-chart");
+    const btn = $("chart-detail-toggle");
+    const details = $("chart-details");
+    const extra = $("stock-detail");
+    if (view) view.classList.toggle("chart-compact", !chartDetailsOn);
+    if (btn) {
+      btn.setAttribute("aria-pressed", chartDetailsOn ? "true" : "false");
+      btn.textContent = chartDetailsOn ? "細部資料" : "顯示細部";
+    }
+    if (details) details.hidden = !chartDetailsOn;
+    if (extra && !chartDetailsOn) {
+      // 隱藏時一併收起個股明細區塊的可見細項（本身可能已 hidden）
+      extra.classList.add("chart-details-collapsed");
+    } else if (extra) {
+      extra.classList.remove("chart-details-collapsed");
+    }
   }
 
   function draw() {
@@ -969,10 +1019,18 @@
     let max = -Infinity;
     plot.series.forEach(function (s) {
       if (candle && s.ohlc) {
+        let prevC = null;
         s.ohlc.forEach(function (bar) {
           if (!bar) return;
-          min = Math.min(min, bar.l);
-          max = Math.max(max, bar.h);
+          let h = bar.h;
+          let l = bar.l;
+          if (Math.abs(h - l) < 1e-9 && prevC != null && Math.abs(prevC - bar.c) > 1e-9) {
+            h = Math.max(prevC, bar.c);
+            l = Math.min(prevC, bar.c);
+          }
+          min = Math.min(min, l, bar.c);
+          max = Math.max(max, h, bar.c);
+          prevC = bar.c;
         });
         return;
       }
@@ -2602,6 +2660,9 @@
     } else if (t.dataset.chartStyle) {
       setChartStyle(t.dataset.chartStyle);
       loadChart();
+    } else if (t.id === "chart-detail-toggle") {
+      chartDetailsOn = !chartDetailsOn;
+      syncChartDetailsUi();
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
     else if (t.dataset.openWatch != null) openSymbol(book.watch[Number(t.dataset.openWatch)]);
@@ -2852,6 +2913,7 @@
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
   buildToggles();
+  syncChartDetailsUi();
   bindToolMenuDrag();
   D.ready().catch(function () { /* 登入時再提示 */ });
   if (D.account()) {

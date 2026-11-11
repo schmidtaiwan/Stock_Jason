@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=61">
+  <link rel="stylesheet" href="app.css?v=62">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -84,17 +84,20 @@
             <button type="button" class="chip" data-chart-style="line" aria-pressed="true">線圖</button>
             <button type="button" class="chip" data-chart-style="candle" aria-pressed="false">K線</button>
           </div>
+          <button id="chart-detail-toggle" class="ghost chart-detail-btn" type="button" aria-pressed="true">細部資料</button>
         </div>
-        <div class="card">
+        <div class="card chart-card">
           <canvas id="chart" width="640" height="520"></canvas>
           <p id="chart-status" class="status" role="status"></p>
-          <p id="k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思；也可點下方型態列反白。</p>
-          <div id="k-pick" class="k-pick" hidden></div>
-          <div id="legend" class="legend"></div>
-          <div id="k-patterns" class="k-patterns" hidden></div>
-          <div id="foreign" class="foreign"></div>
+          <div id="chart-details" class="chart-details">
+            <p id="k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思；也可點下方型態列反白。</p>
+            <div id="k-pick" class="k-pick" hidden></div>
+            <div id="legend" class="legend"></div>
+            <div id="k-patterns" class="k-patterns" hidden></div>
+            <div id="foreign" class="foreign"></div>
+          </div>
         </div>
-        <div id="stock-detail" class="stock-detail" hidden></div>
+        <div id="stock-detail" class="stock-detail chart-details-extra" hidden></div>
         <p id="hover" class="tip" hidden></p>
       </section>
 
@@ -391,10 +394,10 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=61"></script>
-  <script src="drive.js?v=61"></script>
-  <script src="sakata.js?v=61"></script>
-  <script src="market.js?v=61"></script>
-  <script src="app.js?v=61"></script>
+  <script src="google_config.js?v=62"></script>
+  <script src="drive.js?v=62"></script>
+  <script src="sakata.js?v=62"></script>
+  <script src="market.js?v=62"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>

@@ -196,13 +196,32 @@ main {
 }
 .chart-styles-label {
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--ink);
+  letter-spacing: 0.04em;
 }
 .chart-styles .chips {
   margin: 0;
   flex: 1 1 auto;
+}
+.chart-detail-btn {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  min-height: 32px;
+  white-space: nowrap;
+}
+.chart-detail-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#view-chart.chart-compact canvas {
+  touch-action: pan-y;
+}
+#view-chart.chart-compact .chart-details,
+.stock-detail.chart-details-collapsed {
+  display: none !important;
 }
 .k-select-hint { margin: 6px 0 0; }
 .k-pick {
@@ -269,6 +288,9 @@ main {
   box-shadow: var(--shadow);
 }
 canvas { width: 100%; height: 260px; display: block; touch-action: none; }
+#view-chart.chart-compact .chart-card {
+  padding-bottom: 8px;
+}
 .legend { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .foreign { margin-top: 10px; }
 .stock-detail { margin-top: 12px; display: grid; gap: 10px; }
@@ -530,9 +552,11 @@ textarea { min-height: 120px; resize: vertical; }
   border: 0;
   padding: 0;
   color: var(--ink);
+  font-size: 19px; /* 與目前價 .watch-px 同級 */
   font-weight: 700;
   text-align: left;
   min-height: 28px;
+  line-height: 1.2;
 }
 .watch-col-price {
   text-align: right;

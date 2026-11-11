@@ -263,10 +263,20 @@
     return [];
   }
 
+  function flatOhlcRatio(bars) {
+    if (!bars || !bars.length) return 1;
+    let flat = 0;
+    bars.forEach(function (b) {
+      if (Math.abs(Number(b.h) - Number(b.l)) < 1e-9) flat++;
+    });
+    return flat / bars.length;
+  }
+
   async function fiveMinBars(secid, day) {
     const dayStr = String(day || "").slice(0, 10);
     const id = emSecid(secid);
-    // 東財 5 分 K（台股／指數／美股等）
+    let em = null;
+    // 東財 5 分 K（台股／指數／美股等）；常開＝高＝低＝收，必要時改用 Yahoo
     if (/^(100|105|106|176|177|178|251)\./.test(id)) {
       try {
         const raw = await kline(id, 5, 120, dayStr || undefined);
@@ -275,12 +285,21 @@
         else cut = trimBars(raw, { session: "last" });
         if (cut.length) {
           cut.symbolName = raw.symbolName || cut.symbolName || "";
-          return cut;
+          em = cut;
         }
       } catch (err) { /* Yahoo 備援 */ }
     }
-    const yahoo = await yahooFiveMinBars(secid, dayStr);
-    if (yahoo.length) return yahoo;
+    let yahoo = null;
+    try {
+      yahoo = await yahooFiveMinBars(secid, dayStr);
+    } catch (err) { /* ignore */ }
+    if (em && em.length) {
+      if (!yahoo || !yahoo.length) return em;
+      // 東財幾乎全平棒時優先 Yahoo（仍可能偏平，畫布會用前收合成）
+      if (flatOhlcRatio(em) > 0.85 && flatOhlcRatio(yahoo) < flatOhlcRatio(em)) return yahoo;
+      return em;
+    }
+    if (yahoo && yahoo.length) return yahoo;
     throw new Error("沒有這天的五分 K");
   }
 
