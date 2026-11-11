@@ -553,6 +553,12 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-col-price .watch-lv-sup {
   margin-top: 10px; /* 支靠下區，與漲跌％拉開 */
 }
+.watch-col-price .watch-lv-brk.up {
+  color: #d49292; /* 較 --up 淡 */
+}
+.watch-col-price .watch-lv-sup.down {
+  color: #6eae8e; /* 較 --down 淡 */
+}
 .watch-px {
   font-size: 19px; /* 再 +2pt */
   font-weight: 700;
