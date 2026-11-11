@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 92;
+  const PAGE_BUILD = 93;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -152,6 +152,11 @@
       const out = Object.assign({}, row);
       if (out.name != null) out.name = twName(out.name);
       if (out.market != null) out.market = twName(out.market);
+      const code = String(out.code || (M && M.twStockId ? M.twStockId(out.secid, "") : "") || "")
+        .trim().toUpperCase();
+      if (code) out.code = code;
+      if (!out.secid && code) out.secid = "178." + code;
+      if (!out.market) out.market = "台股";
       return normalizeNotify(out);
     }
     let groups = Array.isArray(src.watchGroups) ? src.watchGroups : null;
@@ -2132,7 +2137,29 @@
     if (!isWatchMini()) paintWatchPnl(idx);
   }
 
-  // 只更新目前價／損益／總損益／籌碼／突支，不重繪整張表（避免名稱變英文、輸入被清掉）
+  function withWatchTimeout(promise, ms, fallback) {
+    return new Promise(function (resolve) {
+      let done = false;
+      const timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        resolve(fallback);
+      }, ms);
+      Promise.resolve(promise).then(function (value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      }, function () {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(fallback);
+      });
+    });
+  }
+
+  // 先畫報價，籌碼／突支背景補；避免被慢請求卡住只顯示「…」
   async function paintWatchQuotes() {
     const box = $("watch-list");
     if (!box || !book.watch.length) return;
@@ -2143,18 +2170,31 @@
     const gen = (paintWatchQuotes.gen = (paintWatchQuotes.gen || 0) + 1);
     const mini = isWatchMini();
     try {
-      const got = await Promise.all([
-        M.watchBoard(book.watch),
-        !mini && M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null),
-        !mini && M.watchLevels ? M.watchLevels(book.watch).catch(function () { return null; }) : Promise.resolve(null)
-      ]);
+      const rows = await withWatchTimeout(M.watchBoard(book.watch), 20000, null);
       if (gen !== paintWatchQuotes.gen) return;
-      const rows = got[0] || [];
+      if (!rows) {
+        const miniPx = isWatchMini() ? " watch-mini-px" : "";
+        box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
+          cell.className = "watch-px watch-num" + miniPx;
+          cell.textContent = "—";
+        });
+        paintWatchTotal();
+        return;
+      }
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      if (!mini && got[1]) paintWatchChipRows(box, got[1]);
-      if (!mini && got[2]) paintWatchLevelRows(box, got[2]);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
+      if (mini) return;
+      withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve(null), 15000, null)
+        .then(function (chips) {
+          if (gen !== paintWatchQuotes.gen || !chips) return;
+          paintWatchChipRows(box, chips);
+        });
+      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve(null), 20000, null)
+        .then(function (levels) {
+          if (gen !== paintWatchQuotes.gen || !levels) return;
+          paintWatchLevelRows(box, levels);
+        });
     } catch (err) {
       if (gen !== paintWatchQuotes.gen) return;
       paintWatchTotal();
@@ -2235,28 +2275,31 @@
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
     if (mini) renderWatchMini(box);
     else renderWatchFull(box);
-    Promise.all([
-      M.watchBoard(book.watch),
-      !mini && M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} }),
-      !mini && M.watchLevels ? M.watchLevels(book.watch).catch(function () { return []; }) : Promise.resolve([])
-    ]).then(function (got) {
+    withWatchTimeout(M.watchBoard(book.watch), 20000, null).then(function (rows) {
       if (gen !== renderWatch.gen) return;
-      const rows = got[0] || [];
-      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      if (!mini) {
-        paintWatchChipRows(box, got[1] || { date: "", byCode: {} });
-        paintWatchLevelRows(box, got[2] || []);
+      if (!rows) {
+        const miniPx = isWatchMini() ? " watch-mini-px" : "";
+        box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
+          cell.className = "watch-px watch-num" + miniPx;
+          cell.textContent = "—";
+        });
+        paintWatchTotal();
+        return;
       }
+      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
-    }).catch(function () {
-      if (gen !== renderWatch.gen) return;
-      const miniPx = isWatchMini() ? " watch-mini-px" : "";
-      box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
-        cell.className = "watch-px watch-num" + miniPx;
-        cell.textContent = "—";
-      });
-      paintWatchTotal();
+      if (mini) return;
+      withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve({ date: "", byCode: {} }), 15000, { date: "", byCode: {} })
+        .then(function (chips) {
+          if (gen !== renderWatch.gen) return;
+          paintWatchChipRows(box, chips || { date: "", byCode: {} });
+        });
+      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve([]), 20000, [])
+        .then(function (levels) {
+          if (gen !== renderWatch.gen) return;
+          paintWatchLevelRows(box, levels || []);
+        });
     });
   }
 

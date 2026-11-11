@@ -2912,6 +2912,16 @@
     });
   }
 
+  function watchItemCode(item) {
+    return String((item && item.code) || twStockId(item && item.secid, "") || "").trim().toUpperCase();
+  }
+
+  function watchItemSecid(item) {
+    if (item && item.secid) return item.secid;
+    const code = watchItemCode(item);
+    return code ? "178." + code : "";
+  }
+
   async function watchBoard(items) {
     const list = items || [];
     if (!list.length) return [];
@@ -2920,37 +2930,49 @@
     const secids = [];
     list.forEach(function (item) {
       if (!item) return;
-      const code = String(item.code || twStockId(item.secid, "") || "").toUpperCase();
-      if (code && codes.indexOf(code) < 0) codes.push(code);
-      if (item.secid) secids.push(item.secid);
+      const code = watchItemCode(item);
+      if (code) {
+        if (!item.code) item.code = code;
+        if (codes.indexOf(code) < 0) codes.push(code);
+      }
+      const secid = watchItemSecid(item);
+      if (secid) {
+        if (!item.secid) item.secid = secid;
+        if (secids.indexOf(secid) < 0) secids.push(secid);
+      }
     });
     bustLiveCaches(secids);
+    // MIS 佇列可能被加權指數佔住；與鉅亨並行，逾時就先用已有結果
     let byCode = {};
+    const misP = withTimeout(misQuotes(codes), 8000).catch(function () { return {}; });
+    const cnyesP = codes.length
+      ? cnyesQuotes(codes).catch(function () { return {}; })
+      : Promise.resolve({});
     try {
-      byCode = await misQuotes(codes);
+      const got = await Promise.all([misP, cnyesP]);
+      const fromMis = got[0] || {};
+      const fromCnyes = got[1] || {};
+      Object.keys(fromCnyes).forEach(function (c) {
+        if (fromCnyes[c] && fromCnyes[c].price > 0) byCode[c] = fromCnyes[c];
+      });
+      Object.keys(fromMis).forEach(function (c) {
+        if (fromMis[c] && fromMis[c].price > 0) byCode[c] = fromMis[c];
+      });
     } catch (err) {
       byCode = {};
     }
-    const missMis = codes.filter(function (c) { return !(byCode[c] && byCode[c].price > 0); });
-    if (missMis.length) {
-      try {
-        const cnyes = await cnyesQuotes(missMis);
-        Object.keys(cnyes).forEach(function (c) {
-          if (!byCode[c] || !(byCode[c].price > 0)) byCode[c] = cnyes[c];
-        });
-      } catch (err) { /* ignore */ }
-    }
     const needYahoo = list.filter(function (item) {
-      const code = String(item && item.code || "").toUpperCase();
+      const code = watchItemCode(item);
       return !(byCode[code] && byCode[code].price > 0);
-    }).map(function (item) { return item.secid; }).filter(Boolean);
+    }).map(function (item) { return watchItemSecid(item); }).filter(Boolean);
     let bySecid = {};
     if (needYahoo.length) {
       try { bySecid = await quoteMap(needYahoo); } catch (err) { bySecid = {}; }
     }
     return list.map(function (item) {
-      const code = String(item && item.code || "").toUpperCase();
-      const q = (code && byCode[code]) || (item && item.secid && bySecid[item.secid]) || null;
+      const code = watchItemCode(item);
+      const secid = watchItemSecid(item);
+      const q = (code && byCode[code]) || (secid && bySecid[secid]) || null;
       const price = q && q.price != null && isFinite(q.price) ? q.price : null;
       const pct = q && q.pct != null && isFinite(q.pct) ? q.pct : null;
       const change = q && q.change != null && isFinite(q.change)
