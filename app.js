@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 46;
+  const PAGE_BUILD = 47;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -223,7 +223,8 @@
       risk: "投資組合風險管理",
       journal: "交易日誌分析師",
       predict: "台股漲跌預測",
-      report: "盤後排序報表"
+      report: "盤後排序報表",
+      advise: "個股綜合研判"
     };
     state.tool = id;
     $("tool-title").textContent = titles[id] || "";
@@ -237,7 +238,7 @@
         note.textContent = "";
       }
     }
-    ["ideas", "tech", "news", "test", "risk", "journal", "predict", "report"].forEach(function (key) {
+    ["ideas", "tech", "news", "test", "risk", "journal", "predict", "report", "advise"].forEach(function (key) {
       $("panel-" + key).hidden = key !== id;
     });
     setView("tool");
@@ -245,7 +246,21 @@
     if (id === "journal") renderJournal();
     if (id === "predict") syncPredictStockBox();
     if (id === "report" && $("report-date")) $("report-date").value = taipeiDay();
+    if (id === "advise") paintAdviseWatch();
     syncMoney();
+  }
+
+  function paintAdviseWatch() {
+    const box = $("advise-watch");
+    if (!box) return;
+    if (!book.watch.length) {
+      box.innerHTML = '<span class="fine">自選還是空的，請搜尋代號。</span>';
+      return;
+    }
+    box.innerHTML = book.watch.map(function (item, idx) {
+      return '<button type="button" class="chip" data-advise-watch="' + idx + '">' +
+        esc((item.name || "") + " " + (item.code || "")) + "</button>";
+    }).join("");
   }
 
   function syncPredictStockBox() {
@@ -1736,6 +1751,49 @@
     }
   }
 
+  async function runAdvise() {
+    const pick = state.picks.advise;
+    if (!pick) { $("advise-status").textContent = "先選一個標的（可點自選）。"; return; }
+    $("advise-run").disabled = true;
+    $("advise-status").textContent = "正在讀基本面、籌碼與 K 線…";
+    try {
+      const r = await M.stockAdvice(pick.secid, pick.code);
+      if (!r.ok) {
+        $("advise-status").textContent = r.reason || "無法研判";
+        $("advise-out").innerHTML = "";
+        return;
+      }
+      $("advise-status").textContent = "";
+      const adviceCls = r.advice.indexOf("買") >= 0 ? "up" : r.advice.indexOf("賣") >= 0 || r.advice.indexOf("減") >= 0 ? "down" : "";
+      const fundLis = (r.fund.notes || []).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+      const chipLis = (r.chip.notes || []).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+      const buyLis = (r.buyPoints || []).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+      const sellLis = (r.sellPoints || []).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+      const patLis = (r.patterns || []).slice(0, 6).map(function (p) {
+        const cls = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
+        return "<li><span class=\"k-date\">" + esc((p.date || "").slice(5)) + "</span> " +
+          '<strong class="' + cls + '">' + esc(p.name) + "</strong> " + esc(p.detail) + "</li>";
+      }).join("");
+      const techLine = r.tech
+        ? "<p>技術結論 " + esc(r.tech.verdict) + " · " + esc(r.tech.momentum || "") + " · " + esc(r.tech.weekly || "") + "</p>"
+        : "<p class=\"fine\">技術條件這次沒算完，改以籌碼與 K 線為主。</p>";
+      $("advise-out").innerHTML = '<article class="card"><h3>' + esc(r.name) + " " + esc(r.code) +
+        ' · <span class="' + adviceCls + '">' + esc(r.advice) + "</span></h3>" +
+        "<p>現價 " + fmt(r.close) + (r.atr != null ? " · ATR(14) " + fmt(r.atr) : "") +
+        " · 綜合分 " + esc(String(r.score)) + "</p>" + techLine +
+        "<h4>基本面</h4><ul class=\"stat-list\">" + fundLis + "</ul>" +
+        "<h4>籌碼面" + (r.chip.date ? "（" + esc(String(r.chip.date).slice(5)) + "）" : "") + "</h4><ul class=\"stat-list\">" + chipLis + "</ul>" +
+        "<h4>K線買點</h4><ul>" + buyLis + "</ul>" +
+        "<h4>K線賣點／停損</h4><ul>" + sellLis + "</ul>" +
+        (patLis ? "<h4>近期型態</h4><ul>" + patLis + "</ul>" : "") +
+        '<p class="fine">規則試算，不是投資建議。盤中法人買賣超可能尚未公告。</p></article>';
+    } catch (err) {
+      $("advise-status").textContent = err.message || "研判失敗";
+    } finally {
+      $("advise-run").disabled = false;
+    }
+  }
+
   async function runNews() {
     const pick = state.picks.news;
     if (!pick) { $("news-status").textContent = "先選一個標的。"; return; }
@@ -2163,10 +2221,18 @@
       news: "news-pick",
       test: "test-pick",
       journal: "j-pick",
-      predict: "predict-pick"
+      predict: "predict-pick",
+      advise: "advise-pick"
     }[key]);
     if (label) label.textContent = row.name + " " + row.code + " · " + row.market;
-    const hits = { tech: "tech-hits", news: "news-hits", test: "test-hits", journal: "j-hits", predict: "predict-hits" }[key];
+    const hits = {
+      tech: "tech-hits",
+      news: "news-hits",
+      test: "test-hits",
+      journal: "j-hits",
+      predict: "predict-hits",
+      advise: "advise-hits"
+    }[key];
     if (hits) $(hits).innerHTML = "";
   }
 
@@ -2174,7 +2240,19 @@
     const t = ev.target.closest("button");
     if (!t) return;
     if (t.dataset.pick) onPick(t);
-    else if (t.dataset.range) {
+    else if (t.dataset.adviseWatch != null) {
+      const item = book.watch[Number(t.dataset.adviseWatch)];
+      if (!item) return;
+      state.picks.advise = {
+        secid: item.secid,
+        code: item.code,
+        name: item.name,
+        market: item.market || "台股"
+      };
+      $("advise-pick").textContent = item.name + " " + item.code + " · 自選";
+      $("advise-q").value = (item.code || "") + " " + (item.name || "");
+      runAdvise();
+    } else if (t.dataset.range) {
       state.range = t.dataset.range;
       state.custom = false;
       buildToggles();
@@ -2233,6 +2311,7 @@
   });
   $("idea-run").addEventListener("click", runIdeas);
   $("tech-run").addEventListener("click", runTech);
+  $("advise-run").addEventListener("click", runAdvise);
   $("news-run").addEventListener("click", runNews);
   $("test-run").addEventListener("click", runTest);
   $("risk-run").addEventListener("click", runRisk);
@@ -2384,6 +2463,7 @@
   bindSearch("risk-q", "risk-hits", "risk", "台股");
   bindSearch("j-q", "j-hits", "journal", "台股");
   bindSearch("predict-q", "predict-hits", "predict", "台股");
+  bindSearch("advise-q", "advise-hits", "advise", "台股");
 
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");

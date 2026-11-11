@@ -3397,6 +3397,153 @@
     return list;
   }
 
+  // 個股綜合研判：基本面＋籌碼＋技術／K線買賣點（規則試算，非投資建議）
+  async function stockAdvice(secid, code) {
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前僅支援台股綜合研判。" };
+    const detail = await stockDetail(secid, code).catch(function () { return { ok: false }; });
+    let tech = null;
+    try { tech = await technical(secid); } catch (err) { tech = null; }
+    let daily = [];
+    try {
+      daily = await bars(secid, "180d");
+    } catch (err) {
+      try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+    }
+    const patterns = kPatterns(daily).slice(0, 10);
+    const close = tech && tech.close != null
+      ? tech.close
+      : (detail.quote && detail.quote.close != null ? detail.quote.close : (daily.length ? daily[daily.length - 1].c : null));
+    const atrArr = daily.length ? atr(daily, 14) : [];
+    let atrNow = null;
+    for (let i = atrArr.length - 1; i >= 0; i--) {
+      if (atrArr[i] != null && isFinite(atrArr[i])) { atrNow = atrArr[i]; break; }
+    }
+    if (!(atrNow > 0) && close > 0) atrNow = close * 0.02;
+
+    const m = (detail && detail.margins) || {};
+    const per = detail && detail.per;
+    const own = (detail && detail.ownership) || {};
+    const chips = detail && detail.chipCards ? detail.chipCards : [];
+    const chipDate = detail && detail.chipDate ? detail.chipDate : "";
+
+    let fundScore = 0;
+    const fundNotes = [];
+    if (m.grossTrend && m.grossTrend.cls === "up") { fundScore += 1; fundNotes.push("毛利率較上季上升"); }
+    else if (m.grossTrend && m.grossTrend.cls === "down") { fundScore -= 1; fundNotes.push("毛利率較上季下降"); }
+    if (m.opTrend && m.opTrend.cls === "up") { fundScore += 1; fundNotes.push("營益率上升"); }
+    else if (m.opTrend && m.opTrend.cls === "down") { fundScore -= 1; fundNotes.push("營益率下降"); }
+    if (m.netTrend && m.netTrend.cls === "up") { fundScore += 1; fundNotes.push("淨利率上升"); }
+    else if (m.netTrend && m.netTrend.cls === "down") { fundScore -= 1; fundNotes.push("淨利率下降"); }
+    if (per && per.per != null && isFinite(per.per)) {
+      if (per.per > 0 && per.per <= 20) { fundScore += 1; fundNotes.push("本益比 " + per.per.toFixed(1) + " 偏低檔區"); }
+      else if (per.per > 40) { fundScore -= 1; fundNotes.push("本益比 " + per.per.toFixed(1) + " 偏高"); }
+      else fundNotes.push("本益比 " + per.per.toFixed(1));
+    } else fundNotes.push("本益比暫無");
+    if (!fundNotes.length) fundNotes.push("財務資料不足");
+
+    let chipScore = 0;
+    const chipNotes = [];
+    const foreignCard = chips.find(function (c) { return c.name === "外資"; });
+    const trustCard = chips.find(function (c) { return c.name === "投信"; });
+    const totalCard = chips.find(function (c) { return c.name === "法人"; });
+    function lotsOf(net) {
+      if (net == null || !isFinite(net)) return null;
+      return Math.round(net / 1000);
+    }
+    if (foreignCard && foreignCard.net != null) {
+      const lots = lotsOf(foreignCard.net);
+      chipNotes.push("外資 " + (lots > 0 ? "+" : "") + lots + " 張");
+      if (foreignCard.net > 0) chipScore += 1;
+      else if (foreignCard.net < 0) chipScore -= 1;
+    }
+    if (trustCard && trustCard.net != null) {
+      const lots = lotsOf(trustCard.net);
+      chipNotes.push("投信 " + (lots > 0 ? "+" : "") + lots + " 張");
+      if (trustCard.net > 0) chipScore += 1;
+      else if (trustCard.net < 0) chipScore -= 1;
+    }
+    if (own.flow5 && own.flow5.total != null) {
+      const lots = lotsOf(own.flow5.total);
+      chipNotes.push("近5日法人合計 " + (lots > 0 ? "+" : "") + lots + " 張");
+      if (own.flow5.total > 0) chipScore += 1;
+      else if (own.flow5.total < 0) chipScore -= 1;
+    }
+    if (own.foreignPct != null) chipNotes.push("外資持股 " + Number(own.foreignPct).toFixed(1) + "%");
+    if (!chipNotes.length) chipNotes.push(chipDate ? "籌碼日 " + chipDate + " 無明細" : "籌碼暫無");
+
+    let techScore = 0;
+    if (tech) {
+      if (tech.verdict === "買進") techScore += 2;
+      else if (tech.verdict === "賣出") techScore -= 2;
+      (tech.steps || []).forEach(function (s) {
+        if (s.pass) techScore += 0.5;
+        else techScore -= 0.25;
+      });
+    }
+    const bullishK = /大陽|長紅|錘頭|晨星|白三兵|紅K吞沒|下跌抵抗/;
+    const bearishK = /大陰|長黑|黃昏|三隻烏鴉|黑K吞沒|先漲後跌|倒T|射擊/;
+    let kScore = 0;
+    patterns.slice(0, 5).forEach(function (p) {
+      if (p.bias === "多" || bullishK.test(p.name)) kScore += 1;
+      else if (p.bias === "空" || bearishK.test(p.name)) kScore -= 1;
+    });
+
+    const total = fundScore + chipScore + techScore + kScore;
+    let advice = "觀望";
+    if (total >= 4 && (!tech || tech.verdict !== "賣出")) advice = "建議買進";
+    else if (total >= 2) advice = "偏多觀望";
+    else if (total <= -4 || (tech && tech.verdict === "賣出")) advice = "偏賣／減碼";
+    else if (total <= -2) advice = "偏空觀望";
+
+    const supports = (tech && tech.supports) || [];
+    const resistances = (tech && tech.resistances) || [];
+    const buyLevel = supports.length ? supports[supports.length - 1] : (close > 0 && atrNow ? roundPx(close - atrNow) : null);
+    const sellLevel = resistances.length ? resistances[0] : (close > 0 && atrNow ? roundPx(close + 1.5 * atrNow) : null);
+    const stopLevel = close > 0 && atrNow ? roundPx(close - 1.5 * atrNow) : null;
+    const recentBull = patterns.find(function (p) { return p.bias === "多" || bullishK.test(p.name); });
+    const recentBear = patterns.find(function (p) { return p.bias === "空" || bearishK.test(p.name); });
+
+    const buyPoints = [];
+    if (buyLevel != null) buyPoints.push("回檔近支撐／買點約 " + buyLevel + (atrNow ? "（約 1×ATR）" : ""));
+    if (recentBull) buyPoints.push("近期偏多型態「" + recentBull.name + "」（" + recentBull.date + "）：" + recentBull.detail);
+    if (tech && tech.verdict === "買進") buyPoints.push("日週線條件偏多，可等拉回不破支撐再分批。");
+    if (!buyPoints.length) buyPoints.push("暫無明確買點，先等支撐或偏多K型態。");
+
+    const sellPoints = [];
+    if (sellLevel != null) sellPoints.push("壓力／賣點約 " + sellLevel);
+    if (stopLevel != null) sellPoints.push("防守停損約 " + stopLevel + "（約 1.5×ATR）");
+    if (recentBear) sellPoints.push("近期偏空型態「" + recentBear.name + "」（" + recentBear.date + "）：" + recentBear.detail);
+    if (tech && tech.verdict === "賣出") sellPoints.push("日週線偏空，反彈接近壓力優先減碼。");
+    if (!sellPoints.length) sellPoints.push("暫無明確賣點，嚴格用停損控風險。");
+
+    return {
+      ok: true,
+      name: (tech && tech.name) || (detail && detail.stockId) || stockId,
+      code: stockId,
+      close: close != null ? roundPx(close) : null,
+      advice: advice,
+      score: Math.round(total * 10) / 10,
+      fund: {
+        score: fundScore,
+        notes: fundNotes,
+        margins: m,
+        per: per
+      },
+      chip: {
+        score: chipScore,
+        date: chipDate,
+        notes: chipNotes,
+        cards: chips
+      },
+      tech: tech,
+      patterns: patterns,
+      buyPoints: buyPoints,
+      sellPoints: sellPoints,
+      atr: atrNow != null ? roundPx(atrNow) : null
+    };
+  }
+
   // K 線型態（台股紅漲綠跌）。對照 CMoney 15 種基本形態 + 常見組合。回傳由新到舊。
   // 參考：https://www.cmoney.tw/notes/note-detail.aspx?nid=291749
   function kPatterns(bars) {
@@ -3583,6 +3730,7 @@
     twseDailyReport: twseDailyReport,
     sortDailyReportRows: sortDailyReportRows,
     kPatterns: kPatterns,
-    watchChips: watchChips
+    watchChips: watchChips,
+    stockAdvice: stockAdvice
   };
 })(window);

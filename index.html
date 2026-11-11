@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=46">
+  <link rel="stylesheet" href="app.css?v=47">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -152,6 +152,7 @@
           <button type="button" data-tool="journal">6. 交易日誌分析師<small>最近 20 筆的錯誤、錯過的機會與三條個人規則</small></button>
           <button type="button" data-tool="predict">7. 台股漲跌預測<small>八大類加權評分、歷史回測準確率、CSV 匯出</small></button>
           <button type="button" data-tool="report">8. 盤後排序報表<small>證交所收盤＋外資／三大法人，依漲跌％或買賣超排序，可下載 HTML</small></button>
+          <button type="button" data-tool="advise">9. 個股綜合研判<small>基本面＋籌碼面＋是否建議買進，並用 K 線標買賣點</small></button>
         </div>
       </section>
 
@@ -335,6 +336,19 @@
           <div id="report-out" class="result report-out"></div>
         </div>
 
+        <div id="panel-advise" class="panel" hidden>
+          <p class="fine">彙整基本面（三率／本益比）、籌碼（外資／投信／近 5 日法人）與日週線／K 線型態，給出是否建議買進，並標買點、賣點、停損。規則試算，不是投資建議。</p>
+          <p class="fine">會上網：FinMind 籌碼財務、日週 K、報價；可先點自選快速帶入。</p>
+          <div id="advise-watch" class="chips"></div>
+          <label for="advise-q">標的</label>
+          <input id="advise-q" type="search" placeholder="台股代號或名稱，例如 2345" autocomplete="off">
+          <div id="advise-hits"></div>
+          <p id="advise-pick" class="note">還沒選標的</p>
+          <button id="advise-run" class="primary" type="button">綜合研判</button>
+          <p id="advise-status" class="status" role="status"></p>
+          <div id="advise-out" class="result"></div>
+        </div>
+
         <div id="panel-journal" class="panel" hidden>
           <p class="fine">只讀你寫入的最近 20 筆日誌，統計勝率、情緒偏誤（追價、恐懼出場等），生出最多三條規則。</p>
           <p class="fine">不上網：純本機（或已同步的雲端檔）運算，不拉行情。</p>
@@ -382,9 +396,9 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=46"></script>
-  <script src="drive.js?v=46"></script>
-  <script src="market.js?v=46"></script>
-  <script src="app.js?v=46"></script>
+  <script src="google_config.js?v=47"></script>
+  <script src="drive.js?v=47"></script>
+  <script src="market.js?v=47"></script>
+  <script src="app.js?v=47"></script>
 </body>
 </html>
