@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 55;
+  const PAGE_BUILD = 56;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1436,13 +1436,13 @@
           '<div class="watch-chip-row"><div class="watch-chips" data-watch-chips="' + idx + '">' +
           '<span class="note">籌碼…</span></div>' +
           '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></div></td>' +
-          '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
-          '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
+          '<td class="watch-num watch-col-price" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
+          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
-          '<td class="watch-num" data-watch-pnl="' + idx + '">—</td>' +
-          '<td><input class="watch-input" data-watch-shares="' + idx + '" inputmode="numeric" value="' +
+          '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
+          '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx + '" inputmode="numeric" value="' +
           esc(shares) + '" placeholder="股數" aria-label="股數"></td>' +
-          '<td><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
+          '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
           '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
           (item.notify ? " checked" : "") + "> 開</label>" +
@@ -2595,9 +2595,13 @@
   $("enter").addEventListener("click", function () { showApp(); });
   $("gate-login").addEventListener("click", doLogin);
   if (D.isEmbeddedBrowser && D.isEmbeddedBrowser()) {
-    warnEmbeddedLogin();
     const ext = $("gate-open-browser");
     if (ext) ext.hidden = false;
+    // Cursor 右側預覽：直接進站方便調版面（登入仍請用系統瀏覽器）
+    if ($("gate") && !$("gate").hidden) showApp();
+    if ($("who") && !D.account()) {
+      $("who").textContent = "右側預覽可調版面（登入請用 Chrome）";
+    }
   } else {
     const ext = $("gate-open-browser");
     if (ext) ext.hidden = true;

@@ -646,6 +646,79 @@ textarea { min-height: 120px; resize: vertical; }
   text-align: center;
   border-radius: 8px;
 }
+
+/* Cursor 右側／手機窄寬：自選改卡片，右側欄位不再被捲成灰條 */
+@media (max-width: 720px) {
+  .gate, .app { width: 100%; }
+  .watch-table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+  .watch-table {
+    min-width: 0;
+    width: 100%;
+  }
+  .watch-table thead { display: none; }
+  .watch-table tbody { display: block; }
+  .watch-table tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "name name name"
+      "price cost pnl"
+      "shares del alert";
+    gap: 8px 10px;
+    margin: 0 0 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #12181f;
+  }
+  .watch-table td {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .watch-name { grid-area: name; }
+  .watch-col-price { grid-area: price; text-align: left !important; }
+  .watch-col-cost { grid-area: cost; text-align: left !important; }
+  .watch-col-pnl { grid-area: pnl; text-align: left !important; }
+  .watch-col-shares { grid-area: shares; text-align: left !important; }
+  .watch-col-del { grid-area: del; }
+  .watch-alert-cell {
+    grid-area: alert;
+    min-width: 0;
+    text-align: left;
+  }
+  .watch-col-price::before,
+  .watch-col-cost::before,
+  .watch-col-pnl::before,
+  .watch-col-shares::before,
+  .watch-alert-cell::before {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .watch-col-price::before { content: "目前"; }
+  .watch-col-cost::before { content: "買價"; }
+  .watch-col-pnl::before { content: "損益"; }
+  .watch-col-shares::before { content: "股數"; }
+  .watch-alert-cell::before { content: "通知"; }
+  .watch-input { width: 100%; text-align: left; }
+  .watch-alert {
+    justify-content: flex-start;
+  }
+  .watch-col-del .danger {
+    min-height: 40px;
+    width: 100%;
+    border: 1px solid rgba(255, 138, 138, 0.35);
+    border-radius: 10px;
+  }
+}
 .badge {
   display: inline-block;
   border-radius: 999px;
