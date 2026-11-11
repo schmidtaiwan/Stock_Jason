@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 77;
+  const PAGE_BUILD = 78;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -259,6 +259,23 @@
 
   let twiiBusy = false;
   let twiiSeq = 0;
+  function twiiSourceLabel(source) {
+    const key = String(source || "").toLowerCase();
+    if (key === "mis") return "證交所 MIS";
+    if (key === "yahoo") return "Yahoo";
+    if (key === "cnyes") return "鉅亨";
+    return source ? String(source) : "—";
+  }
+
+  function paintTwiiSource(q) {
+    const srcEl = $("twii-src");
+    if (!srcEl) return;
+    srcEl.textContent = "來源 " + twiiSourceLabel(q && q.source);
+    srcEl.title = q && q.source === "mis"
+      ? "台灣證交所基本市況報導（約 5 秒快照）"
+      : (q && q.source === "yahoo" ? "Yahoo Finance" : "股價資料來源");
+  }
+
   function formatTwiiLag(q) {
     const lagEl = $("twii-lag");
     if (!lagEl) return;
@@ -298,6 +315,7 @@
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
+      if ($("twii-src")) $("twii-src").textContent = "來源 …";
     }
     try {
       if (M.bustLiveCaches) M.bustLiveCaches(["100.TWII"]);
@@ -313,6 +331,7 @@
       chgEl.className = "twii-chg " + cls;
       chgEl.textContent = pts + pctTxt;
       formatTwiiLag(q);
+      paintTwiiSource(q);
     } catch (err) {
       if (seq !== twiiSeq) return;
       priceEl.textContent = "—";
@@ -320,6 +339,7 @@
       chgEl.className = "twii-chg";
       chgEl.textContent = "加權讀取失敗";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
+      paintTwiiSource(null);
     } finally {
       if (seq === twiiSeq) twiiBusy = false;
     }

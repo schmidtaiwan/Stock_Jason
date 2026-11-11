@@ -140,6 +140,15 @@ a.gate-ext[hidden] { display: none !important; }
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
+.twii-src {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .range-row {
   display: flex;
   flex-wrap: wrap;

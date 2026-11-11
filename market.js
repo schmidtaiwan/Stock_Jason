@@ -2771,7 +2771,8 @@
             pct: change / prev * 100,
             name: "加權指數",
             asOf: asOf,
-            delayMin: delayMin
+            delayMin: delayMin,
+            source: "yahoo"
           };
         }
       }
@@ -2796,7 +2797,8 @@
       pct: pct,
       name: "加權指數",
       asOf: q.asOf || null,
-      delayMin: q.delayMin != null ? q.delayMin : null
+      delayMin: q.delayMin != null ? q.delayMin : null,
+      source: q.source || "yahoo"
     };
   }
 
