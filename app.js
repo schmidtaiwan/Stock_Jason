@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 90;
+  const PAGE_BUILD = 91;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2875,6 +2875,33 @@
     return Promise.all(tasks);
   }
 
+  async function readHoldingsPaste(text) {
+    setOcrStatus("正在解析貼上文字…");
+    try {
+      const raw = String(text || "").trim();
+      if (!raw) {
+        setOcrStatus("請先貼上持股明細文字。");
+        return;
+      }
+      let parsed = M.parseHoldingsTable ? M.parseHoldingsTable(raw) : [];
+      if (!parsed.length && M.parseInventory) parsed = M.parseInventory(raw);
+      if (!parsed.length) {
+        setOcrStatus("文字裡沒讀到商品與股數。請確認有代號或常見股名，以及股數、成本價。");
+        importRows = [];
+        renderImport();
+        return;
+      }
+      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
+      setOcrStatus("讀到 " + parsed.length + " 檔" +
+        (priced ? "，其中 " + priced + " 檔有成本價。" : "。"));
+      importRows = await resolveParsed(parsed);
+      renderImport();
+      setOcrStatus("確認股數與買價後按匯入。");
+    } catch (err) {
+      setOcrStatus(err.message || "文字解析失敗");
+    }
+  }
+
   async function readFubonHoldingsJson(file) {
     $("watch-json-btn").disabled = true;
     $("watch-status").textContent = "正在讀富邦庫存 JSON…";
@@ -3583,6 +3610,7 @@
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "watch-json-btn") $("watch-json").click();
+    else if (t.id === "watch-paste-btn") readHoldingsPaste($("watch-paste") && $("watch-paste").value);
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();

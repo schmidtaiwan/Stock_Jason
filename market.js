@@ -1712,13 +1712,99 @@
     { re: /2330|台積電/, code: "2330", name: "台積電" },
     { re: /2308|台達電/, code: "2308", name: "台達電" },
     { re: /2312|金寶/, code: "2312", name: "金寶" },
-    { re: /2351|吉茂/, code: "2351", name: "吉茂" },
+    { re: /1587|吉茂/, code: "1587", name: "吉茂" },
     { re: /2890|永豐金/, code: "2890", name: "永豐金" },
     { re: /2881|富邦金/, code: "2881", name: "富邦金" },
     { re: /2882|國泰金/, code: "2882", name: "國泰金" },
     { re: /2317|鴻海/, code: "2317", name: "鴻海" },
     { re: /2454|聯發科/, code: "2454", name: "聯發科" }
   ];
+
+  function numLoose(v) {
+    if (v == null || v === "") return null;
+    const n = Number(String(v).replace(/,/g, "").replace(/%/g, "").trim());
+    return isFinite(n) ? n : null;
+  }
+
+  // 貼上「商品名稱 / 股數 / 成本價 / 現價…」明細（含代號括號）
+  function parseHoldingsTable(raw) {
+    let text = String(raw || "");
+    text = text.replace(/[０-９]/g, function (ch) {
+      return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+    });
+    const lines = text.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    const out = [];
+    const seen = {};
+    lines.forEach(function (line) {
+      if (/商品名稱|未實現損益|^名稱\b|損益率/.test(line) && !/[\(（]\s*\d{4}/.test(line)) return;
+      if (/^合計|^總計|^筆數|^損益\s*:/.test(line)) return;
+      const cells = line.split(/\t+/).map(function (c) { return c.trim(); }).filter(Boolean);
+      let name = "";
+      let code = "";
+      let shares = null;
+      let cost = null;
+      let pct = null;
+      let pnl = null;
+      if (cells.length >= 4) {
+        const head = cells[0];
+        const hm = head.match(/^(.+?)\s*[\(（]\s*([0-9]{4,6}[A-Za-z]?)\s*[\)）]\s*$/);
+        if (hm) {
+          name = hm[1].trim();
+          code = hm[2].toUpperCase();
+        } else {
+          name = head;
+        }
+        shares = numLoose(cells[1]);
+        cost = numLoose(cells[2]);
+        if (cells.length >= 6) pnl = numLoose(String(cells[5]).replace(/^\+/, "+"));
+        if (cells.length >= 7) {
+          const p = numLoose(cells[6]);
+          if (p != null) pct = p;
+        }
+      } else {
+        let m = line.match(/^(.+?)\s*[\(（]\s*([0-9]{4,6}[A-Za-z]?)\s*[\)）]\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/);
+        if (m) {
+          name = m[1].trim();
+          code = m[2].toUpperCase();
+          shares = numLoose(m[3]);
+          cost = numLoose(m[4]);
+        } else {
+          m = line.match(/^([\u4e00-\u9fffA-Za-z0-9+＋]{2,30})\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/);
+          if (!m) return;
+          name = m[1].trim();
+          shares = numLoose(m[2]);
+          cost = numLoose(m[3]);
+        }
+        const pctM = line.match(/([+-]?\d+(?:\.\d+)?)\s*%\s*$/);
+        if (pctM) pct = Number(pctM[1]);
+        const pnlM = line.match(/([+-]\d[\d,]*(?:\.\d+)?)\s+[+-]?\d+(?:\.\d+)?\s*%/);
+        if (pnlM) pnl = numLoose(pnlM[1]);
+      }
+      if (!(shares > 0) || shares > 200000) return;
+      if (!code) {
+        for (let i = 0; i < INV_ALIASES.length; i++) {
+          if (INV_ALIASES[i].re.test(name)) {
+            code = INV_ALIASES[i].code;
+            name = INV_ALIASES[i].name;
+            break;
+          }
+        }
+      }
+      if (!code) return;
+      if (seen[code]) return;
+      seen[code] = true;
+      if (!(cost > 0)) cost = null;
+      out.push({
+        code: code,
+        name: name || code,
+        shares: shares,
+        cost: cost,
+        pnl: pnl,
+        pct: pct
+      });
+    });
+    return out;
+  }
 
   // StockJason／富邦匯出：{ source, holdings:[{code,todayQty,tradableQty,costPrice,raw}] }
   function parseFubonHoldingsJson(raw) {
@@ -1794,25 +1880,59 @@
       return "";
     }
 
-    // 未實現損益列：現股 股數 現價 成本價 …
+    // 用投資成本反推哪個是成本價（券商欄常見：股數 現價 成本價 投資成本）
+    function resolveCostPrice(shares, a, b, invest) {
+      if (!(shares > 0)) return { cost: null, price: null };
+      if (invest > 0) {
+        const implied = invest / shares;
+        const da = Math.abs(a - implied);
+        const db = Math.abs(b - implied);
+        if (da <= db && (da / implied <= 0.15 || da < 2)) {
+          return { cost: Math.round(a * 100) / 100, price: b };
+        }
+        if (db < da && (db / implied <= 0.15 || db < 2)) {
+          return { cost: Math.round(b * 100) / 100, price: a };
+        }
+        return {
+          cost: Math.round(implied * 100) / 100,
+          price: da < db ? b : a
+        };
+      }
+      // 無投資成本時：未實現畫面多為 現價、成本價
+      return {
+        cost: b > 0 && b < 100000 ? Math.round(b * 100) / 100 : null,
+        price: a
+      };
+    }
+
+    // 未實現損益列：現股 股數 現價 成本價 投資成本 …
     function pickUnrealizedRow(after) {
-      const src = String(after || "");
-      let m = src.match(/現[股設投]\s*(\d{1,7})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
+      const src = String(after || "").replace(/(\d),(?=\d{3}(\D|$))/g, "$1");
+      let m = src.match(/現[股設投]\s*(\d{1,7}(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?/);
       if (!m) {
-        m = src.match(/^\D{0,8}(\d{2,7})\s+(\d{1,5}(?:\.\d+)?)\s+(\d{1,5}(?:\.\d+)?)/);
+        m = src.match(/^\D{0,12}(\d{1,7})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?/);
       }
       if (!m) return { shares: null, pnl: null, cost: null, pct: null };
       const shares = Number(m[1]);
-      const cost = Number(m[3]);
-      if (!(shares > 0) || shares > 200000) {
+      if (!(shares > 0) || shares > 200000 || shares !== Math.round(shares)) {
         return { shares: null, pnl: null, cost: null, pct: null };
       }
-      if (!lookLikeShare(shares) && !(isUnrealizedShot && shares >= 1)) {
-        return { shares: null, pnl: null, cost: null, pct: null };
-      }
+      // 零股／碎股也要收（1、12、1111）
+      const a = Number(m[2]);
+      const b = Number(m[3]);
+      const invest = m[4] != null ? Number(m[4]) : null;
+      const pair = resolveCostPrice(shares, a, b, invest);
       let pct = null;
       const pctM = src.match(/([+-]?)(\d+(?:\.\d+)?)\s*%/);
-      if (pctM) pct = parsePctToken(pctM[1], pctM[2]);
+      if (pctM) {
+        // 有小數的獲利率不要再亂縮
+        pct = pctM[2].indexOf(".") >= 0
+          ? (pctM[1] === "-" ? -Math.abs(Number(pctM[2])) : Number(pctM[2]) * (pctM[1] === "+" || !pctM[1] ? 1 : 1))
+          : parsePctToken(pctM[1], pctM[2]);
+        if (pctM[1] === "+") pct = Math.abs(pct);
+        if (pctM[1] === "-") pct = -Math.abs(pct);
+        if (!pctM[1] && pctM[2].indexOf(".") >= 0) pct = Number(pctM[2]);
+      }
       let pnl = null;
       const pnlAll = [];
       const signedRe = /([+-])\s*(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?/g;
@@ -1829,7 +1949,7 @@
       }
       return {
         shares: shares,
-        cost: cost > 0 && cost < 100000 ? Math.round(cost * 100) / 100 : null,
+        cost: pair.cost,
         pnl: pnl,
         pct: pct
       };
@@ -1933,6 +2053,9 @@
         nums.push(value);
       });
       const shareCands = nums.filter(function (n) {
+        if (!(n > 0) || n > 200000 || n !== Math.round(n)) return false;
+        // 未實現損益常有零股／碎股，不強制整張倍數
+        if (isUnrealizedShot) return true;
         return lookLikeShare(n) && n <= 100000;
       });
       const shares = shareCands.length
@@ -2038,15 +2161,14 @@
         put(alias.code, alias.name, money, isUnrealizedShot ? 7 : 3);
       });
 
-      // 未實現損益：掃「名稱 + 現股 + 股數」列，名稱可再對別名
+      // 未實現損益：掃「名稱 + 現股 + 股數 現價 成本價 [投資成本]」
       if (isUnrealizedShot) {
-        const rowRe = /([\u4e00-\u9fffA-Za-z0-9+＋]{2,24})\s*現[股設投]\s*(\d{1,7})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/g;
+        const rowRe = /([\u4e00-\u9fffA-Za-z0-9+＋]{2,24})\s*現[股設投]\s*(\d{1,7})\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?/g;
         let rm;
         while ((rm = rowRe.exec(joined))) {
           const rawName = String(rm[1] || "").replace(/下單|明細|功能|商品/g, "").trim();
           if (!rawName || noiseName.test(rawName)) continue;
           const shares = Number(rm[2]);
-          const cost = Number(rm[4]);
           if (!(shares > 0) || shares > 200000) continue;
           let code = "";
           let name = rawName;
@@ -2058,16 +2180,21 @@
             }
           }
           if (!code) continue;
+          const pair = resolveCostPrice(shares, Number(rm[3]), Number(rm[4]), rm[5] != null ? Number(rm[5]) : null);
           const after = joined.slice(rm.index + rm[0].length, rm.index + rm[0].length + 80);
           const money = {
             shares: shares,
-            cost: cost > 0 && cost < 100000 ? Math.round(cost * 100) / 100 : null,
+            cost: pair.cost,
             pnl: null,
             pct: null
           };
           const pctM = after.match(/([+-]?)(\d+(?:\.\d+)?)\s*%/) ||
             (rm[0] + after).match(/([+-]?)(\d+(?:\.\d+)?)\s*%/);
-          if (pctM) money.pct = parsePctToken(pctM[1], pctM[2]);
+          if (pctM) {
+            money.pct = pctM[2].indexOf(".") >= 0
+              ? Number((pctM[1] === "-" ? "-" : "") + pctM[2])
+              : parsePctToken(pctM[1], pctM[2]);
+          }
           put(code, name, money, 8);
         }
       }
@@ -4804,6 +4931,7 @@
     search: search,
     quoteMap: quoteMap,
     parseInventory: parseInventory,
+    parseHoldingsTable: parseHoldingsTable,
     parseFubonHoldingsJson: parseFubonHoldingsJson,
     scan: scan,
     technical: technical,
