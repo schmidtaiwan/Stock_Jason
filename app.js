@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 65;
+  const PAGE_BUILD = 66;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let chipCostLines = null;
