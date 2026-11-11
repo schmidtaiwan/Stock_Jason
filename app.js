@@ -1,11 +1,13 @@
 (function () {
-  const PAGE_BUILD = 93;
+  const PAGE_BUILD = 94;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
   let usBoardOpen = true;
   let usBriefOpen = true;
   let usRowsOpen = true;
+  let usBoardTimer = 0;
+  let usBoardBusy = false;
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -419,6 +421,9 @@
       syncUsBoardFoldUi();
       loadPulse();
       loadUsBoard();
+      startUsBoardClock();
+    } else {
+      stopUsBoardClock();
     }
     if (name === "watch") {
       setWatchCompose(false);
@@ -1082,12 +1087,26 @@
     }
   }
 
+  function stopUsBoardClock() {
+    if (usBoardTimer) clearInterval(usBoardTimer);
+    usBoardTimer = 0;
+  }
+
+  function startUsBoardClock() {
+    stopUsBoardClock();
+    usBoardTimer = setInterval(function () {
+      if (document.hidden || state.view !== "pulse") return;
+      loadUsBoard({ quiet: true });
+    }, 30000);
+  }
+
   function startLiveClock() {
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(liveTick, 20000);
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden && isTwMarketOpen()) liveTick();
       else if (document.hidden && hasWatchAlerts() && isTwMarketOpen()) liveTick();
+      if (!document.hidden && state.view === "pulse") loadUsBoard({ quiet: true });
     });
   }
 
@@ -4162,32 +4181,49 @@
       '<p class="fine">' + esc(brief.tip || "") + "</p>";
   }
 
-  async function loadUsBoard() {
+  function paintUsBoardRows(pack) {
+    const box = $("us-board-rows");
+    if (!box) return;
+    const core = (pack.rows || []).filter(function (row) { return row.core; });
+    const rest = (pack.rows || []).filter(function (row) { return !row.core; });
+    box.innerHTML = core.concat(rest).map(function (row) {
+      const coreCls = row.core ? " us-cell-core" : "";
+      if (!row.ok) {
+        return '<div class="us-cell' + coreCls + '" data-us-key="' + esc(row.key || "") +
+          '"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
+      }
+      const cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
+      let priceTxt = fmt(row.price);
+      if (row.key === "tnx" && row.price != null) priceTxt = row.price.toFixed(2) + "%";
+      const pctTxt = row.pct == null ? "—" : ((row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%");
+      return '<div class="us-cell' + coreCls + '" data-us-key="' + esc(row.key || "") +
+        '"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
+        priceTxt + '</strong><small class="' + cls + '">' + pctTxt + "</small></div>";
+    }).join("");
+  }
+
+  async function loadUsBoard(opts) {
+    const quiet = !!(opts && opts.quiet);
     const box = $("us-board-rows");
     if (!box || !C || !C.usBoard) return;
-    box.innerHTML = '<span class="note">更新美股…</span>';
-    if ($("us-brief")) $("us-brief").innerHTML = '<span class="note">解讀中…</span>';
+    if (usBoardBusy) return;
+    usBoardBusy = true;
+    if (!quiet) {
+      box.innerHTML = '<span class="note">更新美股…</span>';
+      if ($("us-brief")) $("us-brief").innerHTML = '<span class="note">解讀中…</span>';
+    }
     try {
       const pack = await C.usBoard();
+      if (state.view !== "pulse") return;
       renderUsBrief(pack.brief);
-      const core = (pack.rows || []).filter(function (row) { return row.core; });
-      const rest = (pack.rows || []).filter(function (row) { return !row.core; });
-      const cells = core.concat(rest).map(function (row) {
-        const coreCls = row.core ? " us-cell-core" : "";
-        if (!row.ok) {
-          return '<div class="us-cell' + coreCls + '"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
-        }
-        const cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
-        let priceTxt = fmt(row.price);
-        if (row.key === "tnx" && row.price != null) priceTxt = row.price.toFixed(2) + "%";
-        const pctTxt = row.pct == null ? "—" : ((row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%");
-        return '<div class="us-cell' + coreCls + '"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
-          priceTxt + '</strong><small class="' + cls + '">' + pctTxt + "</small></div>";
-      }).join("");
-      box.innerHTML = cells;
+      paintUsBoardRows(pack);
     } catch (err) {
-      box.innerHTML = '<span class="note">' + esc(err.message || "美股讀取失敗") + "</span>";
-      if ($("us-brief")) $("us-brief").innerHTML = "";
+      if (!quiet) {
+        box.innerHTML = '<span class="note">' + esc(err.message || "美股讀取失敗") + "</span>";
+        if ($("us-brief")) $("us-brief").innerHTML = "";
+      }
+    } finally {
+      usBoardBusy = false;
     }
   }
 

@@ -491,38 +491,47 @@
     };
   }
 
-  async function usBoard() {
+  async function usBoardOne(item) {
     const M = global.SJMarket;
-    const out = [];
-    for (let i = 0; i < US_BOARD.length; i++) {
-      const item = US_BOARD[i];
-      try {
-        let q = null;
-        if (M && typeof M.yahooSymbolQuote === "function") {
-          const hit = await M.yahooSymbolQuote(item.symbol).catch(function () { return null; });
-          if (hit) q = { price: hit.price, pct: hit.pct, prev: null, open: null, high: null, low: null, closes: [] };
-        }
-        if (!q) {
-          const json = await fetchYahooChart(item.symbol, "interval=1m&range=1d");
-          q = quoteFromYahooJson(json);
-        }
-        if (!q) {
-          const json2 = await fetchYahooChart(item.symbol, "interval=1d&range=5d");
-          q = quoteFromYahooJson(json2);
-        }
-        out.push({
-          symbol: item.symbol,
-          name: item.name,
-          key: item.key,
-          core: !!item.core,
-          price: q && q.price,
-          pct: q && q.pct,
-          ok: !!(q && q.price > 0)
-        });
-      } catch (err) {
-        out.push({ symbol: item.symbol, name: item.name, key: item.key, core: !!item.core, price: null, pct: null, ok: false });
+    try {
+      let q = null;
+      if (M && typeof M.yahooSymbolQuote === "function") {
+        const hit = await M.yahooSymbolQuote(item.symbol).catch(function () { return null; });
+        if (hit) q = { price: hit.price, pct: hit.pct, prev: null, open: null, high: null, low: null, closes: [] };
+      }
+      if (!q) {
+        const json = await fetchYahooChart(item.symbol, "interval=1m&range=1d");
+        q = quoteFromYahooJson(json);
+      }
+      if (!q) {
+        const json2 = await fetchYahooChart(item.symbol, "interval=1d&range=5d");
+        q = quoteFromYahooJson(json2);
+      }
+      return {
+        symbol: item.symbol,
+        name: item.name,
+        key: item.key,
+        core: !!item.core,
+        price: q && q.price,
+        pct: q && q.pct,
+        ok: !!(q && q.price > 0)
+      };
+    } catch (err) {
+      return { symbol: item.symbol, name: item.name, key: item.key, core: !!item.core, price: null, pct: null, ok: false };
+    }
+  }
+
+  async function usBoard() {
+    const out = new Array(US_BOARD.length);
+    let cursor = 0;
+    const workers = Math.min(4, US_BOARD.length);
+    async function worker() {
+      while (cursor < US_BOARD.length) {
+        const i = cursor++;
+        out[i] = await usBoardOne(US_BOARD[i]);
       }
     }
+    await Promise.all(Array.from({ length: workers }, worker));
     const brief = await buildUsBrief(out);
     return { ok: true, updatedAt: Date.now(), rows: out, brief: brief };
   }
