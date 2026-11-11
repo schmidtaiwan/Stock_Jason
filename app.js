@@ -1,9 +1,22 @@
 (function () {
-  const PAGE_BUILD = 50;
+  const PAGE_BUILD = 51;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
+
+  const TOOL_MENU = [
+    { id: "ideas", title: "交易點子產生器", desc: "掃描台股，列出進場、停損、停利與風報比" },
+    { id: "tech", title: "自動化技術分析師", desc: "日線與週線的支撐壓力、均線、動能與買賣判斷" },
+    { id: "news", title: "新聞轉交易策略", desc: "把消息拆成短長期影響、反映程度與失效條件" },
+    { id: "test", title: "交易策略回測分析師", desc: "勝率、獲利因子、最大回撤與改進方向" },
+    { id: "risk", title: "投資組合風險管理", desc: "配置、相關性、再平衡，以及大盤跌 20% 的避險" },
+    { id: "journal", title: "交易日誌分析師", desc: "最近 20 筆的錯誤、錯過的機會與三條個人規則" },
+    { id: "predict", title: "台股漲跌預測", desc: "八大類加權評分、歷史回測準確率、CSV 匯出" },
+    { id: "report", title: "盤後排序報表", desc: "證交所收盤＋外資／三大法人，依漲跌％或買賣超排序，可下載 HTML" },
+    { id: "advise", title: "個股綜合研判", desc: "基本面＋籌碼面＋是否建議買進，並用 K 線標買賣點" }
+  ];
+  const TOOL_IDS = TOOL_MENU.map(function (t) { return t.id; });
 
   const state = {
     range: "20d",
@@ -24,26 +37,6 @@
     kDrag: null
   };
 
-  let book = emptyBook();
-  let saveTimer = 0;
-  let importRows = [];
-  let liveTimer = 0;
-  let liveBusy = false;
-  const alertSent = {};
-
-  const TOOL_MENU = [
-    { id: "ideas", title: "交易點子產生器", desc: "掃描台股，列出進場、停損、停利與風報比" },
-    { id: "tech", title: "自動化技術分析師", desc: "日線與週線的支撐壓力、均線、動能與買賣判斷" },
-    { id: "news", title: "新聞轉交易策略", desc: "把消息拆成短長期影響、反映程度與失效條件" },
-    { id: "test", title: "交易策略回測分析師", desc: "勝率、獲利因子、最大回撤與改進方向" },
-    { id: "risk", title: "投資組合風險管理", desc: "配置、相關性、再平衡，以及大盤跌 20% 的避險" },
-    { id: "journal", title: "交易日誌分析師", desc: "最近 20 筆的錯誤、錯過的機會與三條個人規則" },
-    { id: "predict", title: "台股漲跌預測", desc: "八大類加權評分、歷史回測準確率、CSV 匯出" },
-    { id: "report", title: "盤後排序報表", desc: "證交所收盤＋外資／三大法人，依漲跌％或買賣超排序，可下載 HTML" },
-    { id: "advise", title: "個股綜合研判", desc: "基本面＋籌碼面＋是否建議買進，並用 K 線標買賣點" }
-  ];
-  const TOOL_IDS = TOOL_MENU.map(function (t) { return t.id; });
-
   function emptyBook() {
     return {
       watch: [],
@@ -55,6 +48,13 @@
       toolOrder: TOOL_IDS.slice()
     };
   }
+
+  let book = emptyBook();
+  let saveTimer = 0;
+  let importRows = [];
+  let liveTimer = 0;
+  let liveBusy = false;
+  const alertSent = {};
 
   function normalizeToolOrder(raw) {
     const seen = {};
