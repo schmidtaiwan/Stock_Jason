@@ -3153,6 +3153,38 @@
     return out;
   }
 
+  let latestT86Pack = null;
+  let latestT86At = 0;
+
+  async function latestTwseT86(maxBack) {
+    const now = Date.now();
+    if (latestT86Pack && latestT86Pack.ok && now - latestT86At < 5 * 60 * 1000) return latestT86Pack;
+    const candidates = twseWeekdayYmds(taipeiYmd(), Math.max(8, maxBack || 12));
+    for (let i = 0; i < candidates.length; i++) {
+      const hit = await twseT86(candidates[i]);
+      if (hit && hit.ok && hit.rows && hit.rows.length) {
+        latestT86Pack = hit;
+        latestT86At = now;
+        return hit;
+      }
+    }
+    return latestT86Pack || { ok: false, date: "", rows: [] };
+  }
+
+  // 自選用：最近一個有公告的交易日，各代號外資／投信／自營買賣超（股）
+  async function watchChips(items) {
+    const list = items || [];
+    const empty = { date: "", byCode: {} };
+    if (!list.length) return empty;
+    const pack = await latestTwseT86(12);
+    if (!pack || !pack.ok) return empty;
+    const byCode = {};
+    (pack.rows || []).forEach(function (row) {
+      if (row && row.code) byCode[String(row.code).toUpperCase()] = row;
+    });
+    return { date: pack.date || "", byCode: byCode };
+  }
+
   function twseWeekdayYmds(endYmd, maxCal) {
     const out = [];
     for (let i = 0; i < maxCal; i++) {
@@ -3481,6 +3513,7 @@
     twPredict: twPredict,
     twseDailyReport: twseDailyReport,
     sortDailyReportRows: sortDailyReportRows,
-    kPatterns: kPatterns
+    kPatterns: kPatterns,
+    watchChips: watchChips
   };
 })(window);

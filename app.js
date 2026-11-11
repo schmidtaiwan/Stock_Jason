@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 44;
+  const PAGE_BUILD = 45;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1109,7 +1109,7 @@
     paintWatchPnl(idx);
   }
 
-  // 只更新目前價／損益／總損益，不重繪整張表（避免名稱變英文、輸入被清掉）
+  // 只更新目前價／損益／總損益／籌碼，不重繪整張表（避免名稱變英文、輸入被清掉）
   async function paintWatchQuotes() {
     const box = $("watch-list");
     if (!box || !book.watch.length) return;
@@ -1119,9 +1119,14 @@
     }
     const gen = (paintWatchQuotes.gen = (paintWatchQuotes.gen || 0) + 1);
     try {
-      const rows = await M.watchBoard(book.watch);
+      const got = await Promise.all([
+        M.watchBoard(book.watch),
+        M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null)
+      ]);
       if (gen !== paintWatchQuotes.gen) return;
+      const rows = got[0] || [];
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
+      if (got[1]) paintWatchChipRows(box, got[1]);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     } catch (err) {
@@ -1161,7 +1166,7 @@
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name"><button type="button" class="watch-link" data-open-watch="' + idx + '">' +
-          esc(label) + "</button></td>" +
+          esc(label) + '</button><div class="watch-chips" data-watch-chips="' + idx + '"><span class="note">籌碼…</span></div></td>' +
           '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
           '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
@@ -1181,9 +1186,15 @@
           "</label></div></td>" +
           "</tr>";
       }).join("") + "</tbody></table></div>";
-    M.watchBoard(book.watch).then(function (rows) {
+    Promise.all([
+      M.watchBoard(book.watch),
+      M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} })
+    ]).then(function (got) {
       if (gen !== renderWatch.gen) return;
+      const rows = got[0] || [];
+      const chips = got[1] || { date: "", byCode: {} };
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
+      paintWatchChipRows(box, chips);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
@@ -1193,6 +1204,39 @@
         cell.textContent = "—";
       });
       paintWatchTotal();
+    });
+  }
+
+  function chipLotsTag(n, tag) {
+    if (n == null || !isFinite(n)) return "";
+    const lots = Math.round(n / 1000);
+    const cls = lots > 0 ? "up" : lots < 0 ? "down" : "";
+    const sign = lots > 0 ? "+" : lots < 0 ? "-" : "";
+    return '<span class="' + cls + '" title="' + esc(tag) + '買賣超">' + esc(tag) + sign +
+      Math.abs(lots).toLocaleString("zh-Hant") + "張</span>";
+  }
+
+  function paintWatchChipRows(box, pack) {
+    if (!box) return;
+    const byCode = (pack && pack.byCode) || {};
+    const date = pack && pack.date ? String(pack.date) : "";
+    const dateLabel = date.length === 8 ? date.slice(4, 6) + "/" + date.slice(6, 8) : "";
+    book.watch.forEach(function (item, idx) {
+      const el = box.querySelector('[data-watch-chips="' + idx + '"]');
+      if (!el) return;
+      const code = String(item && item.code || "").toUpperCase();
+      const row = code && byCode[code];
+      if (!row) {
+        el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
+        return;
+      }
+      const parts = [
+        chipLotsTag(row.foreignNet, "外"),
+        chipLotsTag(row.trustNet, "投"),
+        chipLotsTag(row.dealerNet, "自")
+      ].filter(Boolean);
+      el.innerHTML = (parts.join(" ") || '<span class="note">—</span>') +
+        (dateLabel ? '<span class="watch-chip-date">' + esc(dateLabel) + "</span>" : "");
     });
   }
 
