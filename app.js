@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 85;
+  const PAGE_BUILD = 86;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2128,7 +2128,7 @@
     const box = $("watch-list");
     paintWatchGroups();
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">這個群組還是空的。按右上角「加入股票」用代號或庫存圖新增。</p>';
+      box.innerHTML = '<p class="note">這個群組還是空的。按群組列「加入股票」用代號或庫存圖新增。</p>';
       paintWatchTotal();
       return;
     }

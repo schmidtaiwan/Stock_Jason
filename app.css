@@ -578,7 +578,6 @@ textarea { min-height: 120px; resize: vertical; }
   gap: 8px;
   flex: 0 0 auto;
 }
-.watch-head .primary,
 .watch-head #watch-mode-toggle {
   flex: 0 0 auto;
   min-height: 36px;
@@ -589,12 +588,28 @@ textarea { min-height: 120px; resize: vertical; }
   border-color: var(--accent);
   color: var(--accent);
 }
-.watch-groups {
+.watch-groups-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
+}
+.watch-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.watch-groups-bar #watch-open-add {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
 }
 .watch-group-chip {
   display: inline-flex;
