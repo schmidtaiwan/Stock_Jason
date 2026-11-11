@@ -585,6 +585,23 @@ textarea { min-height: 120px; resize: vertical; }
   padding: 6px 14px;
   border-radius: 999px;
 }
+.watch-head #watch-open-add.watch-add-icon {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+.watch-add-glyph {
+  width: 22px;
+  height: 22px;
+  display: block;
+  color: var(--accent-ink);
+}
 #watch-mode-toggle[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
