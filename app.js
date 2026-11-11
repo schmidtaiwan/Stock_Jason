@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 84;
+  const PAGE_BUILD = 85;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1959,7 +1959,7 @@
     const pnl = watchPnl(price, item.cost, item.shares, item.code);
     const cell = row.querySelector("[data-watch-pnl]");
     if (!cell) return;
-    cell.className = pnl.cls;
+    cell.className = "watch-num watch-col-pnl" + (pnl.cls ? " " + pnl.cls : "");
     cell.textContent = pnl.text;
   }
 
@@ -3456,7 +3456,6 @@
     else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
-    else if (t.id === "watch-pnl-toggle") toggleWatchShowPnl();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-del") deleteWatchGroup();
@@ -3717,6 +3716,9 @@
     }
     scheduleSave();
   });
+  if ($("watch-pnl-toggle")) {
+    $("watch-pnl-toggle").addEventListener("change", toggleWatchShowPnl);
+  }
   $("watch-list").addEventListener("change", async function (ev) {
     const modeEl = ev.target.getAttribute("data-watch-notify-mode");
     if (modeEl != null) {
