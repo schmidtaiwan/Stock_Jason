@@ -547,8 +547,14 @@ textarea { min-height: 120px; resize: vertical; }
   line-height: 1.15;
   min-height: 1.15em;
 }
+.watch-col-price .watch-lv-brk {
+  margin-bottom: 10px; /* 突靠上區，與現價拉開 */
+}
+.watch-col-price .watch-lv-sup {
+  margin-top: 10px; /* 支靠下區，與漲跌％拉開 */
+}
 .watch-px {
-  font-size: 17px; /* 原約 13px + 4pt */
+  font-size: 19px; /* 再 +2pt */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -713,7 +719,7 @@ textarea { min-height: 120px; resize: vertical; }
     font-weight: 500;
     margin-bottom: 2px;
   }
-  .watch-col-price::before { content: "目前"; }
+  .watch-col-price::before { content: "目前"; margin-bottom: 0; }
   .watch-col-cost::before { content: "買價"; }
   .watch-col-pnl::before { content: "損益"; }
   .watch-col-shares::before { content: "股數"; }
