@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=86">
+  <link rel="stylesheet" href="app.css?v=87">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -248,6 +248,7 @@
         <div id="panel-ideas" class="panel" hidden>
           <p class="fine">掃固定池裡的台股（約 20 檔藍籌，不是全市場），每檔拉日 K，用均線／RSI／MACD／突破／回檔打分；分數夠且是突破或回檔才標「可進場」，並依資金與風險％算股數。做多、收盤價試算，不含手續費。</p>
           <p class="fine">會上網：每次按掃描拉 K 線（同頁同檔有記憶體快取可不重抓），再補本益比等報價。</p>
+          <div class="tool-watch-pick" data-tool-watch="ideas"></div>
           <div class="grid2">
             <div><label for="idea-capital">帳戶資金</label><input id="idea-capital" inputmode="decimal" value="1000000"></div>
             <div><label for="idea-risk">單筆風險 %</label><input id="idea-risk" inputmode="decimal" value="1"></div>
@@ -265,6 +266,7 @@
         <div id="panel-tech" class="panel" hidden>
           <p class="fine">對你選的標的拉日線＋週線，檢查：週線＞20 週均、收盤＞20＞60、MACD 柱＞0、RSI 45–70 → 四項都過才「買進」；對稱條件偏空才「賣出」，否則「觀望」。</p>
           <p class="fine">會上網：按分析時拉日／週 K（有快取則可能沿用）。</p>
+          <div class="tool-watch-pick" data-tool-watch="tech"></div>
           <label for="tech-q">標的</label>
           <input id="tech-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
           <div id="tech-hits"></div>
@@ -277,6 +279,7 @@
         <div id="panel-news" class="panel" hidden>
           <p class="fine">新聞文字是你貼的；程式用關鍵字分偏多／偏空，並用「已／將／預計」等拆已反映／未反映。價格面用近 5／20 日漲跌與 ATR 估短長期區間與停損股數。</p>
           <p class="fine">會上網：按轉換時拉該股 K 線與報價；新聞本身不上網抓。</p>
+          <div class="tool-watch-pick" data-tool-watch="news"></div>
           <label for="news-q">標的</label>
           <input id="news-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
           <div id="news-hits"></div>
@@ -295,6 +298,7 @@
         <div id="panel-test" class="panel" hidden>
           <p class="fine">對選定標的拉 1／3／5 年日 K，在本地模擬三種策略（5／20 均線交叉、RSI 30→70、突破 20 日高），算勝率、獲利因子、最大回撤，再給改進提示。</p>
           <p class="fine">會上網：按回測時拉歷史 K（同頁同檔有記憶體快取可不重抓）。</p>
+          <div class="tool-watch-pick" data-tool-watch="test"></div>
           <label for="test-q">標的</label>
           <input id="test-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
           <div id="test-hits"></div>
@@ -319,6 +323,7 @@
         <div id="panel-risk" class="panel" hidden>
           <p class="fine">用你本機／雲端的持股清單，拉各股約 180 日與標普 500，算權重、beta、相關＞0.75 的連動、超上限再平衡，以及大盤跌 20% 時的估計跌幅與減碼建議。</p>
           <p class="fine">會上網：按計算時拉持股與大盤行情；持股檔本身是本地／登入後雲端，不是當下掃市場。</p>
+          <div class="tool-watch-pick" data-tool-watch="risk"></div>
           <label for="risk-profile">風險承受</label>
           <select id="risk-profile">
             <option value="保守">保守（單一上限 15%）</option>
@@ -345,6 +350,7 @@
             <option value="stock">個別上市股票漲跌（隔日）</option>
           </select>
           <div id="predict-stock-box" hidden>
+            <div class="tool-watch-pick" data-tool-watch="predict"></div>
             <label for="predict-q">個股標的</label>
             <input id="predict-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
             <div id="predict-hits"></div>
@@ -368,6 +374,7 @@
         <div id="panel-report" class="panel" hidden>
           <p class="fine">讀證交所每日收盤行情（MI_INDEX）與三大法人買賣超（T86）。單日或 5／20／60／180 個交易日：漲跌％用區間首尾收盤，外資／法人／成交金額為區間加總。法人若某日未公告會跳過該日。</p>
           <p class="fine">會上網：證交所公開報表（必要時經 CORS 代理）。區間愈長愈慢，資料會暫存在本頁記憶體。</p>
+          <div class="tool-watch-pick" data-tool-watch="report"></div>
           <div class="grid2">
             <div>
               <label for="report-date">迄日（預設今日）</label>
@@ -435,6 +442,7 @@
             </ol>
             <p class="fine">完整規格見專案 <code>mops-spec.md</code>。資料非投資建議。</p>
           </div>
+          <div class="tool-watch-pick" data-tool-watch="mops"></div>
           <label for="mops-q">標的</label>
           <input id="mops-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
           <div id="mops-hits"></div>
@@ -446,8 +454,8 @@
 
         <div id="panel-advise" class="panel" hidden>
           <p class="fine">彙整基本面（三率／本益比）、籌碼（外資／投信／近 5 日法人）與日週線／K 線型態，給出是否建議買進，並標買點、賣點、停損。規則試算，不是投資建議。</p>
-          <p class="fine">會上網：FinMind 籌碼財務、日週 K、報價；可先點自選快速帶入。</p>
-          <div id="advise-watch" class="chips"></div>
+          <p class="fine">會上網：FinMind 籌碼財務、日週 K、報價；可先點自選群組／個股快速帶入。</p>
+          <div class="tool-watch-pick" data-tool-watch="advise"></div>
           <label for="advise-q">標的</label>
           <input id="advise-q" type="search" placeholder="台股代號或名稱，例如 2345" autocomplete="off">
           <div id="advise-hits"></div>
@@ -465,6 +473,7 @@
             <button id="chipx-token-save" class="secondary" type="button">儲存</button>
           </div>
           <p id="chipx-token-status" class="fine"></p>
+          <div class="tool-watch-pick" data-tool-watch="chipx"></div>
           <label for="chipx-q">標的</label>
           <input id="chipx-q" type="search" placeholder="台股代號，例如 2308" autocomplete="off">
           <div id="chipx-hits"></div>
@@ -476,6 +485,7 @@
 
         <div id="panel-screen" class="panel" hidden>
           <p class="fine">官方精選策略（盤後 T86）：外資連買、投信剛買第一天、主力急買、外資＋投信同向。可再勾「站上月線」做交集（會抽樣掃描前列標的日 K）。</p>
+          <div class="tool-watch-pick" data-tool-watch="screen"></div>
           <label for="screen-strategy">策略</label>
           <select id="screen-strategy">
             <option value="foreignBuy">外資連買 ≥ 3 日</option>
@@ -497,6 +507,7 @@
 
         <div id="panel-chipday" class="panel" hidden>
           <p class="fine">盤後籌碼日報：證交所 T86 公布後（約 17:00～18:00）整理全市場法人買超／賣超排行。券商分點異常需 FinMind 付費層。</p>
+          <div class="tool-watch-pick" data-tool-watch="chipday"></div>
           <button id="chipday-run" class="primary" type="button">產生今日籌碼日報</button>
           <p id="chipday-status" class="status" role="status"></p>
           <div id="chipday-out" class="result"></div>
@@ -505,6 +516,7 @@
         <div id="panel-journal" class="panel" hidden>
           <p class="fine">只讀你寫入的最近 20 筆日誌，統計勝率、情緒偏誤（追價、恐懼出場等），生出最多三條規則。</p>
           <p class="fine">不上網：純本機（或已同步的雲端檔）運算，不拉行情。</p>
+          <div class="tool-watch-pick" data-tool-watch="journal"></div>
           <div class="grid2">
             <div><label for="j-date">日期</label><input id="j-date" type="date"></div>
             <div><label for="j-side">方向</label>
@@ -550,11 +562,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=86"></script>
-  <script src="drive.js?v=86"></script>
-  <script src="sakata.js?v=86"></script>
-  <script src="market.js?v=86"></script>
-  <script src="chips.js?v=86"></script>
-  <script src="app.js?v=86"></script>
+  <script src="google_config.js?v=87"></script>
+  <script src="drive.js?v=87"></script>
+  <script src="sakata.js?v=87"></script>
+  <script src="market.js?v=87"></script>
+  <script src="chips.js?v=87"></script>
+  <script src="app.js?v=87"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 86;
+  const PAGE_BUILD = 87;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -8,6 +8,7 @@
   let usRowsOpen = true;
   let chipCostLines = null;
   let stockChipCostLines = null;
+  let toolWatchGroupId = "";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -528,7 +529,7 @@
     if (id === "journal") renderJournal();
     if (id === "predict") syncPredictStockBox();
     if (id === "report" && $("report-date")) $("report-date").value = taipeiDay();
-    if (id === "advise") paintAdviseWatch();
+    paintToolWatchPick(id);
     if (id === "chipx") {
       if ($("chipx-token") && C) $("chipx-token").value = C.getToken() || "";
       syncChipxTokenStatus();
@@ -544,22 +545,114 @@
       : "尚未設定 token：仍可用法人／融資做健檢與主力成本近似。";
   }
 
-  function paintAdviseWatch() {
-    const box = $("advise-watch");
+  const TOOL_WATCH_META = {
+    mops: { q: "mops-q", pickLabel: "mops-pick", hits: "mops-hits", pickKey: "mops" },
+    chipx: { q: "chipx-q", pickLabel: "chipx-pick", hits: "chipx-hits", pickKey: "chipx" },
+    tech: { q: "tech-q", pickLabel: "tech-pick", hits: "tech-hits", pickKey: "tech" },
+    news: { q: "news-q", pickLabel: "news-pick", hits: "news-hits", pickKey: "news" },
+    test: { q: "test-q", pickLabel: "test-pick", hits: "test-hits", pickKey: "test" },
+    advise: { q: "advise-q", pickLabel: "advise-pick", hits: "advise-hits", pickKey: "advise", autoRun: true },
+    journal: { q: "j-q", pickLabel: "j-pick", hits: "j-hits", pickKey: "journal" },
+    predict: { q: "predict-q", pickLabel: "predict-pick", hits: "predict-hits", pickKey: "predict" },
+    risk: { mode: "holding" },
+    ideas: { redirect: "advise", hint: "點自選個股可轉去綜合研判" },
+    screen: { redirect: "advise", hint: "全市場選股；點自選個股可轉去綜合研判" },
+    chipday: { redirect: "advise", hint: "全市場日報；點自選個股可轉去綜合研判" },
+    report: { redirect: "advise", hint: "全市場報表；點自選個股可轉去綜合研判" }
+  };
+
+  function toolWatchActiveGroup() {
+    flushWatchToGroup();
+    const groups = book.watchGroups || [];
+    if (!groups.length) return null;
+    const id = toolWatchGroupId || book.watchGroupId;
+    return groups.find(function (g) { return g.id === id; }) || groups[0];
+  }
+
+  function paintToolWatchPick(toolId) {
+    const box = document.querySelector('[data-tool-watch="' + toolId + '"]');
     if (!box) return;
-    if (!book.watch.length) {
-      box.innerHTML = '<span class="fine">自選還是空的，請搜尋代號。</span>';
+    const meta = TOOL_WATCH_META[toolId] || {};
+    const groups = book.watchGroups || [];
+    const g = toolWatchActiveGroup();
+    if (!g) {
+      box.innerHTML = '<p class="fine tool-watch-empty">尚無自選群組，請先到自選建立。</p>';
       return;
     }
-    box.innerHTML = book.watch.map(function (item, idx) {
-      return '<button type="button" class="chip" data-advise-watch="' + idx + '">' +
-        esc((item.name || "") + " " + (item.code || "")) + "</button>";
+    toolWatchGroupId = g.id;
+    const groupHtml = groups.map(function (row) {
+      const on = row.id === g.id;
+      return '<button type="button" class="chip tool-watch-group" data-tool-watch-group="' +
+        esc(row.id) + '" data-tool-watch-for="' + esc(toolId) + '" aria-pressed="' +
+        (on ? "true" : "false") + '">' + esc(row.name) +
+        '<span class="watch-group-count">' + (row.items || []).length + "</span></button>";
     }).join("");
+    const items = g.items || [];
+    let stockHtml;
+    if (!items.length) {
+      stockHtml = '<span class="fine">此群組沒有個股。</span>';
+    } else {
+      stockHtml = items.map(function (item, idx) {
+        const label = ((item.name || "") + " " + (item.code || "")).trim();
+        return '<button type="button" class="chip" data-tool-watch-item="' + esc(toolId) +
+          '" data-tool-watch-idx="' + idx + '">' + esc(label) + "</button>";
+      }).join("");
+    }
+    const hint = meta.hint
+      ? '<p class="fine tool-watch-hint">' + esc(meta.hint) + "</p>"
+      : '<p class="fine tool-watch-hint">自選群組／個股（點選帶入分析）</p>';
+    box.innerHTML = hint +
+      '<div class="tool-watch-groups">' + groupHtml + "</div>" +
+      '<div class="tool-watch-stocks chips">' + stockHtml + "</div>";
+  }
+
+  function applyToolWatchItem(toolId, item) {
+    if (!item) return;
+    const row = {
+      secid: item.secid,
+      code: item.code,
+      name: item.name || "",
+      market: item.market || "台股"
+    };
+    const meta = TOOL_WATCH_META[toolId] || {};
+    if (meta.mode === "holding") {
+      if (!book.holdings.some(function (h) { return h.secid === row.secid; })) {
+        book.holdings.push(Object.assign({
+          shares: item.shares > 0 ? item.shares : 1,
+          cost: item.cost == null ? "" : item.cost
+        }, row));
+        scheduleSave();
+      }
+      renderHoldings();
+      return;
+    }
+    if (meta.redirect) {
+      state.picks.advise = row;
+      if ($("advise-q")) $("advise-q").value = (row.code || "") + " " + (row.name || "");
+      if ($("advise-pick")) $("advise-pick").textContent = row.name + " " + row.code + " · 自選";
+      openTool(meta.redirect);
+      if (typeof runAdvise === "function") runAdvise();
+      return;
+    }
+    const key = meta.pickKey || toolId;
+    state.picks[key] = row;
+    if (meta.pickLabel && $(meta.pickLabel)) {
+      $(meta.pickLabel).textContent = row.name + " " + row.code + " · 自選";
+    }
+    if (meta.hits && $(meta.hits)) $(meta.hits).innerHTML = "";
+    if (meta.q && $(meta.q)) $(meta.q).value = (row.code || "") + " " + (row.name || "");
+    if (key === "predict" && $("predict-horizon")) {
+      $("predict-horizon").value = "stock";
+      syncPredictStockBox();
+      paintToolWatchPick("predict");
+    }
+    if (meta.autoRun && typeof runAdvise === "function") runAdvise();
   }
 
   function syncPredictStockBox() {
     const stock = $("predict-horizon").value === "stock";
     $("predict-stock-box").hidden = !stock;
+    if (stock) paintToolWatchPick("predict");
   }
 
   function syncMoney() {
@@ -3395,18 +3488,14 @@
     if (t.dataset.pick) onPick(t);
     else if (t.id === "k-pick-clear") clearKSelection();
     else if (t.id === "stock-k-pick-clear") clearStockKSelection();
-    else if (t.dataset.adviseWatch != null) {
-      const item = book.watch[Number(t.dataset.adviseWatch)];
-      if (!item) return;
-      state.picks.advise = {
-        secid: item.secid,
-        code: item.code,
-        name: item.name,
-        market: item.market || "台股"
-      };
-      $("advise-pick").textContent = item.name + " " + item.code + " · 自選";
-      $("advise-q").value = (item.code || "") + " " + (item.name || "");
-      runAdvise();
+    else if (t.dataset.toolWatchGroup) {
+      toolWatchGroupId = t.dataset.toolWatchGroup;
+      paintToolWatchPick(t.dataset.toolWatchFor || state.tool || "");
+    } else if (t.dataset.toolWatchItem) {
+      const g = toolWatchActiveGroup();
+      const idx = Number(t.dataset.toolWatchIdx);
+      const item = g && g.items ? g.items[idx] : null;
+      applyToolWatchItem(t.dataset.toolWatchItem, item);
     } else if (t.dataset.range) {
       state.range = t.dataset.range;
       state.custom = false;

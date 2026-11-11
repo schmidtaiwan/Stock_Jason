@@ -228,6 +228,36 @@ main {
   white-space: nowrap;
 }
 .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.tool-watch-pick {
+  margin: 8px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.tool-watch-hint,
+.tool-watch-empty {
+  margin: 0 0 8px;
+}
+.tool-watch-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.tool-watch-groups .chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.tool-watch-stocks {
+  margin: 0;
+}
+.tool-watch-stocks .chip {
+  min-height: 34px;
+  font-size: 13px;
+}
 
 .chart-styles {
   display: flex;
