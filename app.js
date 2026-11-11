@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 51;
+  const PAGE_BUILD = 52;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -2499,10 +2499,13 @@
     }
   });
 
-  $("range-from").addEventListener("change", applyCustomDates);
-  $("range-to").addEventListener("change", applyCustomDates);
+  // 閘道先綁、先顯示版次，後面若掛掉仍可進站
+  showVer();
   $("enter").addEventListener("click", function () { showApp(); });
   $("gate-login").addEventListener("click", doLogin);
+
+  $("range-from").addEventListener("change", applyCustomDates);
+  $("range-to").addEventListener("change", applyCustomDates);
   $("login").addEventListener("click", doLogin);
   $("logout").addEventListener("click", function () {
     D.logout();
@@ -2708,7 +2711,6 @@
 
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-  showVer();
   buildToggles();
   D.ready().catch(function () { /* 登入時再提示 */ });
   if (D.account()) {
