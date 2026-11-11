@@ -736,6 +736,15 @@
             }
           }
           const code = String(secid).slice(String(secid).indexOf(".") + 1).toUpperCase();
+          const stamps = result.timestamp || [];
+          let asOf = yahooAsOfMs(meta);
+          if (stamps.length) {
+            const lastTs = num(stamps[stamps.length - 1]);
+            if (lastTs != null) {
+              const barMs = lastTs > 1e12 ? lastTs : lastTs * 1000;
+              if (!asOf || barMs > asOf) asOf = barMs;
+            }
+          }
           return {
             secid: secid,
             code: code,
@@ -746,7 +755,9 @@
             pe: null,
             cap: null,
             pb: null,
-            source: "yahoo"
+            source: "yahoo",
+            asOf: asOf,
+            delayMin: num(meta.exchangeDataDelayedBy)
           };
         } catch (err) { /* 下一個查詢／代號 */ }
       }
@@ -2509,6 +2520,14 @@
     });
   }
 
+  function yahooAsOfMs(meta) {
+    if (!meta) return null;
+    const t = num(meta.regularMarketTime);
+    if (t == null) return null;
+    // Yahoo 多為秒；偶見毫秒
+    return t > 1e12 ? t : t * 1000;
+  }
+
   async function twiiQuote() {
     // ^TWII 的 meta.previousClose 常是舊值（會算出 +3000 點這種錯漲跌），改用近兩日日線
     try {
@@ -2519,15 +2538,37 @@
         const closes = (((result.indicators || {}).quote || [])[0] || {}).close || [];
         const good = closes.filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
           .map(Number);
-        const price = num(meta.regularMarketPrice) || good[good.length - 1] || 0;
+        let price = num(meta.regularMarketPrice) || good[good.length - 1] || 0;
         const prev = good.length >= 2 ? good[good.length - 2] : num(meta.previousClose);
+        let asOf = yahooAsOfMs(meta);
+        let delayMin = num(meta.exchangeDataDelayedBy);
+        // 盤中再用 1 分 K 校正現價與時間戳，才能估延遲
+        try {
+          const live = await yahooChart("^TWII", "interval=1m&range=1d");
+          const liveRes = live && live.chart && live.chart.result && live.chart.result[0];
+          if (liveRes) {
+            const liveMeta = liveRes.meta || {};
+            const liveCloses = ((((liveRes.indicators || {}).quote || [])[0] || {}).close || [])
+              .filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
+              .map(Number);
+            if (liveCloses.length) price = liveCloses[liveCloses.length - 1];
+            else if (num(liveMeta.regularMarketPrice) > 0) price = num(liveMeta.regularMarketPrice);
+            const stamps = liveRes.timestamp || [];
+            const lastTs = stamps.length ? num(stamps[stamps.length - 1]) : null;
+            if (lastTs != null) asOf = lastTs > 1e12 ? lastTs : lastTs * 1000;
+            else asOf = yahooAsOfMs(liveMeta) || asOf;
+            if (num(liveMeta.exchangeDataDelayedBy) != null) delayMin = num(liveMeta.exchangeDataDelayedBy);
+          }
+        } catch (errLive) { /* 保留日線結果 */ }
         if (price > 0 && prev > 0) {
           const change = price - prev;
           return {
             price: price,
             change: change,
             pct: change / prev * 100,
-            name: "加權指數"
+            name: "加權指數",
+            asOf: asOf,
+            delayMin: delayMin
           };
         }
       }
@@ -2550,7 +2591,9 @@
       price: q.price,
       change: change,
       pct: pct,
-      name: "加權指數"
+      name: "加權指數",
+      asOf: q.asOf || null,
+      delayMin: q.delayMin != null ? q.delayMin : null
     };
   }
 

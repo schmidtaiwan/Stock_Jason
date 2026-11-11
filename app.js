@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 67;
+  const PAGE_BUILD = 68;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -255,6 +255,32 @@
 
   let twiiBusy = false;
   let twiiSeq = 0;
+  function formatTwiiLag(q) {
+    const lagEl = $("twii-lag");
+    if (!lagEl) return;
+    if (!isTwMarketOpen()) {
+      lagEl.hidden = true;
+      lagEl.textContent = "";
+      return;
+    }
+    let mins = null;
+    if (q && q.asOf != null && isFinite(q.asOf)) {
+      mins = Math.max(0, Math.floor((Date.now() - Number(q.asOf)) / 60000));
+    } else if (q && q.delayMin != null && isFinite(q.delayMin) && q.delayMin > 0) {
+      mins = Math.round(q.delayMin);
+    }
+    // 開盤中延遲達 1 分鐘才顯示；Yahoo 台股常見約 15～20 分延遲
+    if (mins == null || mins < 1) {
+      lagEl.hidden = true;
+      lagEl.textContent = "";
+      return;
+    }
+    lagEl.hidden = false;
+    lagEl.textContent = mins >= 60
+      ? (Math.floor(mins / 60) + " 小時前")
+      : (mins + " 分鐘前");
+  }
+
   async function paintTwii(force) {
     const priceEl = $("twii-price");
     const chgEl = $("twii-chg");
@@ -267,6 +293,7 @@
       priceEl.className = "";
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
+      if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
     }
     try {
       if (M.bustLiveCaches) M.bustLiveCaches(["100.TWII"]);
@@ -281,12 +308,14 @@
         "（" + (q.pct > 0 ? "+" : "") + q.pct.toFixed(2) + "%）";
       chgEl.className = "twii-chg " + cls;
       chgEl.textContent = pts + pctTxt;
+      formatTwiiLag(q);
     } catch (err) {
       if (seq !== twiiSeq) return;
       priceEl.textContent = "—";
       priceEl.className = "";
       chgEl.className = "twii-chg";
       chgEl.textContent = "加權讀取失敗";
+      if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
     } finally {
       if (seq === twiiSeq) twiiBusy = false;
     }
@@ -1914,16 +1943,17 @@
     }
     const priceCell = row.querySelector("[data-watch-price]");
     if (priceCell) {
+      const miniPx = isWatchMini() ? " watch-mini-px" : "";
       if (m && m.price != null && isFinite(m.price)) {
         const cls = pctClass((m.pct || 0) / 100);
         const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
           (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
-        priceCell.className = "watch-px watch-num " + cls;
+        priceCell.className = "watch-px watch-num" + miniPx + " " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
           (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
         row.setAttribute("data-price", String(m.price));
       } else {
-        priceCell.className = "watch-px watch-num";
+        priceCell.className = "watch-px watch-num" + miniPx;
         priceCell.textContent = "—";
         row.setAttribute("data-price", "");
       }
@@ -2052,8 +2082,9 @@
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
       if (gen !== renderWatch.gen) return;
+      const miniPx = isWatchMini() ? " watch-mini-px" : "";
       box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
-        cell.className = "watch-px watch-num";
+        cell.className = "watch-px watch-num" + miniPx;
         cell.textContent = "—";
       });
       paintWatchTotal();
