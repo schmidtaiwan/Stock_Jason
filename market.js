@@ -1,7 +1,7 @@
 /* 行情、指標與六項交易分析。計算在瀏覽器完成，不把價格寫進 Git。 */
 (function (global) {
   const RANGES = {
-    "1d": { label: "今", klt: 1, lmt: 420, session: "last", align: "index" },
+    "1d": { label: "今", klt: 5, lmt: 120, session: "last", align: "index" },
     "5d": { label: "五日", klt: 15, lmt: 240, days: 5, align: "index" },
     "20d": { label: "20日", klt: 101, lmt: 20, align: "date" },
     "180d": { label: "180日", klt: 101, lmt: 180, align: "date" },
@@ -91,7 +91,10 @@
 
   function trimBars(bars, spec) {
     let out = bars.slice();
-    if (spec.session === "last" && out.length) {
+    if (spec.day) {
+      const day = String(spec.day).slice(0, 10);
+      out = out.filter(function (b) { return String(b.t).slice(0, 10) === day; });
+    } else if (spec.session === "last" && out.length) {
       const day = out[out.length - 1].t.slice(0, 10);
       out = out.filter(function (b) { return b.t.slice(0, 10) === day; });
     }
@@ -155,16 +158,144 @@
 
   function customSpec(from, to) {
     const days = spanDays(from, to);
-    if (days <= 1) return { klt: 1, lmt: 420, session: "last", align: "index" };
+    if (days <= 1) return { klt: 5, lmt: 120, session: "day", day: String(to || from).slice(0, 10), align: "index" };
     if (days <= 5) return { klt: 15, lmt: 240, days: days, align: "index" };
     if (days <= 400) return { klt: 101, lmt: Math.min(1300, days + 40), align: "date" };
     return { klt: 102, lmt: Math.min(400, Math.ceil(days / 5) + 20), align: "index" };
+  }
+
+  function wantsIntraday(rangeId, from, to) {
+    if (from && to) return spanDays(from, to) <= 1;
+    return rangeId === "1d";
+  }
+
+  function emSecid(secid) {
+    const id = String(secid || "");
+    if (id.indexOf("tw.") === 0) return "178." + id.slice(3);
+    return id;
+  }
+
+  function formatTaipeiTs(sec) {
+    const d = new Date(Number(sec) * 1000);
+    if (!isFinite(d.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(d);
+    const get = function (type) {
+      const hit = parts.find(function (p) { return p.type === type; });
+      return hit ? hit.value : "";
+    };
+    const hour = get("hour") === "24" ? "00" : get("hour");
+    return get("year") + "-" + get("month") + "-" + get("day") + " " + hour + ":" + get("minute");
+  }
+
+  function parseYahooOhlcv(json) {
+    const result = json && json.chart && json.chart.result && json.chart.result[0];
+    if (!result) return [];
+    const ts = result.timestamp || [];
+    const q = ((result.indicators || {}).quote || [])[0] || {};
+    const out = [];
+    for (let i = 0; i < ts.length; i++) {
+      const c = num(q.close && q.close[i]);
+      if (!(c > 0)) continue;
+      const o = num(q.open && q.open[i]);
+      const h = num(q.high && q.high[i]);
+      const l = num(q.low && q.low[i]);
+      const t = formatTaipeiTs(ts[i]);
+      if (!t) continue;
+      out.push({
+        t: t,
+        o: o != null ? o : c,
+        h: h != null ? h : c,
+        l: l != null ? l : c,
+        c: c,
+        v: num(q.volume && q.volume[i]) || 0
+      });
+    }
+    out.symbolName = toTW((result.meta && result.meta.shortName) || (result.meta && result.meta.symbol) || "");
+    return out;
+  }
+
+  async function yahooFiveMinBars(secid, day) {
+    const dayStr = String(day || "").slice(0, 10);
+    const list = [];
+    function addSyms(id) {
+      yahooCandidates(id).forEach(function (s) {
+        if (s && list.indexOf(s) < 0) list.push(s);
+      });
+    }
+    addSyms(secid);
+    addSyms(emSecid(secid));
+    const code = twStockId(secid, "");
+    if (code) {
+      if (list.indexOf(code + ".TW") < 0) list.push(code + ".TW");
+      if (list.indexOf(code + ".TWO") < 0) list.push(code + ".TWO");
+    }
+    let periodQuery = "interval=5m&range=1d";
+    if (dayStr && /^\d{4}-\d{2}-\d{2}$/.test(dayStr)) {
+      const start = Date.parse(dayStr + "T00:00:00+08:00");
+      const end = Date.parse(dayStr + "T23:59:59+08:00");
+      if (isFinite(start) && isFinite(end)) {
+        periodQuery = "interval=5m&period1=" + Math.floor(start / 1000) + "&period2=" + Math.floor(end / 1000);
+      }
+    }
+    let lastErr = null;
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const json = await yahooChart(list[i], periodQuery);
+        let rows = parseYahooOhlcv(json);
+        if (dayStr) rows = rows.filter(function (b) { return b.t.slice(0, 10) === dayStr; });
+        if (rows.length) {
+          rows.symbolName = rows.symbolName || list[i];
+          return rows;
+        }
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) throw lastErr;
+    return [];
+  }
+
+  async function fiveMinBars(secid, day) {
+    const dayStr = String(day || "").slice(0, 10);
+    const id = emSecid(secid);
+    // 東財 5 分 K（台股／指數／美股等）
+    if (/^(100|105|106|176|177|178|251)\./.test(id)) {
+      try {
+        const raw = await kline(id, 5, 120, dayStr || undefined);
+        let cut = raw;
+        if (dayStr) cut = raw.filter(function (b) { return String(b.t).slice(0, 10) === dayStr; });
+        else cut = trimBars(raw, { session: "last" });
+        if (cut.length) {
+          cut.symbolName = raw.symbolName || cut.symbolName || "";
+          return cut;
+        }
+      } catch (err) { /* Yahoo 備援 */ }
+    }
+    const yahoo = await yahooFiveMinBars(secid, dayStr);
+    if (yahoo.length) return yahoo;
+    throw new Error("沒有這天的五分 K");
   }
 
   async function bars(secid, rangeId, window) {
     const id = String(secid || "");
     const from = window && window.from;
     const to = window && window.to;
+    if (wantsIntraday(rangeId, from, to)) {
+      const day = (to || from || "").slice(0, 10);
+      if (id === "fx.USDTWD") {
+        const rows = await fxBars("1d", day ? { from: day, to: day } : null);
+        return day ? clipBars(rows, day, day) : rows;
+      }
+      return fiveMinBars(id, day || undefined);
+    }
     if (id === "fx.USDTWD") {
       const rows = await fxBars(rangeId, from && to ? { from: from, to: to } : null);
       return from && to ? clipBars(rows, from, to) : rows;
@@ -400,7 +531,7 @@
   }
 
   const FX_QUERY = {
-    "1d": "interval=1m&range=1d",
+    "1d": "interval=5m&range=1d",
     "5d": "interval=15m&range=5d",
     "20d": "interval=1d&range=1mo",
     "180d": "interval=1d&range=1y",
@@ -449,7 +580,7 @@
 
   function fxQueryForWindow(from, to) {
     const days = spanDays(from, to);
-    if (days <= 1) return "interval=1m&range=1d";
+    if (days <= 1) return "interval=5m&range=1d";
     if (days <= 5) return "interval=15m&range=5d";
     if (days <= 40) return "interval=1d&range=1mo";
     if (days <= 400) return "interval=1d&range=2y";

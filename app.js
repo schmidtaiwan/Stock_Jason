@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 60;
+  const PAGE_BUILD = 61;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -499,8 +499,24 @@
     to.classList.toggle("custom", !!state.custom);
   }
 
+  function isoToday() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function isOneDayRange() {
+    if (state.custom && state.from && state.to) return state.from === state.to;
+    return !state.custom && state.range === "1d";
+  }
+
   function plotWindow() {
-    return state.custom && state.from && state.to ? { from: state.from, to: state.to } : null;
+    if (state.custom && state.from && state.to) return { from: state.from, to: state.to };
+    if (!state.custom && state.range === "1d") {
+      const day = state.from && state.to && state.from === state.to ? state.from : isoToday();
+      return { from: day, to: day };
+    }
+    return null;
   }
 
   function fillDatesFromPlot() {
@@ -533,6 +549,11 @@
     state.custom = true;
     state.from = from;
     state.to = to;
+    // 只選一天：當天五分 K
+    if (from === to) {
+      state.range = "1d";
+      state.chartStyle = "candle";
+    }
     buildToggles();
     loadChart();
   }
@@ -781,11 +802,19 @@
         statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
       }
       if (gen !== state.chartGen) return;
+      // 單日區間強制 K 線（五分）
+      if (isOneDayRange() && state.chartStyle !== "candle") {
+        state.chartStyle = "candle";
+        buildToggles();
+      }
       const candle = state.chartStyle === "candle";
       if (candle && items.length > 1) {
         const tw = items.find(function (row) { return row.name === "台股"; });
         items = [tw || items[0]];
         statusNote = (statusNote ? statusNote + " " : "") + "K線只顯示 " + items[0].name + "。";
+      }
+      if (candle && isOneDayRange()) {
+        statusNote = (statusNote ? statusNote + " " : "") + "單日五分 K。";
       }
       const mode = candle || items.length === 1 ? "price" : "pct";
       state.plot = buildPlot(items, mode, align);
@@ -2557,9 +2586,16 @@
     } else if (t.dataset.range) {
       state.range = t.dataset.range;
       state.custom = false;
+      if (state.range === "1d") {
+        const day = isoToday();
+        state.from = day;
+        state.to = day;
+        state.chartStyle = "candle";
+        syncDateInputs();
+      }
       buildToggles();
       loadChart();
-    }     else if (t.dataset.market) {
+    } else if (t.dataset.market) {
       state.on[t.dataset.market] = t.getAttribute("aria-pressed") !== "true";
       buildToggles();
       loadChart();
