@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=69">
+  <link rel="stylesheet" href="app.css?v=70">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -71,29 +71,19 @@
             </label>
           </div>
         </div>
-        <div id="us-board" class="us-board" aria-label="美股觀察">
-          <div class="us-board-head">
-            <strong>美股觀察指標</strong>
-            <button id="us-board-refresh" class="ghost" type="button">更新</button>
-          </div>
-          <p class="fine">早盤 3 分鐘：看費半／台積電 ADR 方向 → VIX 力道 → 美債／美元資金。夏令 21:30–04:00、冬令 22:30–05:00（台灣時間）。</p>
-          <div id="us-brief" class="us-brief"></div>
-          <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
-        </div>
-        <div id="market-box">
-          <div id="markets" class="chips"></div>
-          <p class="fine">同一張圖可同時打開美股、費半、台股、日股、韓股，以及台幣對美金。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。匯率是 1 美元兌台幣。</p>
-        </div>
         <div id="chart-styles" class="chart-styles" aria-label="圖表類型">
           <div class="chips">
             <button type="button" class="chip" data-chart-style="line" aria-pressed="true">線圖</button>
             <button type="button" class="chip" data-chart-style="candle" aria-pressed="false">K線</button>
           </div>
-          <button id="chart-detail-toggle" class="ghost chart-detail-btn" type="button" aria-pressed="true">細部資料</button>
         </div>
         <div class="card chart-card">
           <canvas id="chart" width="640" height="520"></canvas>
           <p id="chart-status" class="status" role="status"></p>
+          <button id="chart-detail-toggle" class="ghost chart-fold-btn" type="button" aria-pressed="true" aria-controls="chart-details">
+            <span class="chart-fold-label">走勢資訊</span>
+            <span class="chart-fold-chevron" aria-hidden="true">▾</span>
+          </button>
           <div id="chart-details" class="chart-details">
             <p id="k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思；也可點下方型態列反白。</p>
             <div id="k-pick" class="k-pick" hidden></div>
@@ -103,6 +93,19 @@
           </div>
         </div>
         <p id="hover" class="tip" hidden></p>
+        <div id="market-box">
+          <div id="markets" class="chips"></div>
+          <p class="fine">同一張圖可同時打開美股、費半、台股、日股、韓股，以及台幣對美金。多選時用這段區間的漲跌幅對齊。那斯達克線是那斯達克100。匯率是 1 美元兌台幣。</p>
+        </div>
+        <div id="us-board" class="us-board" aria-label="美股觀察">
+          <div class="us-board-head">
+            <strong>美股觀察指標</strong>
+            <button id="us-board-refresh" class="ghost" type="button">更新</button>
+          </div>
+          <p class="fine">早盤 3 分鐘：看費半／台積電 ADR 方向 → VIX 力道 → 美債／美元資金。夏令 21:30–04:00、冬令 22:30–05:00（台灣時間）。</p>
+          <div id="us-brief" class="us-brief"></div>
+          <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
+        </div>
       </section>
 
       <section id="view-stock" hidden>
@@ -500,11 +503,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=69"></script>
-  <script src="drive.js?v=69"></script>
-  <script src="sakata.js?v=69"></script>
-  <script src="market.js?v=69"></script>
-  <script src="chips.js?v=69"></script>
-  <script src="app.js?v=69"></script>
+  <script src="google_config.js?v=70"></script>
+  <script src="drive.js?v=70"></script>
+  <script src="sakata.js?v=70"></script>
+  <script src="market.js?v=70"></script>
+  <script src="chips.js?v=70"></script>
+  <script src="app.js?v=70"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 69;
+  const PAGE_BUILD = 70;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1318,7 +1318,11 @@
     if (view) view.classList.toggle("chart-compact", !chartDetailsOn);
     if (btn) {
       btn.setAttribute("aria-pressed", chartDetailsOn ? "true" : "false");
-      btn.textContent = chartDetailsOn ? "細部資料" : "顯示細部";
+      btn.setAttribute("aria-expanded", chartDetailsOn ? "true" : "false");
+      const label = btn.querySelector(".chart-fold-label");
+      const chev = btn.querySelector(".chart-fold-chevron");
+      if (label) label.textContent = chartDetailsOn ? "走勢資訊" : "展開資訊";
+      if (chev) chev.textContent = chartDetailsOn ? "▾" : "▸";
     }
     if (details) details.hidden = !chartDetailsOn;
   }
