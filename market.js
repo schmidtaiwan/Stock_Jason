@@ -4169,6 +4169,179 @@
     };
   }
 
+  function mopsLinks(stockId) {
+    const id = encodeURIComponent(stockId);
+    return {
+      material: "https://mops.twse.com.tw/mops/web/t05st01?co_id=" + id,
+      revenue: "https://mops.twse.com.tw/mops/web/t05st10_ifrs?co_id=" + id,
+      financial: "https://mops.twse.com.tw/mops/web/t163sb04?co_id=" + id,
+      ir: "https://mops.twse.com.tw/mops/web/t100sb07_1?co_id=" + id,
+      insider: "https://mops.twse.com.tw/mops/web/stashare1?co_id=" + id,
+      dividend: "https://mops.twse.com.tw/mops/web/t108sb27?co_id=" + id,
+      home: "https://mops.twse.com.tw/mops/web/index"
+    };
+  }
+
+  function revenueYoYMoM(rows) {
+    const list = (rows || []).slice().sort(function (a, b) {
+      const ya = Number(a.revenue_year) * 100 + Number(a.revenue_month);
+      const yb = Number(b.revenue_year) * 100 + Number(b.revenue_month);
+      return ya - yb;
+    });
+    return list.map(function (row, i) {
+      const rev = num(row.revenue);
+      const ym = Number(row.revenue_year) * 100 + Number(row.revenue_month);
+      let mom = null;
+      let yoy = null;
+      if (i > 0) {
+        const prev = num(list[i - 1].revenue);
+        if (prev > 0 && rev != null) mom = (rev / prev - 1) * 100;
+      }
+      for (let j = i - 1; j >= 0; j--) {
+        const p = list[j];
+        const pym = Number(p.revenue_year) * 100 + Number(p.revenue_month);
+        if (pym === ym - 100 || (Number(row.revenue_month) === Number(p.revenue_month) &&
+          Number(row.revenue_year) === Number(p.revenue_year) + 1)) {
+          const prevY = num(p.revenue);
+          if (prevY > 0 && rev != null) yoy = (rev / prevY - 1) * 100;
+          break;
+        }
+      }
+      return {
+        year: row.revenue_year,
+        month: row.revenue_month,
+        date: row.date,
+        revenue: rev,
+        mom: mom,
+        yoy: yoy
+      };
+    }).reverse();
+  }
+
+  async function stockDisclose(secid, code) {
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前僅支援台股代號。" };
+    const links = mopsLinks(stockId);
+    const startRev = isoDaysAgo(800);
+    const startFin = isoDaysAgo(2000);
+    const startDiv = isoDaysAgo(2500);
+    const startOwn = isoDaysAgo(400);
+    const got = await Promise.all([
+      finMind("TaiwanStockMonthRevenue", stockId, startRev).catch(function () { return []; }),
+      finMind("TaiwanStockFinancialStatements", stockId, startFin).catch(function () { return []; }),
+      finMind("TaiwanStockBalanceSheet", stockId, startFin).catch(function () { return []; }),
+      finMind("TaiwanStockDividend", stockId, startDiv).catch(function () { return []; }),
+      finMind("TaiwanStockDividendResult", stockId, startDiv).catch(function () { return []; }),
+      finMind("TaiwanStockShareholding", stockId, startOwn).catch(function () { return []; })
+    ]);
+    const revRows = revenueYoYMoM(got[0]).slice(0, 18);
+    const fin = quarterBag(got[1]);
+    const lastQ = fin.length ? fin[fin.length - 1] : null;
+    const prevQ = fin.length > 1 ? fin[fin.length - 2] : null;
+    function marginOf(row, key) {
+      if (!row || !(row.Revenue > 0) || row[key] == null) return null;
+      return row[key] / row.Revenue * 100;
+    }
+    const balByDate = {};
+    (got[2] || []).forEach(function (row) {
+      if (!balByDate[row.date]) balByDate[row.date] = { date: row.date };
+      balByDate[row.date][row.type] = num(row.value);
+    });
+    const balDates = Object.keys(balByDate).sort();
+    const lastBal = balDates.length ? balByDate[balDates[balDates.length - 1]] : null;
+    let debtRatio = null;
+    if (lastBal) {
+      const assets = lastBal.TotalAssets || lastBal.Assets;
+      const liab = lastBal.TotalLiabilities || lastBal.Liabilities;
+      if (assets > 0 && liab != null) debtRatio = liab / assets * 100;
+    }
+    const margins = lastQ ? {
+      date: lastQ.date,
+      gross: marginOf(lastQ, "GrossProfit"),
+      op: marginOf(lastQ, "OperatingIncome"),
+      net: marginOf(lastQ, "IncomeAfterTaxes"),
+      eps: lastQ.EPS != null ? num(lastQ.EPS) : null
+    } : null;
+    const divRows = (got[3] || []).slice().sort(function (a, b) {
+      return String(b.date || "").localeCompare(String(a.date || ""));
+    }).slice(0, 8).map(function (row) {
+      return {
+        date: row.date,
+        year: row.year,
+        cash: num(row.CashEarningsDistribution) || num(row.CashStatutorySurplus),
+        stock: num(row.StockEarningsDistribution) || num(row.StockStatutorySurplus),
+        exCash: row.CashExDividendTradingDate || "",
+        payCash: row.CashDividendPaymentDate || "",
+        exStock: row.StockExDividendTradingDate || ""
+      };
+    });
+    const divResult = (got[4] || []).slice().sort(function (a, b) {
+      return String(b.date || "").localeCompare(String(a.date || ""));
+    }).slice(0, 6);
+    const own = (got[5] || []).slice().sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    const lastOwn = own.length ? own[own.length - 1] : null;
+
+    return {
+      ok: true,
+      stockId: stockId,
+      links: links,
+      material: {
+        ready: false,
+        note: "重訊全文改版後以 MOPS 為準；此區先提供深連結，後續接 CSV／摘要 API。",
+        items: []
+      },
+      revenue: {
+        ready: !!revRows.length,
+        rows: revRows,
+        note: revRows.length
+          ? "來源 FinMind 月營收；觀察 YoY／MoM 是否連創高。"
+          : "月營收暫無資料（可能需 FinMind token 或代號無申報）。"
+      },
+      financial: {
+        ready: !!margins,
+        date: margins && margins.date,
+        gross: margins && margins.gross,
+        op: margins && margins.op,
+        net: margins && margins.net,
+        eps: margins && margins.eps,
+        grossTrend: margins ? rateTrend(margins.gross, marginOf(prevQ, "GrossProfit")) : null,
+        opTrend: margins ? rateTrend(margins.op, marginOf(prevQ, "OperatingIncome")) : null,
+        netTrend: margins ? rateTrend(margins.net, marginOf(prevQ, "IncomeAfterTaxes")) : null,
+        debtRatio: debtRatio,
+        note: "損益／資產負債來自 FinMind；完整四大表與會計師意見請開 MOPS／XBRL。"
+      },
+      ir: {
+        ready: false,
+        note: "法說會日期／直播／簡報 PDF 規劃接 MOPS 與公司 IR；目前提供觀測站入口。",
+        items: []
+      },
+      insider: {
+        ready: !!lastOwn,
+        foreignPct: lastOwn ? num(lastOwn.ForeignInvestmentSharesRatio) : null,
+        date: lastOwn && lastOwn.date,
+        note: "外資持股占比可作籌碼參考；董監轉讓預告／質押／庫藏股進度請開 MOPS（後續自動化）。"
+      },
+      dividend: {
+        ready: !!(divRows.length || divResult.length),
+        rows: divRows,
+        results: divResult.map(function (row) {
+          return {
+            date: row.date,
+            before: num(row.before_price),
+            after: num(row.after_price),
+            stockAndCash: num(row.stock_and_cache_dividend) || num(row.stock_and_cash_dividend)
+          };
+        }),
+        note: divRows.length || divResult.length
+          ? "股利政策／除權息結果來自 FinMind。"
+          : "尚無股利資料。"
+      },
+      tip: "規則彙整公開資訊，非投資建議。重訊與法說以公司依法公告為準。"
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -4185,6 +4358,7 @@
     reviewJournal: reviewJournal,
     foreignNets: foreignNets,
     stockDetail: stockDetail,
+    stockDisclose: stockDisclose,
     twStockId: twStockId,
     watchMetrics: watchMetrics,
     watchBoard: watchBoard,

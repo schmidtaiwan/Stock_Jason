@@ -1017,6 +1017,35 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   .pulse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+.mops-spec {
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #10161e;
+}
+.mops-spec-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.mops-spec-list strong { color: var(--ink); }
+.mops-links a {
+  color: var(--accent);
+  text-decoration: none;
+  margin-right: 2px;
+}
+.mops-out .mops-card { margin-bottom: 8px; }
+.mops-out .secondary {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  text-decoration: none;
+}
 .us-board {
   margin: 0 0 12px;
   padding: 10px;

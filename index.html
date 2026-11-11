@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=71">
+  <link rel="stylesheet" href="app.css?v=72">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -410,6 +410,32 @@
           <div id="report-out" class="result report-out"></div>
         </div>
 
+        <div id="panel-mops" class="panel" hidden>
+          <p class="fine">公開資訊觀測：重大訊息、營收、財報、法說、內部人籌碼、除權息／股東會。P0 自動拉 FinMind；重訊／法說／轉讓先給 MOPS 深連結。</p>
+          <button id="mops-spec-fold" class="ghost chart-fold-btn pulse-subfold" type="button" aria-pressed="false" aria-expanded="false" aria-controls="mops-spec">
+            <span class="chart-fold-label">功能規格摘要</span>
+            <span class="chart-fold-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div id="mops-spec" class="mops-spec" hidden>
+            <ol class="mops-spec-list">
+              <li><strong>重大訊息</strong>：董事會／資產／訂單／異動／警示 → 查證傳言唯一官源。</li>
+              <li><strong>營收與自結</strong>：月合併營收、自結 EPS → 看 YoY／MoM。</li>
+              <li><strong>財務報表</strong>：四大表 → 毛利／營益／EPS／負債比。</li>
+              <li><strong>法說會</strong>：日期、直播、簡報 → 展望與 CapEx。</li>
+              <li><strong>內部人籌碼</strong>：轉讓預告、質押、庫藏股 → 高檔鬆動警訊。</li>
+              <li><strong>除權息／股東會</strong>：除息日、發放日、開會通知 → 領息與權益。</li>
+            </ol>
+            <p class="fine">完整規格見專案 <code>mops-spec.md</code>。資料非投資建議。</p>
+          </div>
+          <label for="mops-q">標的</label>
+          <input id="mops-q" type="search" placeholder="台股代號或名稱，例如 2330" autocomplete="off">
+          <div id="mops-hits"></div>
+          <p id="mops-pick" class="note">還沒選標的</p>
+          <button id="mops-run" class="primary" type="button">查詢公開資訊</button>
+          <p id="mops-status" class="status" role="status"></p>
+          <div id="mops-out" class="result mops-out"></div>
+        </div>
+
         <div id="panel-advise" class="panel" hidden>
           <p class="fine">彙整基本面（三率／本益比）、籌碼（外資／投信／近 5 日法人）與日週線／K 線型態，給出是否建議買進，並標買點、賣點、停損。規則試算，不是投資建議。</p>
           <p class="fine">會上網：FinMind 籌碼財務、日週 K、報價；可先點自選快速帶入。</p>
@@ -516,11 +542,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=71"></script>
-  <script src="drive.js?v=71"></script>
-  <script src="sakata.js?v=71"></script>
-  <script src="market.js?v=71"></script>
-  <script src="chips.js?v=71"></script>
-  <script src="app.js?v=71"></script>
+  <script src="google_config.js?v=72"></script>
+  <script src="drive.js?v=72"></script>
+  <script src="sakata.js?v=72"></script>
+  <script src="market.js?v=72"></script>
+  <script src="chips.js?v=72"></script>
+  <script src="app.js?v=72"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 71;
+  const PAGE_BUILD = 72;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -14,6 +14,7 @@
   const C = window.SJChips;
 
   const TOOL_MENU = [
+    { id: "mops", title: "公開資訊觀測", desc: "重訊／營收／財報／法說／內部人／除權息；FinMind＋MOPS" },
     { id: "chipx", title: "籌碼健檢與分點", desc: "集中度／主力成本／紅綠燈；有 FinMind token 可看分點" },
     { id: "screen", title: "籌碼選股", desc: "外資連買、投信首買、主力急買，可交集站上月線" },
     { id: "chipday", title: "籌碼日報", desc: "盤後法人買超／賣超排行（T86）" },
@@ -450,6 +451,7 @@
 
   function openTool(id) {
     const titles = {
+      mops: "公開資訊觀測",
       chipx: "籌碼健檢與分點",
       screen: "籌碼選股",
       chipday: "籌碼日報",
@@ -3199,7 +3201,8 @@
       journal: "j-pick",
       predict: "predict-pick",
       advise: "advise-pick",
-      chipx: "chipx-pick"
+      chipx: "chipx-pick",
+      mops: "mops-pick"
     }[key]);
     if (label) label.textContent = row.name + " " + row.code + " · " + row.market;
     const hits = {
@@ -3209,10 +3212,12 @@
       journal: "j-hits",
       predict: "predict-hits",
       advise: "advise-hits",
-      chipx: "chipx-hits"
+      chipx: "chipx-hits",
+      mops: "mops-hits"
     }[key];
     if (hits) $(hits).innerHTML = "";
     if (key === "chipx" && $("chipx-q")) $("chipx-q").value = row.code + " " + row.name;
+    if (key === "mops" && $("mops-q")) $("mops-q").value = row.code + " " + row.name;
   }
 
   document.addEventListener("click", function (ev) {
@@ -3633,6 +3638,7 @@
   bindSearch("predict-q", "predict-hits", "predict", "台股");
   bindSearch("advise-q", "advise-hits", "advise", "台股");
   bindSearch("chipx-q", "chipx-hits", "chipx", "台股");
+  bindSearch("mops-q", "mops-hits", "mops", "台股");
 
   function pulsePct(n) {
     if (n == null || !isFinite(n)) return "—";
@@ -3840,6 +3846,135 @@
     return (lots > 0 ? "+" : "") + lots.toLocaleString("zh-Hant") + " 張";
   }
 
+  function mopsFold(key, title, bodyHtml, open) {
+    return '<article class="card pulse-card mops-card">' +
+      '<button type="button" class="pulse-card-fold" data-mops-fold="' + key +
+      '" aria-expanded="' + (open ? "true" : "false") + '"><span class="pulse-card-title">' + title +
+      '</span><span class="chart-fold-chevron" aria-hidden="true">' + (open ? "▾" : "▸") +
+      "</span></button>" +
+      '<div class="pulse-card-body" data-mops-body="' + key + '"' + (open ? "" : " hidden") + ">" +
+      bodyHtml + "</div></article>";
+  }
+
+  function mopsLinkRow(links) {
+    if (!links) return "";
+    const items = [
+      ["material", "重大訊息"],
+      ["revenue", "月營收"],
+      ["financial", "財務報表"],
+      ["ir", "法說會"],
+      ["insider", "內部人／持股"],
+      ["dividend", "股利／除權息"]
+    ];
+    return '<p class="fine mops-links">' + items.map(function (pair) {
+      const href = links[pair[0]];
+      if (!href) return "";
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + pair[1] + "</a>";
+    }).filter(Boolean).join(" · ") + "</p>";
+  }
+
+  function renderMops(pack) {
+    const box = $("mops-out");
+    if (!box) return;
+    if (!pack || !pack.ok) {
+      box.innerHTML = '<p class="note">' + esc((pack && pack.reason) || "查詢失敗") + "</p>";
+      return;
+    }
+    const rev = pack.revenue || {};
+    const fin = pack.financial || {};
+    const div = pack.dividend || {};
+    const own = pack.insider || {};
+    const revTable = (rev.rows || []).length
+      ? '<div class="watch-table-wrap"><table class="watch-table"><thead><tr><th>年月</th><th>營收</th><th>MoM</th><th>YoY</th></tr></thead><tbody>' +
+        rev.rows.slice(0, 12).map(function (row) {
+          const mom = row.mom == null ? "—" : ((row.mom > 0 ? "+" : "") + row.mom.toFixed(1) + "%");
+          const yoy = row.yoy == null ? "—" : ((row.yoy > 0 ? "+" : "") + row.yoy.toFixed(1) + "%");
+          const yi = row.revenue != null ? (row.revenue / 1e8) : null;
+          return "<tr><td>" + esc(String(row.year) + "/" + String(row.month).padStart(2, "0")) +
+            "</td><td>" + (yi != null ? yi.toFixed(2) + " 億" : "—") +
+            '</td><td class="' + pulseCls(row.mom) + '">' + mom +
+            '</td><td class="' + pulseCls(row.yoy) + '">' + yoy + "</td></tr>";
+        }).join("") + "</tbody></table></div>"
+      : '<p class="note">' + esc(rev.note || "無營收") + "</p>";
+
+    const finHtml = fin.ready
+      ? '<ul class="stat-list">' +
+        "<li><span>資料日</span><strong>" + esc(fin.date || "—") + "</strong></li>" +
+        "<li><span>毛利率</span><strong>" + (fin.gross != null ? fin.gross.toFixed(1) + "%" : "—") +
+        ' <span class="' + ((fin.grossTrend && fin.grossTrend.cls) || "") + '">' +
+        esc((fin.grossTrend && fin.grossTrend.text) || "") + "</span></strong></li>" +
+        "<li><span>營益率</span><strong>" + (fin.op != null ? fin.op.toFixed(1) + "%" : "—") +
+        ' <span class="' + ((fin.opTrend && fin.opTrend.cls) || "") + '">' +
+        esc((fin.opTrend && fin.opTrend.text) || "") + "</span></strong></li>" +
+        "<li><span>淨利率</span><strong>" + (fin.net != null ? fin.net.toFixed(1) + "%" : "—") +
+        ' <span class="' + ((fin.netTrend && fin.netTrend.cls) || "") + '">' +
+        esc((fin.netTrend && fin.netTrend.text) || "") + "</span></strong></li>" +
+        "<li><span>EPS</span><strong>" + (fin.eps != null ? Number(fin.eps).toFixed(2) : "—") + "</strong></li>" +
+        "<li><span>負債比近似</span><strong>" + (fin.debtRatio != null ? fin.debtRatio.toFixed(1) + "%" : "—") + "</strong></li>" +
+        "</ul><p class=\"fine\">" + esc(fin.note || "") + "</p>"
+      : '<p class="note">' + esc(fin.note || "無財報摘要") + "</p>";
+
+    const divHtml = (div.rows || []).length
+      ? '<ul class="stat-list">' + div.rows.slice(0, 6).map(function (row) {
+        return "<li><span>" + esc(String(row.year || row.date || "")) +
+          "</span><strong>現金 " + (row.cash != null ? row.cash.toFixed(2) : "—") +
+          " · 股票 " + (row.stock != null ? row.stock.toFixed(2) : "—") +
+          "</strong><small>除息 " + esc(row.exCash || "—") + "／發放 " + esc(row.payCash || "—") + "</small></li>";
+      }).join("") + "</ul><p class=\"fine\">" + esc(div.note || "") + "</p>"
+      : '<p class="note">' + esc(div.note || "無股利") + "</p>";
+
+    const ownHtml = '<ul class="stat-list">' +
+      "<li><span>外資持股占比</span><strong>" +
+      (own.foreignPct != null ? Number(own.foreignPct).toFixed(2) + "%" : "—") +
+      "</strong><small>" + esc(own.date || "") + "</small></li></ul>" +
+      '<p class="fine">' + esc(own.note || "") + "</p>";
+
+    box.innerHTML =
+      '<p class="fine">代號 ' + esc(pack.stockId) + " · " + esc(pack.tip || "") + "</p>" +
+      mopsLinkRow(pack.links) +
+      mopsFold("mat", "1. 重大訊息",
+        '<p class="fine">' + esc((pack.material && pack.material.note) || "") + "</p>" +
+        '<p><a class="secondary" href="' + esc(pack.links.material) + '" target="_blank" rel="noopener">開啟 MOPS 重訊</a></p>',
+        true) +
+      mopsFold("rev", "2. 營收與自結",
+        revTable + '<p class="fine">' + esc(rev.note || "") + "</p>", true) +
+      mopsFold("fin", "3. 財務報表", finHtml, true) +
+      mopsFold("ir", "4. 法人說明會",
+        '<p class="fine">' + esc((pack.ir && pack.ir.note) || "") + "</p>" +
+        '<p><a class="secondary" href="' + esc(pack.links.ir) + '" target="_blank" rel="noopener">開啟 MOPS 法說</a></p>',
+        false) +
+      mopsFold("ins", "5. 籌碼與內部人",
+        ownHtml + '<p><a class="secondary" href="' + esc(pack.links.insider) +
+        '" target="_blank" rel="noopener">開啟 MOPS 持股／轉讓</a></p>', false) +
+      mopsFold("div", "6. 除權息與股東會",
+        divHtml + '<p><a class="secondary" href="' + esc(pack.links.dividend) +
+        '" target="_blank" rel="noopener">開啟 MOPS 股利</a></p>', true);
+  }
+
+  async function runMops() {
+    if (!M || !M.stockDisclose) {
+      $("mops-status").textContent = "公開資訊模組未載入。";
+      return;
+    }
+    const pick = state.picks.mops;
+    const q = ($("mops-q") && $("mops-q").value.trim()) || "";
+    const code = (pick && pick.code) || (q.match(/\d{4}/) || [])[0] || q;
+    if (!code) {
+      $("mops-status").textContent = "先選標的或輸入代號。";
+      return;
+    }
+    const secid = (pick && pick.secid) || ("tw." + code);
+    $("mops-status").textContent = "正在讀營收／財報／股利…";
+    $("mops-out").innerHTML = "";
+    try {
+      const pack = await M.stockDisclose(secid, code);
+      renderMops(pack);
+      $("mops-status").textContent = pack.ok ? "完成。" : (pack.reason || "失敗");
+    } catch (err) {
+      $("mops-status").textContent = err.message || "查詢失敗";
+    }
+  }
+
   async function runChipx() {
     if (!C) return;
     const pick = state.picks.chipx;
@@ -4007,6 +4142,30 @@
   if ($("chipx-run")) $("chipx-run").addEventListener("click", runChipx);
   if ($("screen-run")) $("screen-run").addEventListener("click", runScreen);
   if ($("chipday-run")) $("chipday-run").addEventListener("click", runChipday);
+  if ($("mops-run")) $("mops-run").addEventListener("click", runMops);
+  if ($("mops-spec-fold")) $("mops-spec-fold").addEventListener("click", function () {
+    const box = $("mops-spec");
+    const btn = $("mops-spec-fold");
+    if (!box || !btn) return;
+    const open = box.hidden;
+    box.hidden = !open;
+    btn.setAttribute("aria-pressed", open ? "true" : "false");
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    const chev = btn.querySelector(".chart-fold-chevron");
+    if (chev) chev.textContent = open ? "▾" : "▸";
+  });
+  if ($("mops-out")) $("mops-out").addEventListener("click", function (ev) {
+    const btn = ev.target.closest("[data-mops-fold]");
+    if (!btn || !$("mops-out").contains(btn)) return;
+    const key = btn.getAttribute("data-mops-fold");
+    const body = $("mops-out").querySelector('[data-mops-body="' + key + '"]');
+    if (!body) return;
+    const open = body.hidden;
+    body.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    const chev = btn.querySelector(".chart-fold-chevron");
+    if (chev) chev.textContent = open ? "▾" : "▸";
+  });
 
   document.addEventListener("click", function (ev) {
     const btn = ev.target.closest("[data-open-code]");
