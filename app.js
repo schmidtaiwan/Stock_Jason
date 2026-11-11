@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 42;
+  const PAGE_BUILD = 43;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -18,7 +18,8 @@
     foreignGen: 0,
     custom: false,
     from: "",
-    to: ""
+    to: "",
+    chartStyle: "line"
   };
 
   let book = emptyBook();
@@ -335,6 +336,12 @@
     $("markets").innerHTML = M.MARKETS.map(function (m) {
       return '<button type="button" class="chip" data-market="' + m.id + '" aria-pressed="' + !!state.on[m.id] + '">' + m.name + "</button>";
     }).join("");
+    const styles = $("chart-styles");
+    if (styles) {
+      styles.querySelectorAll("[data-chart-style]").forEach(function (btn) {
+        btn.setAttribute("aria-pressed", btn.dataset.chartStyle === state.chartStyle ? "true" : "false");
+      });
+    }
     syncDateInputs();
   }
 
@@ -605,6 +612,7 @@
     renderForeign();
     try {
       let items = [];
+      let statusNote = "";
       const win = plotWindow();
       const align = win
         ? ((Date.parse(win.to) - Date.parse(win.from)) / 86400000 <= 5 ? "index" : "date")
@@ -616,6 +624,7 @@
         const picked = M.MARKETS.filter(function (m) { return state.on[m.id]; });
         if (!picked.length) {
           $("chart-status").textContent = "至少選擇一個市場。";
+          renderKPatterns(null);
           return;
         }
         const got = await Promise.all(picked.map(async function (m) {
@@ -626,18 +635,39 @@
         items = got.filter(function (row) { return row.bars && row.bars.length; });
         const bad = got.filter(function (row) { return !row.bars; }).map(function (row) { return row.name; });
         if (!items.length) throw new Error("行情暫時讀不到");
-        $("chart-status").textContent = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
+        statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
       }
       if (gen !== state.chartGen) return;
-      const mode = items.length > 1 ? "pct" : "price";
+      const candle = state.chartStyle === "candle";
+      if (candle && items.length > 1) {
+        const tw = items.find(function (row) { return row.name === "台股"; });
+        items = [tw || items[0]];
+        statusNote = (statusNote ? statusNote + " " : "") + "K線只顯示 " + items[0].name + "。";
+      }
+      const mode = candle || items.length === 1 ? "price" : "pct";
       state.plot = buildPlot(items, mode, align);
+      state.plot.style = candle ? "candle" : "line";
       draw();
       renderLegend(items, mode);
+      renderKPatterns(candle ? items[0] : null);
       fillDatesFromPlot();
-      if (state.focus) $("chart-status").textContent = "";
+      $("chart-status").textContent = state.focus && !statusNote ? "" : statusNote;
     } catch (err) {
-      if (gen === state.chartGen) $("chart-status").textContent = err.message || "讀取失敗";
+      if (gen === state.chartGen) {
+        $("chart-status").textContent = err.message || "讀取失敗";
+        renderKPatterns(null);
+      }
     }
+  }
+
+  function barOhlc(b) {
+    if (!b) return null;
+    const c = Number(b.c);
+    if (!isFinite(c)) return null;
+    const o = isFinite(b.o) ? Number(b.o) : c;
+    const h = isFinite(b.h) ? Number(b.h) : Math.max(o, c);
+    const l = isFinite(b.l) ? Number(b.l) : Math.min(o, c);
+    return { o: o, h: Math.max(h, o, c), l: Math.min(l, o, c), c: c };
   }
 
   function buildPlot(items, mode, align) {
@@ -645,6 +675,7 @@
       const first = item.bars[0].c;
       const last = item.bars[item.bars.length - 1].c;
       const priceMap = new Map(item.bars.map(function (b) { return [b.t.slice(0, 10), b.c]; }));
+      const ohlcMap = new Map(item.bars.map(function (b) { return [b.t.slice(0, 10), barOhlc(b)]; }));
       return {
         name: item.name,
         color: item.color,
@@ -656,7 +687,8 @@
           const y = mode === "pct" ? (b.c / first - 1) * 100 : b.c;
           return [b.t.slice(0, 10), y];
         })),
-        priceMap: priceMap
+        priceMap: priceMap,
+        ohlcMap: ohlcMap
       };
     });
     if (align === "date" && mode === "pct") {
@@ -683,6 +715,10 @@
           if (s.priceMap.has(d)) priceCarry = s.priceMap.get(d);
           return priceCarry;
         });
+        s.ohlc = days.map(function (d) {
+          if (d > end) return null;
+          return s.ohlcMap.has(d) ? s.ohlcMap.get(d) : null;
+        });
       });
       return { axis: days, series: series, mode: mode };
     }
@@ -692,19 +728,44 @@
       const pad = max - s.bars.length;
       const values = new Array(max).fill(null);
       const prices = new Array(max).fill(null);
+      const ohlc = new Array(max).fill(null);
       s.bars.forEach(function (b, i) {
         const y = mode === "pct" ? (b.c / s.bars[0].c - 1) * 100 : b.c;
         values[pad + i] = y;
         prices[pad + i] = b.c;
+        ohlc[pad + i] = barOhlc(b);
       });
       s.values = values;
       s.prices = prices;
+      s.ohlc = ohlc;
     });
     const axis = new Array(max).fill("");
     longest.bars.forEach(function (b, i) {
       axis[(max - longest.bars.length) + i] = b.t.slice(0, 16);
     });
     return { axis: axis, series: series, mode: mode };
+  }
+
+  function drawCandles(ctx, s, xOf, yOf, n) {
+    const slot = n <= 1 ? 10 : Math.abs(xOf(Math.min(1, n - 1)) - xOf(0));
+    const w = Math.max(2, Math.min(12, slot * 0.72));
+    (s.ohlc || []).forEach(function (bar, i) {
+      if (!bar) return;
+      const up = bar.c >= bar.o;
+      const color = up ? "#ff1f1f" : "#3dbe7a";
+      const x = xOf(i);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, yOf(bar.h));
+      ctx.lineTo(x, yOf(bar.l));
+      ctx.stroke();
+      const y1 = yOf(Math.max(bar.o, bar.c));
+      const y2 = yOf(Math.min(bar.o, bar.c));
+      const bh = Math.max(1, y2 - y1);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - w / 2, y1, w, bh);
+    });
   }
 
   function draw() {
@@ -725,9 +786,18 @@
     const bottom = 28;
     const iw = width - left - right;
     const ih = height - top - bottom;
+    const candle = plot.style === "candle";
     let min = Infinity;
     let max = -Infinity;
     plot.series.forEach(function (s) {
+      if (candle && s.ohlc) {
+        s.ohlc.forEach(function (bar) {
+          if (!bar) return;
+          min = Math.min(min, bar.l);
+          max = Math.max(max, bar.h);
+        });
+        return;
+      }
       s.values.forEach(function (v) {
         if (v == null) return;
         min = Math.min(min, v);
@@ -766,32 +836,38 @@
       ctx.lineTo(width - right, yOf(0));
       ctx.stroke();
     }
-    plot.series.forEach(function (s) {
-      ctx.beginPath();
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 2;
-      let open = false;
-      let lastX = null;
-      let lastY = null;
-      s.values.forEach(function (v, i) {
-        if (v == null) { open = false; return; }
-        const x = xOf(i);
-        const y = yOf(v);
-        if (!open) { ctx.moveTo(x, y); open = true; }
-        else ctx.lineTo(x, y);
-        lastX = x;
-        lastY = y;
+    if (candle) {
+      plot.series.forEach(function (s) {
+        drawCandles(ctx, s, xOf, yOf, plot.axis.length);
       });
-      ctx.stroke();
-      if (lastX != null && s.name) {
-        const tag = String(s.name).charAt(0);
-        ctx.font = axisFont;
-        ctx.fillStyle = s.color;
-        ctx.textBaseline = "middle";
-        ctx.fillText(tag, lastX + 4, lastY);
-        ctx.textBaseline = "alphabetic";
-      }
-    });
+    } else {
+      plot.series.forEach(function (s) {
+        ctx.beginPath();
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2;
+        let open = false;
+        let lastX = null;
+        let lastY = null;
+        s.values.forEach(function (v, i) {
+          if (v == null) { open = false; return; }
+          const x = xOf(i);
+          const y = yOf(v);
+          if (!open) { ctx.moveTo(x, y); open = true; }
+          else ctx.lineTo(x, y);
+          lastX = x;
+          lastY = y;
+        });
+        ctx.stroke();
+        if (lastX != null && s.name) {
+          const tag = String(s.name).charAt(0);
+          ctx.font = axisFont;
+          ctx.fillStyle = s.color;
+          ctx.textBaseline = "middle";
+          ctx.fillText(tag, lastX + 4, lastY);
+          ctx.textBaseline = "alphabetic";
+        }
+      });
+    }
     ctx.fillStyle = "#93a0b0";
     ctx.font = axisFont;
     const marks = [0, Math.floor((plot.axis.length - 1) / 2), plot.axis.length - 1];
@@ -808,8 +884,34 @@
       max: max,
       axis: plot.axis,
       series: plot.series,
-      mode: plot.mode
+      mode: plot.mode,
+      style: plot.style || "line"
     };
+  }
+
+  function renderKPatterns(item) {
+    const box = $("k-patterns");
+    if (!box) return;
+    if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    const rows = M.kPatterns(item.bars).slice(0, 12);
+    if (!rows.length) {
+      box.hidden = false;
+      box.innerHTML = "<h3>K線分析</h3><p class=\"fine\">這段區間沒抓到明顯型態（長紅／長黑／十字／錘頭／吞沒等）。</p>";
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = "<h3>K線分析 · " + esc(item.name) + "</h3>" +
+      '<p class="fine">依可見K線辨識常見型態；偏多／偏空是型態提示，不是下單建議。</p><ul>' +
+      rows.map(function (row) {
+        const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
+        return "<li><span class=\"k-date\">" + esc(row.date.slice(5)) + "</span>" +
+          '<span class="k-name ' + cls + '">' + esc(row.name) + "</span>" +
+          '<span class="k-detail">' + esc(row.detail) + "</span></li>";
+      }).join("") + "</ul>";
   }
 
   function renderLegend(items, mode) {
@@ -826,7 +928,11 @@
     }
   }
 
-  function seriesLabel(s, i, mode) {
+  function seriesLabel(s, i, mode, style) {
+    if (style === "candle" && s.ohlc && s.ohlc[i]) {
+      const bar = s.ohlc[i];
+      return s.name + " 開 " + fmt(bar.o) + " 高 " + fmt(bar.h) + " 低 " + fmt(bar.l) + " 收 " + fmt(bar.c);
+    }
     const v = s.values[i];
     if (v == null) return "";
     if (s.isTw) {
@@ -852,7 +958,7 @@
     if (n < 1 || x < layout.left || x > layout.left + layout.width) { tip.hidden = true; return; }
     const i = Math.round((x - layout.left) / layout.width * (n - 1));
     const parts = layout.series.map(function (s) {
-      return seriesLabel(s, i, layout.mode);
+      return seriesLabel(s, i, layout.mode, layout.style);
     }).filter(Boolean);
     if (!parts.length) { tip.hidden = true; return; }
     tip.hidden = false;
@@ -2023,8 +2129,12 @@
       state.custom = false;
       buildToggles();
       loadChart();
-    } else if (t.dataset.market) {
+    }     else if (t.dataset.market) {
       state.on[t.dataset.market] = t.getAttribute("aria-pressed") !== "true";
+      buildToggles();
+      loadChart();
+    } else if (t.dataset.chartStyle) {
+      state.chartStyle = t.dataset.chartStyle === "candle" ? "candle" : "line";
       buildToggles();
       loadChart();
     } else if (t.dataset.view) setView(t.dataset.view);

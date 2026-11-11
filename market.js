@@ -3365,6 +3365,91 @@
     return list;
   }
 
+  // K 線型態（台股慣例：紅漲綠跌）。回傳由新到舊。
+  function kPatterns(bars) {
+    const rows = (bars || []).filter(function (b) {
+      return b && isFinite(b.o) && isFinite(b.h) && isFinite(b.l) && isFinite(b.c);
+    });
+    if (rows.length < 3) return [];
+    function bodyOf(b) { return Math.abs(b.c - b.o); }
+    function avgBody(i, n) {
+      let sum = 0;
+      let count = 0;
+      for (let j = Math.max(0, i - n); j < i; j++) {
+        sum += bodyOf(rows[j]);
+        count += 1;
+      }
+      return count ? sum / count : bodyOf(rows[i]) || 0;
+    }
+    const out = [];
+    function push(i, name, bias, detail) {
+      out.push({
+        i: i,
+        date: String(rows[i].t || "").slice(0, 10),
+        name: name,
+        bias: bias,
+        detail: detail
+      });
+    }
+    for (let i = 1; i < rows.length; i++) {
+      const b = rows[i];
+      const o = b.o;
+      const h = b.h;
+      const l = b.l;
+      const c = b.c;
+      const range = Math.max(h - l, 1e-9);
+      const body = bodyOf(b);
+      const top = Math.max(o, c);
+      const bot = Math.min(o, c);
+      const upper = h - top;
+      const lower = bot - l;
+      const ab = avgBody(i, 14) || body;
+      const up = c > o;
+      const down = c < o;
+      const prev = rows[i - 1];
+      const prevBody = bodyOf(prev);
+      const prevUp = prev.c > prev.o;
+      const prevDown = prev.c < prev.o;
+
+      if (body >= Math.max(ab * 2.1, range * 0.55) && body / range >= 0.55) {
+        push(i, up ? "長紅棒" : "長黑棒", up ? "多" : "空",
+          up ? "實體明顯放大，買盤強。" : "實體明顯放大，賣壓重。");
+      }
+      if (body / range <= 0.1) {
+        push(i, "十字線", "中", "實體極小，多空猶豫。");
+      } else if (body / range <= 0.32 && upper > body * 0.55 && lower > body * 0.55) {
+        push(i, "紡錘線", "中", "上下影線都長，力道發散。");
+      }
+      if (body > 0 && lower >= body * 2 && upper <= body * 0.5) {
+        const recent = rows.slice(Math.max(0, i - 5), i);
+        const fell = recent.length >= 2 && recent[0].c > recent[recent.length - 1].c;
+        push(i, fell ? "錘頭" : "上吊線", fell ? "多" : "空",
+          fell ? "下跌後下影線長，有止跌意味。" : "上漲後下影線長，留意轉弱。");
+      }
+      if (body > 0 && upper >= body * 2 && lower <= body * 0.5) {
+        push(i, "射擊之星", "空", "上影線長，高檔賣壓。");
+      }
+      if (prevDown && up && o <= prev.c && c >= prev.o && body > prevBody * 1.05) {
+        push(i, "紅K吞沒", "多", "紅K吃掉前一根黑K實體。");
+      }
+      if (prevUp && down && o >= prev.c && c <= prev.o && body > prevBody * 1.05) {
+        push(i, "黑K吞沒", "空", "黑K吃掉前一根紅K實體。");
+      }
+      if (i >= 2) {
+        const a = rows[i - 2];
+        const m = rows[i - 1];
+        const ab3 = avgBody(i, 14) || body;
+        if (a.c > a.o && m.c > m.o && up && m.c > a.c && c > m.c && bodyOf(a) > ab3 * 0.6 && bodyOf(m) > ab3 * 0.6 && body > ab3 * 0.6) {
+          push(i, "三白兵", "多", "連續三根紅K抬高，攻勢延續。");
+        }
+        if (a.c < a.o && m.c < m.o && down && m.c < a.c && c < m.c && bodyOf(a) > ab3 * 0.6 && bodyOf(m) > ab3 * 0.6 && body > ab3 * 0.6) {
+          push(i, "三烏鴉", "空", "連續三根黑K走低，賣壓延續。");
+        }
+      }
+    }
+    return out.reverse();
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -3395,6 +3480,7 @@
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,
     twseDailyReport: twseDailyReport,
-    sortDailyReportRows: sortDailyReportRows
+    sortDailyReportRows: sortDailyReportRows,
+    kPatterns: kPatterns
   };
 })(window);

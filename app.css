@@ -172,6 +172,42 @@ main {
 }
 .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 
+.chart-styles {
+  margin: 0 0 8px;
+}
+.k-patterns {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.k-patterns h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.k-patterns .fine { margin: 0 0 8px; }
+.k-patterns ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.k-patterns li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.k-patterns .k-date {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5em;
+}
+.k-patterns .k-name { font-weight: 700; }
+.k-patterns .k-detail { color: var(--muted); flex: 1 1 12em; }
 .card {
   background: var(--card);
   border: 1px solid var(--line);
