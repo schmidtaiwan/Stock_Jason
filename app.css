@@ -503,9 +503,17 @@ textarea { min-height: 120px; resize: vertical; }
   min-width: 112px;
   text-align: left !important;
 }
+.watch-name-row,
+.watch-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
 .watch-link {
-  display: block;
-  width: 100%;
+  display: inline;
+  width: auto;
+  max-width: 100%;
   background: transparent;
   border: 0;
   padding: 0;
@@ -514,17 +522,30 @@ textarea { min-height: 120px; resize: vertical; }
   text-align: left;
   min-height: 28px;
 }
+.watch-lv {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.watch-lv-brk { font-size: 13px; }
+.watch-lv-sup { font-size: 11px; }
 .watch-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 2px 6px;
   align-items: baseline;
-  margin-top: 2px;
+  margin-top: 0;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
   font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
 }
+.watch-chip-row { margin-top: 2px; }
 .watch-chips .note { font-weight: 400; }
 .watch-chip-date {
   color: var(--muted);

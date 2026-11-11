@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 53;
+  const PAGE_BUILD = 54;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1362,7 +1362,7 @@
     paintWatchPnl(idx);
   }
 
-  // 只更新目前價／損益／總損益／籌碼，不重繪整張表（避免名稱變英文、輸入被清掉）
+  // 只更新目前價／損益／總損益／籌碼／突支，不重繪整張表（避免名稱變英文、輸入被清掉）
   async function paintWatchQuotes() {
     const box = $("watch-list");
     if (!box || !book.watch.length) return;
@@ -1374,12 +1374,14 @@
     try {
       const got = await Promise.all([
         M.watchBoard(book.watch),
-        M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null)
+        M.watchChips ? M.watchChips(book.watch).catch(function () { return null; }) : Promise.resolve(null),
+        M.watchLevels ? M.watchLevels(book.watch).catch(function () { return null; }) : Promise.resolve(null)
       ]);
       if (gen !== paintWatchQuotes.gen) return;
       const rows = got[0] || [];
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       if (got[1]) paintWatchChipRows(box, got[1]);
+      if (got[2]) paintWatchLevelRows(box, got[2]);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     } catch (err) {
@@ -1418,8 +1420,12 @@
             NOTIFY_MODES[key].label + "</option>";
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
-          '<td class="watch-name"><button type="button" class="watch-link" data-open-watch="' + idx + '">' +
-          esc(label) + '</button><div class="watch-chips" data-watch-chips="' + idx + '"><span class="note">籌碼…</span></div></td>' +
+          '<td class="watch-name"><div class="watch-name-row">' +
+          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button>" +
+          '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span></div>' +
+          '<div class="watch-chip-row"><div class="watch-chips" data-watch-chips="' + idx + '">' +
+          '<span class="note">籌碼…</span></div>' +
+          '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></div></td>' +
           '<td class="watch-num" data-watch-price="' + idx + '"><span class="note">…</span></td>' +
           '<td><input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
           esc(cost) + '" placeholder="買價" aria-label="買價"></td>' +
@@ -1441,13 +1447,16 @@
       }).join("") + "</tbody></table></div>";
     Promise.all([
       M.watchBoard(book.watch),
-      M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} })
+      M.watchChips ? M.watchChips(book.watch).catch(function () { return { date: "", byCode: {} }; }) : Promise.resolve({ date: "", byCode: {} }),
+      M.watchLevels ? M.watchLevels(book.watch).catch(function () { return []; }) : Promise.resolve([])
     ]).then(function (got) {
       if (gen !== renderWatch.gen) return;
       const rows = got[0] || [];
       const chips = got[1] || { date: "", byCode: {} };
+      const levels = got[2] || [];
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchChipRows(box, chips);
+      paintWatchLevelRows(box, levels);
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
     }).catch(function () {
@@ -1490,6 +1499,42 @@
       ].filter(Boolean);
       el.innerHTML = (parts.join(" ") || '<span class="note">—</span>') +
         (dateLabel ? '<span class="watch-chip-date">' + esc(dateLabel) + "</span>" : "");
+    });
+  }
+
+  function paintWatchLevelRows(box, rows) {
+    if (!box) return;
+    const list = rows || [];
+    book.watch.forEach(function (_item, idx) {
+      const lv = list[idx] || {};
+      const brk = box.querySelector('[data-watch-brk="' + idx + '"]');
+      const sup = box.querySelector('[data-watch-sup="' + idx + '"]');
+      if (brk) {
+        if (lv.breakout && lv.breakout.text) {
+          brk.className = "watch-lv watch-lv-brk up";
+          brk.textContent = "突" + lv.breakout.text;
+          brk.title = (lv.breakout.why || "上漲突破點") + " " + lv.breakout.text;
+        } else {
+          brk.className = "watch-lv watch-lv-brk";
+          brk.textContent = "";
+          brk.removeAttribute("title");
+        }
+      }
+      if (sup) {
+        const s = lv.support;
+        const label = s && (s.focusText || s.text);
+        if (label) {
+          sup.className = "watch-lv watch-lv-sup down";
+          // 列表用單點 focusText；區間留給 title
+          const short = s.focusText || String(s.text).split("–")[0];
+          sup.textContent = "支" + short;
+          sup.title = (s.why || "下跌支撐點") + " " + (s.text || short);
+        } else {
+          sup.className = "watch-lv watch-lv-sup";
+          sup.textContent = "";
+          sup.removeAttribute("title");
+        }
+      }
     });
   }
 

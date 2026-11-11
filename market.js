@@ -2063,6 +2063,7 @@
         low: low,
         high: high,
         focus: focus,
+        focusText: formatLevelPx(focus),
         text: low === high ? formatLevelPx(low) : formatLevelPx(low) + "–" + formatLevelPx(high),
         why: supCand.why
       };
@@ -2071,10 +2072,12 @@
       let low = floorTick(lo20 - minGap);
       let high = floorTick(Math.min(lo20 + half, close - tickSize(close)));
       if (high < low) high = low;
+      const focus = floorTick(lo20);
       support = {
         low: low,
         high: high,
-        focus: floorTick(lo20),
+        focus: focus,
+        focusText: formatLevelPx(focus),
         text: low === high ? formatLevelPx(low) : formatLevelPx(low) + "–" + formatLevelPx(high),
         why: "近低支撐"
       };
@@ -2189,6 +2192,34 @@
     if (String(secid || "").indexOf("tw.") === 0 || String(secid || "").indexOf("fx.") === 0) return [];
     const em = await kline(secid, 101, 80).catch(function () { return []; });
     return em.length >= 5 ? em : [];
+  }
+
+  const watchLevelCache = {};
+  const WATCH_LEVEL_TTL = 15 * 60 * 1000;
+
+  async function watchLevels(items) {
+    const list = items || [];
+    if (!list.length) return [];
+    return mapPool(list, 3, async function (item) {
+      const key = String((item && (item.code || item.secid)) || "").toUpperCase();
+      if (!key) return { breakout: null, support: null };
+      const hit = watchLevelCache[key];
+      if (hit && Date.now() - hit.at < WATCH_LEVEL_TTL) {
+        return { breakout: hit.breakout, support: hit.support };
+      }
+      try {
+        const bars = await dayBarsForLevels(item && item.secid, item && item.code);
+        const levels = findLevels(bars);
+        watchLevelCache[key] = {
+          at: Date.now(),
+          breakout: levels.breakout,
+          support: levels.support
+        };
+        return levels;
+      } catch (err) {
+        return { breakout: null, support: null };
+      }
+    });
   }
 
   async function watchMetrics(item) {
@@ -3649,6 +3680,7 @@
     twiiQuote: twiiQuote,
     foreignTargets: foreignTargets,
     findLevels: findLevels,
+    watchLevels: watchLevels,
     historyBars: historyBars,
     toTW: toTW,
     preferTwName: preferTwName,
