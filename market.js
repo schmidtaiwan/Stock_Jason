@@ -360,6 +360,7 @@
 
   function bustLiveCaches(secids) {
     quoteFresh.clear();
+    // MIS 快取另受 5 秒限流保護，這裡不強制清空，避免高頻打到被鎖 IP
     const ids = (secids || []).filter(Boolean);
     if (!ids.length) {
       cache.clear();
@@ -824,10 +825,22 @@
       });
     }
     if (tw.length) {
-      const board = await cnyesQuotes(tw.map(function (id) { return id.slice(3); }));
+      const codes = tw.map(function (id) { return id.slice(3); });
+      let board = {};
+      try { board = await misQuotes(codes); } catch (err) { board = {}; }
+      const miss = codes.filter(function (c) {
+        const id = String(c || "").toUpperCase();
+        return !(board[id] && board[id].price > 0);
+      });
+      if (miss.length) {
+        try {
+          const cnyes = await cnyesQuotes(miss);
+          Object.keys(cnyes).forEach(function (code) { board[code] = cnyes[code]; });
+        } catch (err) { /* ignore */ }
+      }
       Object.keys(board).forEach(function (code) {
         const row = board[code];
-        out[row.secid] = row;
+        if (row && row.secid) out[row.secid] = row;
       });
     }
     return out;
@@ -2460,10 +2473,185 @@
     };
   }
 
+  // ── TWSE MIS 基本市況報導（約 5 秒快照；高頻會鎖 IP）────────────────
+  const MIS_MIN_GAP_MS = 5500;
+  const MIS_CACHE_MS = 5000;
+  const misQuoteCache = new Map();
+  const misExHint = Object.create(null);
+  let misLastFetchAt = 0;
+  let misQueue = Promise.resolve();
+
+  function misNum(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s || s === "-" || s === "--") return null;
+    return num(s.replace(/,/g, ""));
+  }
+
+  function misAsOf(row) {
+    const tl = num(row && row.tlong);
+    if (tl != null && Math.abs(Date.now() - tl) < 172800000) return tl;
+    const d = String((row && row.d) || "").replace(/\D/g, "");
+    const t = String((row && row.t) || "00:00:00").trim();
+    if (d.length !== 8) return null;
+    const iso = d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8) + "T" +
+      (t.length >= 8 ? t : (t + ":00").slice(0, 8)) + "+08:00";
+    const ms = Date.parse(iso);
+    return isFinite(ms) ? ms : null;
+  }
+
+  function misLastPrice(row) {
+    let z = misNum(row && row.z);
+    if (z == null && row && row.trade && typeof row.trade === "object") z = misNum(row.trade.z);
+    if (z != null) return z;
+    const bid = String((row && row.b) || "").split("_").map(misNum).filter(function (v) { return v != null; })[0];
+    const ask = String((row && row.a) || "").split("_").map(misNum).filter(function (v) { return v != null; })[0];
+    if (bid != null && ask != null) return (bid + ask) / 2;
+    if (bid != null) return bid;
+    if (ask != null) return ask;
+    return misNum(row && row.y);
+  }
+
+  function parseMisRow(row) {
+    if (!row) return null;
+    const code = String(row.c || "").toUpperCase();
+    if (!code) return null;
+    const ref = misNum(row.y);
+    const price = misLastPrice(row);
+    if (!(price > 0) && !(ref > 0)) return null;
+    const px = price > 0 ? price : ref;
+    const change = (px != null && ref > 0) ? px - ref : null;
+    const pct = (change != null && ref > 0) ? change / ref * 100 : null;
+    const high = misNum(row.h);
+    const low = misNum(row.l);
+    const open = misNum(row.o);
+    const amplitude = (high != null && low != null && ref > 0) ? (high - low) / ref * 100 : null;
+    const ex = String(row.ex || "").toLowerCase();
+    if (ex === "tse" || ex === "otc") misExHint[code] = ex;
+    return {
+      secid: code === "T00" ? "100.TWII" : ("tw." + code),
+      code: code,
+      name: toTW(row.n || code),
+      price: px,
+      change: change,
+      pct: pct,
+      open: open,
+      high: high,
+      low: low,
+      ref: ref,
+      limitUp: misNum(row.u),
+      limitDown: misNum(row.w),
+      volumeLots: misNum(row.v),
+      amount: null,
+      avg: null,
+      amplitude: amplitude,
+      pe: null,
+      cap: null,
+      pb: null,
+      asOf: misAsOf(row),
+      delayMin: 0,
+      source: "mis",
+      ex: ex || null
+    };
+  }
+
+  function misExTokens(code) {
+    const id = String(code || "").toUpperCase();
+    if (id === "T00" || id === "TWII") return ["tse_t00.tw"];
+    if (id === "O00" || id === "TWOII") return ["otc_o00.tw"];
+    const hint = misExHint[id];
+    if (hint === "tse") return ["tse_" + id + ".tw"];
+    if (hint === "otc") return ["otc_" + id + ".tw"];
+    return ["tse_" + id + ".tw", "otc_" + id + ".tw"];
+  }
+
+  async function misFetchRaw(exCh) {
+    const abs = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=" +
+      encodeURIComponent(exCh) + "&json=1&delay=0";
+    return twseFetchJson(abs);
+  }
+
+  function misCacheGet(code) {
+    const hit = misQuoteCache.get(String(code || "").toUpperCase());
+    if (!hit) return null;
+    if (Date.now() - hit.at > MIS_CACHE_MS) return null;
+    return hit.quote;
+  }
+
+  async function misQuotes(codes) {
+    const ids = [];
+    (codes || []).forEach(function (c) {
+      const id = String(c || "").toUpperCase();
+      if (id && ids.indexOf(id) < 0) ids.push(id);
+    });
+    const out = {};
+    if (!ids.length) return out;
+    const need = [];
+    ids.forEach(function (id) {
+      const hit = misCacheGet(id);
+      if (hit && hit.price > 0) out[id] = hit;
+      else need.push(id);
+    });
+    if (!need.length) return out;
+
+    const run = misQueue.then(async function () {
+      const still = need.filter(function (id) { return !misCacheGet(id); });
+      if (!still.length) return;
+      const wait = MIS_MIN_GAP_MS - (Date.now() - misLastFetchAt);
+      if (wait > 0) await sleep(wait);
+      const tokens = [];
+      still.forEach(function (id) {
+        misExTokens(id).forEach(function (tok) {
+          if (tokens.indexOf(tok) < 0) tokens.push(tok);
+        });
+      });
+      // 單次請求控制量，降低鎖 IP 風險
+      for (let i = 0; i < tokens.length; i += 24) {
+        if (i > 0) await sleep(MIS_MIN_GAP_MS);
+        const part = tokens.slice(i, i + 24);
+        misLastFetchAt = Date.now();
+        let json = null;
+        try {
+          json = await misFetchRaw(part.join("|"));
+        } catch (err) {
+          continue;
+        }
+        if (!json || String(json.rtcode) !== "0000") continue;
+        (json.msgArray || []).forEach(function (row) {
+          const parsed = parseMisRow(row);
+          if (!parsed || !(parsed.price > 0)) return;
+          misQuoteCache.set(parsed.code, { at: Date.now(), quote: parsed });
+        });
+      }
+    });
+    misQueue = run.catch(function () {});
+    await run;
+    ids.forEach(function (id) {
+      if (out[id]) return;
+      const hit = misCacheGet(id) || (misQuoteCache.get(id) && misQuoteCache.get(id).quote) || null;
+      if (hit && hit.price > 0) out[id] = hit;
+    });
+    return out;
+  }
+
+  async function misTwiiQuote() {
+    const board = await misQuotes(["T00"]);
+    const q = board.T00;
+    if (!q || !(q.price > 0)) return null;
+    return {
+      price: q.price,
+      change: q.change,
+      pct: q.pct,
+      name: q.name || "加權指數",
+      asOf: q.asOf,
+      delayMin: 0,
+      source: "mis"
+    };
+  }
+
   async function watchBoard(items) {
     const list = items || [];
     if (!list.length) return [];
-    // 台股自選：先鉅亨（較不易卡昨收），再 Yahoo／其他；一律用代號對齊，避免 178.xxx / tw.xxx 對不上
+    // 台股自選：證交所 MIS 即時 → 鉅亨 → Yahoo；一律用代號對齊
     const codes = [];
     const secids = [];
     list.forEach(function (item) {
@@ -2475,9 +2663,18 @@
     bustLiveCaches(secids);
     let byCode = {};
     try {
-      byCode = await cnyesQuotes(codes);
+      byCode = await misQuotes(codes);
     } catch (err) {
       byCode = {};
+    }
+    const missMis = codes.filter(function (c) { return !(byCode[c] && byCode[c].price > 0); });
+    if (missMis.length) {
+      try {
+        const cnyes = await cnyesQuotes(missMis);
+        Object.keys(cnyes).forEach(function (c) {
+          if (!byCode[c] || !(byCode[c].price > 0)) byCode[c] = cnyes[c];
+        });
+      } catch (err) { /* ignore */ }
     }
     const needYahoo = list.filter(function (item) {
       const code = String(item && item.code || "").toUpperCase();
@@ -2515,7 +2712,8 @@
         targetLow: null,
         breakout: null,
         support: null,
-        source: q && q.source ? q.source : (q ? (byCode[code] ? "cnyes" : "yahoo") : "")
+        asOf: q && q.asOf != null ? q.asOf : null,
+        source: q && q.source ? q.source : (q ? (byCode[code] ? (byCode[code].source || "cnyes") : "yahoo") : "")
       };
     });
   }
@@ -2529,6 +2727,11 @@
   }
 
   async function twiiQuote() {
+    // 優先證交所 MIS 加權（tse_t00），幾乎即時；失敗再退 Yahoo
+    try {
+      const mis = await misTwiiQuote();
+      if (mis && mis.price > 0) return mis;
+    } catch (errMis) { /* 改走 Yahoo */ }
     // ^TWII 的 meta.previousClose 常是舊值（會算出 +3000 點這種錯漲跌），改用近兩日日線
     try {
       const json = await yahooChart("^TWII", "interval=1d&range=10d");
@@ -4014,7 +4217,11 @@
       })),
       txNightLatest().catch(function () { return null; }),
       twiiQuote().catch(function () { return null; }),
-      yahooSymbolQuote("^TWOII").catch(function () { return null; }),
+      misQuotes(["O00"]).then(function (board) {
+        const q = board && board.O00;
+        if (q && q.price > 0) return q;
+        return yahooSymbolQuote("^TWOII");
+      }).catch(function () { return yahooSymbolQuote("^TWOII").catch(function () { return null; }); }),
       yahooQuote("fx.USDTWD").catch(function () { return null; }),
       latestTwseT86(12).catch(function () { return { ok: false }; }),
       txForeignFutSeries(40).catch(function () { return []; }),
@@ -4481,6 +4688,8 @@
     preferTwName: preferTwName,
     hasCjk: hasCjk,
     cnyesQuotes: cnyesQuotes,
+    misQuotes: misQuotes,
+    misTwiiQuote: misTwiiQuote,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,
     twseDailyReport: twseDailyReport,
