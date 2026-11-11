@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 79;
+  const PAGE_BUILD = 80;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2214,6 +2214,22 @@
     });
   }
 
+  function splitWatchQuery(raw) {
+    return String(raw || "").split(/[,，、]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  async function resolveWatchToken(token) {
+    const q = String(token || "").trim();
+    if (!q) return null;
+    let rows = [];
+    try { rows = await M.search(q); } catch (err) { rows = []; }
+    const tw = rows.filter(function (row) { return row.market === "台股"; });
+    const list = tw.length ? tw : rows;
+    const key = q.toUpperCase();
+    const exact = list.find(function (row) { return String(row.code || "").toUpperCase() === key; });
+    return exact || list[0] || null;
+  }
+
   function bindSearch(inputId, hitId, key, prefer) {
     let timer = 0;
     $(inputId).addEventListener("input", function () {
@@ -2221,6 +2237,14 @@
       const q = $(inputId).value.trim();
       timer = setTimeout(async function () {
         if (q.length < 1) { $(hitId).innerHTML = ""; return; }
+        if (key === "watch") {
+          const parts = splitWatchQuery(q);
+          if (parts.length > 1) {
+            $(hitId).innerHTML = '<p class="note">將一次加入 ' + parts.length +
+              " 檔：" + esc(parts.join("、")) + "。可填共用買價／股數後按加入。</p>";
+            return;
+          }
+        }
         try {
           let rows = await M.search(q);
           if (prefer) {
@@ -2450,28 +2474,77 @@
     setView("stock");
   }
 
-  function addFromForm() {
-    const row = state.picks.watch;
-    if (!row) {
-      $("watch-status").textContent = "先點一個搜尋結果。";
-      return;
+  async function addFromForm() {
+    const raw = ($("watch-q") && $("watch-q").value) || "";
+    const parts = splitWatchQuery(raw);
+    const shares = $("watch-shares").value;
+    const cost = $("watch-cost").value;
+    const btn = $("watch-add");
+    if (btn) btn.disabled = true;
+    $("watch-status").textContent = parts.length > 1 ? ("正在加入 " + parts.length + " 檔…") : "正在加入…";
+    try {
+      if (parts.length > 1) {
+        const ok = [];
+        const miss = [];
+        for (let i = 0; i < parts.length; i++) {
+          const hit = await resolveWatchToken(parts[i]);
+          if (!hit) {
+            miss.push(parts[i]);
+            continue;
+          }
+          savePosition({
+            secid: hit.secid,
+            code: hit.code,
+            name: hit.name,
+            market: hit.market || "台股",
+            shares: shares,
+            cost: cost
+          });
+          ok.push(hit.code || parts[i]);
+        }
+        state.picks.watch = null;
+        $("watch-pick").textContent = "可用逗號一次加入多檔，例如 2330,2308；或點搜尋結果後再加入。";
+        $("watch-q").value = "";
+        $("watch-shares").value = "";
+        $("watch-cost").value = "";
+        $("watch-hits").innerHTML = "";
+        if (!ok.length) {
+          $("watch-status").textContent = "找不到：" + miss.join("、");
+          return;
+        }
+        $("watch-status").textContent = "已加入 " + ok.join("、") +
+          (miss.length ? ("；找不到 " + miss.join("、")) : "");
+        setWatchCompose(false);
+        return;
+      }
+
+      let row = state.picks.watch;
+      if (!row && parts[0]) row = await resolveWatchToken(parts[0]);
+      if (!row) {
+        $("watch-status").textContent = "先輸入代號（可用逗號多檔）或點一個搜尋結果。";
+        return;
+      }
+      savePosition({
+        secid: row.secid,
+        code: row.code,
+        name: row.name,
+        market: row.market,
+        shares: shares,
+        cost: cost
+      });
+      state.picks.watch = null;
+      $("watch-pick").textContent = "可用逗號一次加入多檔，例如 2330,2308；或點搜尋結果後再加入。";
+      $("watch-q").value = "";
+      $("watch-shares").value = "";
+      $("watch-cost").value = "";
+      $("watch-hits").innerHTML = "";
+      $("watch-status").textContent = "已加入 " + (row.code || row.name);
+      setWatchCompose(false);
+    } catch (err) {
+      $("watch-status").textContent = err.message || "加入失敗";
+    } finally {
+      if (btn) btn.disabled = false;
     }
-    savePosition({
-      secid: row.secid,
-      code: row.code,
-      name: row.name,
-      market: row.market,
-      shares: $("watch-shares").value,
-      cost: $("watch-cost").value
-    });
-    state.picks.watch = null;
-    $("watch-pick").textContent = "點選搜尋結果後，填買進價格與股數。";
-    $("watch-q").value = "";
-    $("watch-shares").value = "";
-    $("watch-cost").value = "";
-    $("watch-hits").innerHTML = "";
-    $("watch-status").textContent = "";
-    setWatchCompose(false);
   }
 
   function renderImport() {
