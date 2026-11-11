@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 68;
+  const PAGE_BUILD = 69;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -553,10 +553,10 @@
         '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(g.name) +
         '<span class="watch-group-count">' + (g.items || []).length + "</span></button>";
     }).join("") +
-      '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組">＋群組</button>' +
-      '<button type="button" class="ghost watch-group-rename" id="watch-group-rename" title="重新命名目前群組">改名</button>' +
+      '<button type="button" class="ghost watch-group-icon watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋</button>' +
+      '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
       (groups.length > 1
-        ? '<button type="button" class="ghost danger watch-group-del" id="watch-group-del" title="刪除目前群組">刪群組</button>'
+        ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
         : "");
     syncWatchModeBtn();
   }
