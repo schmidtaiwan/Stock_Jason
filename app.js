@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 41;
+  const PAGE_BUILD = 42;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -510,7 +510,7 @@
     if (!(val > 0)) return null;
     const price = Number(quote.price);
     const pctChg = Number(quote.pct);
-    const pnl = watchPnl(price, item.cost, item.shares).value;
+    const pnl = watchPnl(price, item.cost, item.shares, item.code).value;
     if (mode === "pct") {
       if (!isFinite(pctChg) || Math.abs(pctChg) < val) return null;
       const side = pctChg >= 0 ? "up" : "down";
@@ -877,12 +877,38 @@
     return (n > 0 ? "+" : "") + fmtPx(n);
   }
 
-  function watchPnl(price, cost, shares) {
+  // 台股預估損益：扣賣出手續費（萬元 1.425‰、單筆最低 20）與證交稅（股票 0.3%、ETF 0.1%）
+  // 買價視為券商平均成本（多半已含買進費），不再重扣買進手續費。
+  const BROKER_FEE_RATE = 0.001425;
+  const BROKER_FEE_MIN = 20;
+  const TAX_STOCK = 0.003;
+  const TAX_ETF = 0.001;
+
+  function isEtfLike(code) {
+    const c = String(code || "").trim().toUpperCase();
+    if (!c) return false;
+    if (/^00\d/.test(c)) return true;
+    if (/[A-Z]/.test(c)) return true;
+    return false;
+  }
+
+  function brokerFee(amount) {
+    if (!(amount > 0)) return 0;
+    return Math.max(BROKER_FEE_MIN, Math.round(amount * BROKER_FEE_RATE));
+  }
+
+  function sellTax(amount, code) {
+    if (!(amount > 0)) return 0;
+    return Math.round(amount * (isEtfLike(code) ? TAX_ETF : TAX_STOCK));
+  }
+
+  function watchPnl(price, cost, shares, code) {
     const p = Number(price);
     const c = Number(cost);
     const s = Number(shares);
     if (!(p > 0) || !isFinite(c) || !(s > 0)) return { text: "—", cls: "", value: null };
-    const v = (p - c) * s;
+    const mv = p * s;
+    const v = mv - c * s - brokerFee(mv) - sellTax(mv, code);
     return {
       text: (v > 0 ? "+" : "") + Math.round(v).toLocaleString("zh-Hant"),
       cls: v > 0 ? "up" : v < 0 ? "down" : "",
@@ -897,7 +923,7 @@
     const item = book.watch[idx];
     if (!row || !item) return;
     const price = Number(row.getAttribute("data-price"));
-    const pnl = watchPnl(price, item.cost, item.shares);
+    const pnl = watchPnl(price, item.cost, item.shares, item.code);
     const cell = row.querySelector("[data-watch-pnl]");
     if (!cell) return;
     cell.className = pnl.cls;
@@ -918,7 +944,7 @@
     book.watch.forEach(function (item, idx) {
       const row = box && box.querySelector('tr[data-watch-row="' + idx + '"]');
       const price = row ? Number(row.getAttribute("data-price")) : NaN;
-      const pnl = watchPnl(price, item.cost, item.shares);
+      const pnl = watchPnl(price, item.cost, item.shares, item.code);
       if (pnl.value == null || !isFinite(pnl.value)) return;
       sum += pnl.value;
       n += 1;

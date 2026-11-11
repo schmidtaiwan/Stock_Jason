@@ -346,6 +346,12 @@ textarea { min-height: 120px; resize: vertical; }
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
+.watch-total-hint {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
 .watch-table-wrap {
   width: 100%;
   overflow-x: auto;
