@@ -1039,7 +1039,18 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   text-decoration: none;
   margin-right: 2px;
 }
-.mops-out .mops-card { margin-bottom: 8px; }
+.mops-out .mops-card,
+.stock-mops .mops-card { margin-bottom: 8px; }
+.stock-mops {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.stock-mops.chart-details-collapsed { display: none !important; }
+.mops-stock-head {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
 .mops-out .secondary {
   display: inline-block;
   margin-top: 6px;

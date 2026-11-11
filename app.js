@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 72;
+  const PAGE_BUILD = 73;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1340,16 +1340,18 @@
     const btn = $("stock-detail-toggle");
     const details = $("stock-chart-details");
     const extra = $("stock-detail");
+    const mops = $("stock-mops");
     if (view) view.classList.toggle("chart-compact", !stockDetailsOn);
     if (btn) {
       btn.setAttribute("aria-pressed", stockDetailsOn ? "true" : "false");
       btn.textContent = stockDetailsOn ? "細部資料" : "顯示細部";
     }
     if (details) details.hidden = !stockDetailsOn;
-    if (extra) {
-      if (!stockDetailsOn) extra.classList.add("chart-details-collapsed");
-      else extra.classList.remove("chart-details-collapsed");
-    }
+    [extra, mops].forEach(function (el) {
+      if (!el) return;
+      if (!stockDetailsOn) el.classList.add("chart-details-collapsed");
+      else el.classList.remove("chart-details-collapsed");
+    });
   }
 
   function drawOn(canvas, plot, opts) {
@@ -2348,14 +2350,20 @@
 
   async function loadStockDetail(row) {
     const box = $("stock-detail");
+    const mopsBox = $("stock-mops");
     if (!box) return;
     if (!row) {
       stockChipCostLines = null;
       renderStockDetail(null);
+      if (mopsBox) { mopsBox.hidden = true; mopsBox.innerHTML = ""; }
       return;
     }
     box.hidden = false;
     box.innerHTML = '<article class="card"><p class="status">正在讀籌碼與財務…</p></article>';
+    if (mopsBox) {
+      mopsBox.hidden = false;
+      mopsBox.innerHTML = '<article class="card"><p class="status">正在讀公開資訊（營收／財報／股利）…</p></article>';
+    }
     try {
       const detail = await M.stockDetail(row.secid, row.code);
       if (!state.stock || state.stock.secid !== row.secid) return;
@@ -2378,6 +2386,18 @@
       if (!state.stock || state.stock.secid !== row.secid) return;
       stockChipCostLines = null;
       box.innerHTML = '<article class="card"><p class="note">' + esc(err.message || "明細讀取失敗") + "</p></article>";
+    }
+    if (mopsBox && M.stockDisclose) {
+      try {
+        const pack = await M.stockDisclose(row.secid, row.code);
+        if (!state.stock || state.stock.secid !== row.secid) return;
+        renderMops(pack, mopsBox);
+        syncStockDetailsUi();
+      } catch (err) {
+        if (!state.stock || state.stock.secid !== row.secid) return;
+        mopsBox.innerHTML = '<article class="card"><p class="note">' +
+          esc(err.message || "公開資訊讀取失敗") + "</p></article>";
+      }
     }
   }
 
@@ -3364,6 +3384,7 @@
       state.stockPlot = null;
       stockChipCostLines = null;
       renderStockDetail(null);
+      if ($("stock-mops")) { $("stock-mops").hidden = true; $("stock-mops").innerHTML = ""; }
       setView("watch");
     });
   }
@@ -3873,9 +3894,10 @@
     }).filter(Boolean).join(" · ") + "</p>";
   }
 
-  function renderMops(pack) {
-    const box = $("mops-out");
+  function renderMops(pack, target) {
+    const box = target || $("mops-out");
     if (!box) return;
+    box.hidden = false;
     if (!pack || !pack.ok) {
       box.innerHTML = '<p class="note">' + esc((pack && pack.reason) || "查詢失敗") + "</p>";
       return;
@@ -3926,29 +3948,31 @@
     const ownHtml = '<ul class="stat-list">' +
       "<li><span>外資持股占比</span><strong>" +
       (own.foreignPct != null ? Number(own.foreignPct).toFixed(2) + "%" : "—") +
-      "</strong><small>" + esc(own.date || "") + "</small></li></ul>" +
-      '<p class="fine">' + esc(own.note || "") + "</p>";
+      "</strong><small>" + esc(own.date || "") + "</small></li>" +
+      "<li><span>轉讓／質押／庫藏股</span><strong>請開 MOPS</strong></li>" +
+      "</ul><p class=\"fine\">" + esc(own.note || "") + "</p>";
 
     box.innerHTML =
-      '<p class="fine">代號 ' + esc(pack.stockId) + " · " + esc(pack.tip || "") + "</p>" +
+      '<h3 class="mops-stock-head">公開資訊觀測 · ' + esc(pack.stockId) + "</h3>" +
+      '<p class="fine">' + esc(pack.tip || "") + "</p>" +
       mopsLinkRow(pack.links) +
-      mopsFold("mat", "1. 重大訊息",
-        '<p class="fine">' + esc((pack.material && pack.material.note) || "") + "</p>" +
+      mopsFold("mat", "1. 重大訊息 · 董事會／資產／訂單／異動／警示",
+        '<p class="fine">查證市場傳言唯一官源。' + esc((pack.material && pack.material.note) || "") + "</p>" +
         '<p><a class="secondary" href="' + esc(pack.links.material) + '" target="_blank" rel="noopener">開啟 MOPS 重訊</a></p>',
         true) +
-      mopsFold("rev", "2. 營收與自結",
-        revTable + '<p class="fine">' + esc(rev.note || "") + "</p>", true) +
-      mopsFold("fin", "3. 財務報表", finHtml, true) +
-      mopsFold("ir", "4. 法人說明會",
-        '<p class="fine">' + esc((pack.ir && pack.ir.note) || "") + "</p>" +
+      mopsFold("rev", "2. 營收與自結 · 月合併營收／YoY／MoM",
+        revTable + '<p class="fine">' + esc(rev.note || "") + " 自結 EPS 以重訊／MOPS 為準。</p>", true) +
+      mopsFold("fin", "3. 財務報表 · 毛利／營益／EPS／負債比", finHtml, true) +
+      mopsFold("ir", "4. 法說會 · 日期／直播／簡報",
+        '<p class="fine">展望、新品與 CapEx 多在簡報。' + esc((pack.ir && pack.ir.note) || "") + "</p>" +
         '<p><a class="secondary" href="' + esc(pack.links.ir) + '" target="_blank" rel="noopener">開啟 MOPS 法說</a></p>',
-        false) +
-      mopsFold("ins", "5. 籌碼與內部人",
+        true) +
+      mopsFold("ins", "5. 內部人籌碼 · 轉讓／質押／庫藏股",
         ownHtml + '<p><a class="secondary" href="' + esc(pack.links.insider) +
-        '" target="_blank" rel="noopener">開啟 MOPS 持股／轉讓</a></p>', false) +
-      mopsFold("div", "6. 除權息與股東會",
+        '" target="_blank" rel="noopener">開啟 MOPS 持股／轉讓</a></p>', true) +
+      mopsFold("div", "6. 除權息／股東會 · 除息日／發放日／開會通知",
         divHtml + '<p><a class="secondary" href="' + esc(pack.links.dividend) +
-        '" target="_blank" rel="noopener">開啟 MOPS 股利</a></p>', true);
+        '" target="_blank" rel="noopener">開啟 MOPS 股利／股東會</a></p>', true);
   }
 
   async function runMops() {
@@ -4154,18 +4178,22 @@
     const chev = btn.querySelector(".chart-fold-chevron");
     if (chev) chev.textContent = open ? "▾" : "▸";
   });
-  if ($("mops-out")) $("mops-out").addEventListener("click", function (ev) {
+  function onMopsFoldClick(ev) {
     const btn = ev.target.closest("[data-mops-fold]");
-    if (!btn || !$("mops-out").contains(btn)) return;
+    if (!btn) return;
+    const root = btn.closest("#mops-out, #stock-mops");
+    if (!root) return;
     const key = btn.getAttribute("data-mops-fold");
-    const body = $("mops-out").querySelector('[data-mops-body="' + key + '"]');
+    const body = root.querySelector('[data-mops-body="' + key + '"]');
     if (!body) return;
     const open = body.hidden;
     body.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     const chev = btn.querySelector(".chart-fold-chevron");
     if (chev) chev.textContent = open ? "▾" : "▸";
-  });
+  }
+  if ($("mops-out")) $("mops-out").addEventListener("click", onMopsFoldClick);
+  if ($("stock-mops")) $("stock-mops").addEventListener("click", onMopsFoldClick);
 
   document.addEventListener("click", function (ev) {
     const btn = ev.target.closest("[data-open-code]");
