@@ -3604,7 +3604,9 @@
       const longBody = body >= Math.max(ab * 1.6, range * 0.55) && body / range >= 0.55;
 
       // 1–12 單K（由嚴到寬，一棒通常只掛一個主型態）
-      if (nearZero(range, Math.abs(c) || 1) || (nearZero(body, range) && noUp && noDn)) {
+      // 一字線：振幅相對股價極小（鎖死／冷門），不可用「振幅≤5%股價」這種過寬條件
+      const flatLine = range <= Math.max(Math.abs(c) * 0.0015, 0.02) && body <= Math.max(Math.abs(c) * 0.001, 0.01);
+      if (flatLine) {
         push(i, "一字線", "中", "開高低收幾乎同一價，冷門或鎖死常見。");
       } else if (flat && noUp && !noDn) {
         push(i, "T字線", recentFell(i) ? "多" : "中",
@@ -3698,6 +3700,76 @@
     return out.reverse();
   }
 
+  // 解讀使用者框選的一段 K 線（代表意思＋型態）
+  function explainKRange(bars, name) {
+    const rows = (bars || []).filter(function (b) {
+      return b && isFinite(b.o) && isFinite(b.h) && isFinite(b.l) && isFinite(b.c);
+    });
+    if (!rows.length) return null;
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    let hi = -Infinity;
+    let lo = Infinity;
+    let upN = 0;
+    let downN = 0;
+    rows.forEach(function (b) {
+      hi = Math.max(hi, b.h);
+      lo = Math.min(lo, b.l);
+      if (b.c > b.o) upN += 1;
+      else if (b.c < b.o) downN += 1;
+    });
+    const base = first.o > 0 ? first.o : first.c;
+    const chg = base > 0 ? last.c / base - 1 : 0;
+    const span = hi > 0 && lo < Infinity ? (hi - lo) / hi : 0;
+    const pats = kPatterns(rows);
+    const topNames = [];
+    const seen = {};
+    pats.forEach(function (p) {
+      if (!seen[p.name]) { seen[p.name] = true; topNames.push(p.name); }
+    });
+
+    let tone = "整理";
+    let meaning = "";
+    if (chg >= 0.08 && downN > upN && /黃昏|墓碑|先漲後跌|黑K吞沒|三隻烏鴉/.test(topNames.join(","))) {
+      tone = "衝高轉弱";
+      meaning = "這段先明顯上漲，隨後出現轉弱型態，屬於高檔出貨／漲勢末端常見結構，不宜再追高。";
+    } else if (chg <= -0.06 || (downN >= upN + 2 && span >= 0.05)) {
+      tone = "賣壓主導";
+      meaning = "這段以下跌與黑K為主，空方力道較強；若伴隨長黑或吞沒，短線偏續跌或反彈後再測低。";
+    } else if (chg >= 0.06 && upN > downN) {
+      tone = "買盤推升";
+      meaning = "這段紅K較多、價格抬高，買方較積極；若末端出現上影或黃昏結構，改成保守看待。";
+    } else if (span < 0.03) {
+      tone = "窄幅盤整";
+      meaning = "高低震幅不大，多空暫時膠著，等方向突破較有意義。";
+    } else if (chg > 0 && /錘頭|晨星|紅K吞沒|下跌抵抗|白三兵/.test(topNames.join(","))) {
+      tone = "止跌試探";
+      meaning = "雖未必大漲，但出現偏多承接型態，可視為短線止跌或反彈試探。";
+    } else {
+      tone = chg >= 0 ? "偏多整理" : "偏空整理";
+      meaning = "這段沒有單一極端訊號，宜搭配前後趨勢與量能再看；下列型態供對照。";
+    }
+
+    const from = String(first.t || "").slice(0, 10);
+    const to = String(last.t || "").slice(0, 10);
+    return {
+      name: name || "",
+      from: from,
+      to: to,
+      bars: rows.length,
+      open: roundPx(first.o),
+      close: roundPx(last.c),
+      high: roundPx(hi),
+      low: roundPx(lo),
+      change: chg,
+      tone: tone,
+      meaning: meaning,
+      patterns: pats.slice(0, 10),
+      upN: upN,
+      downN: downN
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -3730,6 +3802,7 @@
     twseDailyReport: twseDailyReport,
     sortDailyReportRows: sortDailyReportRows,
     kPatterns: kPatterns,
+    explainKRange: explainKRange,
     watchChips: watchChips,
     stockAdvice: stockAdvice
   };

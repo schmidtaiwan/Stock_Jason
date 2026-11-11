@@ -192,10 +192,34 @@ main {
   margin: 0;
   flex: 1 1 auto;
 }
+.k-select-hint { margin: 6px 0 0; }
+.k-pick {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #7a2a2a;
+  border-radius: 12px;
+  background: #1a1214;
+}
+.k-pick h3 { margin: 0 0 6px; font-size: 14px; }
+.k-pick .k-pick-tone {
+  font-weight: 700;
+  margin-right: 6px;
+}
+.k-pick ul { margin: 6px 0 0; padding-left: 1.1em; }
 .k-patterns {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
+}
+.k-patterns li[data-k-focus] {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
+.k-patterns li[data-k-focus]:hover,
+.k-patterns li[data-k-focus].on {
+  background: #24181a;
 }
 .k-patterns h3 {
   margin: 0 0 6px;

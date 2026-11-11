@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 47;
+  const PAGE_BUILD = 48;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -19,7 +19,9 @@
     custom: false,
     from: "",
     to: "",
-    chartStyle: "line"
+    chartStyle: "line",
+    kSel: null,
+    kDrag: null
   };
 
   let book = emptyBook();
@@ -667,6 +669,12 @@
       const mode = candle || items.length === 1 ? "price" : "pct";
       state.plot = buildPlot(items, mode, align);
       state.plot.style = candle ? "candle" : "line";
+      if (!candle) clearKSelection();
+      else {
+        state.kSel = null;
+        state.kDrag = null;
+        renderKPick(null);
+      }
       draw();
       renderLegend(items, mode);
       renderKPatterns(candle ? items[0] : null);
@@ -860,6 +868,22 @@
       plot.series.forEach(function (s) {
         drawCandles(ctx, s, xOf, yOf, plot.axis.length);
       });
+      const sel = state.kDrag || state.kSel;
+      if (sel && sel.from != null && sel.to != null && plot.axis.length) {
+        const a = Math.max(0, Math.min(sel.from, sel.to));
+        const b = Math.min(plot.axis.length - 1, Math.max(sel.from, sel.to));
+        const x1 = xOf(a);
+        const x2 = xOf(b);
+        const slot = plot.axis.length <= 1 ? 10 : iw / (plot.axis.length - 1);
+        const padX = Math.max(4, slot * 0.4);
+        ctx.fillStyle = "rgba(255, 60, 60, 0.12)";
+        ctx.strokeStyle = "#ff4d4d";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(Math.min(x1, x2) - padX, top, Math.abs(x2 - x1) + padX * 2, ih);
+        ctx.fill();
+        ctx.stroke();
+      }
     } else {
       plot.series.forEach(function (s) {
         ctx.beginPath();
@@ -911,14 +935,17 @@
 
   function renderKPatterns(item) {
     const box = $("k-patterns");
+    const hint = $("k-select-hint");
+    if (hint) hint.hidden = !(item && state.chartStyle === "candle");
     if (!box) return;
     if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
       box.hidden = true;
       box.innerHTML = "";
+      if ($("k-pick")) { $("k-pick").hidden = true; $("k-pick").innerHTML = ""; }
       return;
     }
     const rows = M.kPatterns(item.bars).slice(0, 16);
-    const ref = '<p class="fine">型態對照 <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=291749" target="_blank" rel="noopener">CMoney 15種基本K線</a>（大陽／大陰／十字／錘頭／抵抗／阻力／墓碑／試探／一字／T字／白三兵／三烏鴉／黃昏之星等）。偏多／偏空是提示，不是下單建議。</p>';
+    const ref = '<p class="fine">型態對照 <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=291749" target="_blank" rel="noopener">CMoney 15種基本K線</a>。也可在圖上拖曳紅框解讀該段；點下列型態會反白對應K。偏多／偏空是提示，不是下單建議。</p>';
     if (!rows.length) {
       box.hidden = false;
       box.innerHTML = "<h3>K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯型態。</p>';
@@ -928,10 +955,107 @@
     box.innerHTML = "<h3>K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
       rows.map(function (row) {
         const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
-        return "<li><span class=\"k-date\">" + esc(row.date.slice(5)) + "</span>" +
+        const span = /白三兵|三隻烏鴉|黃昏之星|晨星|吞沒/.test(row.name) ? 2 : 0;
+        return '<li data-k-focus="' + row.i + '" data-k-span="' + span + '">' +
+          '<span class="k-date">' + esc(row.date.slice(5)) + "</span>" +
           '<span class="k-name ' + cls + '">' + esc(row.name) + "</span>" +
           '<span class="k-detail">' + esc(row.detail) + "</span></li>";
       }).join("") + "</ul>";
+  }
+
+  function chartIndexAt(clientX) {
+    const canvas = $("chart");
+    const layout = canvas && canvas._layout;
+    if (!layout || !layout.axis || !layout.axis.length) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    if (x < layout.left || x > layout.left + layout.width) return null;
+    const n = layout.axis.length;
+    return Math.max(0, Math.min(n - 1, Math.round((x - layout.left) / layout.width * (n - 1))));
+  }
+
+  function selectedBars(from, to) {
+    const plot = state.plot;
+    if (!plot || !plot.series || !plot.series[0]) return [];
+    const s = plot.series[0];
+    const a = Math.max(0, Math.min(from, to));
+    const b = Math.min((plot.axis.length || 1) - 1, Math.max(from, to));
+    const out = [];
+    for (let i = a; i <= b; i++) {
+      const bar = s.ohlc && s.ohlc[i];
+      if (!bar) continue;
+      out.push({
+        t: String(plot.axis[i] || ""),
+        o: bar.o,
+        h: bar.h,
+        l: bar.l,
+        c: bar.c
+      });
+    }
+    return out;
+  }
+
+  function renderKPick(report) {
+    const box = $("k-pick");
+    if (!box) return;
+    if (!report) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    const cls = /弱|賣|空/.test(report.tone) ? "down" : /多|買|升|止跌/.test(report.tone) ? "up" : "";
+    const pats = (report.patterns || []).map(function (p) {
+      const pc = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
+      return "<li><span class=\"" + pc + "\">" + esc(p.name) + "</span> " +
+        esc((p.date || "").slice(5)) + " · " + esc(p.detail) + "</li>";
+    }).join("");
+    box.hidden = false;
+    box.innerHTML = "<h3>框選解讀 · " + esc(report.name || "") + "</h3>" +
+      "<p><span class=\"k-pick-tone " + cls + "\">" + esc(report.tone) + "</span>" +
+      esc(report.from.slice(5)) + "～" + esc(report.to.slice(5)) +
+      " · " + report.bars + " 根 · 開 " + fmt(report.open) + " → 收 " + fmt(report.close) +
+      ' <span class="' + pctClass(report.change) + '">' + pct(report.change) + "</span>" +
+      " · 高 " + fmt(report.high) + "／低 " + fmt(report.low) + "</p>" +
+      "<p>" + esc(report.meaning) + "</p>" +
+      (pats ? "<ul>" + pats + "</ul>" : "") +
+      '<p class="fine"><button type="button" class="ghost" id="k-pick-clear">清除框選</button></p>';
+  }
+
+  function applyKSelection(from, to, opts) {
+    opts = opts || {};
+    const plot = state.plot;
+    if (!plot || plot.style !== "candle") return;
+    let a = Math.min(from, to);
+    let b = Math.max(from, to);
+    if (a === b && !opts.exact) {
+      a = Math.max(0, a - 2);
+      b = Math.min(plot.axis.length - 1, b + 2);
+    }
+    state.kSel = { from: a, to: b };
+    state.kDrag = null;
+    draw();
+    const bars = selectedBars(a, b);
+    const name = plot.series[0] && plot.series[0].name;
+    const report = M.explainKRange ? M.explainKRange(bars, name) : null;
+    renderKPick(report);
+    const list = $("k-patterns");
+    if (list) {
+      list.querySelectorAll("[data-k-focus]").forEach(function (el) {
+        const i = Number(el.getAttribute("data-k-focus"));
+        const span = Number(el.getAttribute("data-k-span") || 0);
+        const hit = i >= a && i <= b || (span && i - span >= a && i <= b);
+        el.classList.toggle("on", hit);
+      });
+    }
+  }
+
+  function clearKSelection() {
+    state.kSel = null;
+    state.kDrag = null;
+    renderKPick(null);
+    const list = $("k-patterns");
+    if (list) list.querySelectorAll("[data-k-focus].on").forEach(function (el) { el.classList.remove("on"); });
+    if (state.plot && state.plot.style === "candle") draw();
   }
 
   function renderLegend(items, mode) {
@@ -2237,9 +2361,17 @@
   }
 
   document.addEventListener("click", function (ev) {
+    const focusLi = ev.target.closest("[data-k-focus]");
+    if (focusLi && $("k-patterns") && $("k-patterns").contains(focusLi)) {
+      const i = Number(focusLi.getAttribute("data-k-focus"));
+      const span = Number(focusLi.getAttribute("data-k-span") || 0);
+      if (isFinite(i)) applyKSelection(Math.max(0, i - span), i, { exact: true });
+      return;
+    }
     const t = ev.target.closest("button");
     if (!t) return;
     if (t.dataset.pick) onPick(t);
+    else if (t.id === "k-pick-clear") clearKSelection();
     else if (t.dataset.adviseWatch != null) {
       const item = book.watch[Number(t.dataset.adviseWatch)];
       if (!item) return;
@@ -2338,8 +2470,39 @@
   $("predict-csv").addEventListener("click", downloadPredictCsv);
   $("predict-horizon").addEventListener("change", syncPredictStockBox);
   $("tool-back").addEventListener("click", function () { setView("tools"); });
-  $("chart").addEventListener("pointermove", onChartPointer);
+  $("chart").addEventListener("pointermove", function (ev) {
+    if (state.kDrag && state.plot && state.plot.style === "candle") {
+      const i = chartIndexAt(ev.clientX);
+      if (i != null) {
+        state.kDrag.to = i;
+        draw();
+      }
+      return;
+    }
+    onChartPointer(ev);
+  });
   $("chart").addEventListener("pointerleave", function () { $("hover").hidden = true; });
+  $("chart").addEventListener("pointerdown", function (ev) {
+    if (!state.plot || state.plot.style !== "candle") return;
+    const i = chartIndexAt(ev.clientX);
+    if (i == null) return;
+    state.kDrag = { from: i, to: i };
+    try { $("chart").setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+    $("hover").hidden = true;
+    draw();
+    ev.preventDefault();
+  });
+  $("chart").addEventListener("pointerup", function (ev) {
+    if (!state.kDrag) return;
+    const from = state.kDrag.from;
+    const to = state.kDrag.to != null ? state.kDrag.to : from;
+    state.kDrag = null;
+    applyKSelection(from, to);
+  });
+  $("chart").addEventListener("pointercancel", function () {
+    state.kDrag = null;
+    if (state.kSel) draw();
+  });
   function paintNotifyValChrome(idx) {
     const box = $("watch-list");
     if (!box || !book.watch[idx]) return;
