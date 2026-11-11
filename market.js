@@ -2027,9 +2027,19 @@
     return "";
   }
 
+  function finMindToken() {
+    try {
+      const local = localStorage.getItem("sj-finmind-token");
+      if (local) return String(local).trim();
+    } catch (err) { /* ignore */ }
+    return String((global.GOOGLE_CONFIG && global.GOOGLE_CONFIG.finmindToken) || "").trim();
+  }
+
   async function finMind(dataset, stockId, start) {
-    const url = "https://api.finmindtrade.com/api/v4/data?dataset=" + encodeURIComponent(dataset) +
+    let url = "https://api.finmindtrade.com/api/v4/data?dataset=" + encodeURIComponent(dataset) +
       "&data_id=" + encodeURIComponent(stockId) + "&start_date=" + encodeURIComponent(start);
+    const tok = finMindToken();
+    if (tok) url += "&token=" + encodeURIComponent(tok);
     const res = await fetch(url);
     if (!res.ok) throw new Error(dataset + " 讀取失敗");
     const json = await res.json();
@@ -3844,6 +3854,17 @@
     sakataCatalog: sakataCatalog,
     explainKRange: explainKRange,
     watchChips: watchChips,
-    stockAdvice: stockAdvice
+    stockAdvice: stockAdvice,
+    latestTwseT86: latestTwseT86,
+    twseT86Days: async function (days) {
+      const n = Math.max(1, Math.min(20, Number(days) || 5));
+      const end = await latestTwseT86(14);
+      if (!end || !end.ok) return [];
+      const candidates = twseWeekdayYmds(end.date, Math.min(40, n * 2 + 6));
+      const hits = await mapPool(candidates, 3, function (d) { return twseT86(d); });
+      return hits.filter(function (h) { return h && h.ok && h.rows && h.rows.length; })
+        .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; })
+        .slice(-n);
+    }
   };
 })(window);

@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=62">
+  <link rel="stylesheet" href="app.css?v=63">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -73,6 +73,13 @@
         <div id="focus-bar" class="focus-bar" hidden>
           <strong id="focus-name"></strong>
           <button id="focus-clear" class="ghost" type="button">回到市場</button>
+        </div>
+        <div id="us-board" class="us-board" aria-label="美股即時">
+          <div class="us-board-head">
+            <strong>美股開盤／即時</strong>
+            <button id="us-board-refresh" class="ghost" type="button">更新</button>
+          </div>
+          <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
         </div>
         <div id="market-box">
           <div id="markets" class="chips"></div>
@@ -347,6 +354,51 @@
           <div id="advise-out" class="result"></div>
         </div>
 
+        <div id="panel-chipx" class="panel" hidden>
+          <p class="fine">籌碼健檢：近 1／5／10／20 日法人流向、集中度近似、主力成本線（20／60 日）。若已貼 FinMind token，另拆前 15 大買賣超分點、家數差、隔日沖／囤貨標籤。</p>
+          <label for="chipx-token">FinMind token（選填，分點用）</label>
+          <div class="row">
+            <input id="chipx-token" type="password" autocomplete="off" placeholder="貼上 token 後按儲存">
+            <button id="chipx-token-save" class="secondary" type="button">儲存</button>
+          </div>
+          <p id="chipx-token-status" class="fine"></p>
+          <label for="chipx-q">標的</label>
+          <input id="chipx-q" type="search" placeholder="台股代號，例如 2308" autocomplete="off">
+          <div id="chipx-hits"></div>
+          <p id="chipx-pick" class="note">還沒選標的</p>
+          <button id="chipx-run" class="primary" type="button">籌碼健檢</button>
+          <p id="chipx-status" class="status" role="status"></p>
+          <div id="chipx-out" class="result"></div>
+        </div>
+
+        <div id="panel-screen" class="panel" hidden>
+          <p class="fine">官方精選策略（盤後 T86）：外資連買、投信剛買第一天、主力急買、外資＋投信同向。可再勾「站上月線」做交集（會抽樣掃描前列標的日 K）。</p>
+          <label for="screen-strategy">策略</label>
+          <select id="screen-strategy">
+            <option value="foreignBuy">外資連買 ≥ 3 日</option>
+            <option value="trustFirst">投信剛買第一天</option>
+            <option value="mainForce">主力急買（法人合計）</option>
+            <option value="foreignTrust">外資＋投信同向買超</option>
+          </select>
+          <label for="screen-days">回溯交易日</label>
+          <select id="screen-days">
+            <option value="5">5 日</option>
+            <option value="10">10 日</option>
+            <option value="20">20 日</option>
+          </select>
+          <label class="idea-count"><input id="screen-ma20" type="checkbox"> 再篩「收盤站上月線」</label>
+          <button id="screen-run" class="primary" type="button">一鍵選股</button>
+          <p id="screen-status" class="status" role="status"></p>
+          <div id="screen-out" class="result"></div>
+        </div>
+
+        <div id="panel-chipday" class="panel" hidden>
+          <p class="fine">盤後籌碼日報：證交所 T86 公布後（約 17:00～18:00）整理全市場法人買超／賣超排行。券商分點異常需 FinMind 付費層。</p>
+          <button id="chipday-run" class="primary" type="button">產生今日籌碼日報</button>
+          <p id="chipday-status" class="status" role="status"></p>
+          <div id="chipday-out" class="result"></div>
+        </div>
+
         <div id="panel-journal" class="panel" hidden>
           <p class="fine">只讀你寫入的最近 20 筆日誌，統計勝率、情緒偏誤（追價、恐懼出場等），生出最多三條規則。</p>
           <p class="fine">不上網：純本機（或已同步的雲端檔）運算，不拉行情。</p>
@@ -394,10 +446,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=62"></script>
-  <script src="drive.js?v=62"></script>
-  <script src="sakata.js?v=62"></script>
-  <script src="market.js?v=62"></script>
-  <script src="app.js?v=62"></script>
+  <script src="google_config.js?v=63"></script>
+  <script src="drive.js?v=63"></script>
+  <script src="sakata.js?v=63"></script>
+  <script src="market.js?v=63"></script>
+  <script src="chips.js?v=63"></script>
+  <script src="app.js?v=63"></script>
 </body>
 </html>

@@ -1,12 +1,17 @@
 (function () {
-  const PAGE_BUILD = 62;
+  const PAGE_BUILD = 63;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
+  let chipCostLines = null;
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
+  const C = window.SJChips;
 
   const TOOL_MENU = [
+    { id: "chipx", title: "籌碼健檢與分點", desc: "集中度／主力成本／紅綠燈；有 FinMind token 可看分點" },
+    { id: "screen", title: "籌碼選股", desc: "外資連買、投信首買、主力急買，可交集站上月線" },
+    { id: "chipday", title: "籌碼日報", desc: "盤後法人買超／賣超排行（T86）" },
     { id: "ideas", title: "交易點子產生器", desc: "掃描台股，列出進場、停損、停利與風報比" },
     { id: "tech", title: "自動化技術分析師", desc: "日線與週線的支撐壓力、均線、動能與買賣判斷" },
     { id: "news", title: "新聞轉交易策略", desc: "把消息拆成短長期影響、反映程度與失效條件" },
@@ -247,7 +252,10 @@
       if (on) btn.setAttribute("aria-current", "page");
       else btn.removeAttribute("aria-current");
     });
-    if (name === "chart") loadChart();
+    if (name === "chart") {
+      loadChart();
+      loadUsBoard();
+    }
     if (name === "watch") {
       setWatchCompose(false);
       renderWatch();
@@ -329,6 +337,9 @@
 
   function openTool(id) {
     const titles = {
+      chipx: "籌碼健檢與分點",
+      screen: "籌碼選股",
+      chipday: "籌碼日報",
       ideas: "交易點子產生器",
       tech: "自動化技術分析師",
       news: "新聞轉交易策略",
@@ -343,16 +354,17 @@
     $("tool-title").textContent = titles[id] || "";
     const note = $("tool-note");
     if (note) {
-      if (id === "report") {
+      if (id === "report" || id === "chipday") {
         note.hidden = false;
-        note.textContent = "每日16:00後更新";
+        note.textContent = id === "chipday" ? "約17:00後更新" : "每日16:00後更新";
       } else {
         note.hidden = true;
         note.textContent = "";
       }
     }
-    ["ideas", "tech", "news", "test", "risk", "journal", "predict", "report", "advise"].forEach(function (key) {
-      $("panel-" + key).hidden = key !== id;
+    TOOL_IDS.forEach(function (key) {
+      const panel = $("panel-" + key);
+      if (panel) panel.hidden = key !== id;
     });
     setView("tool");
     if (id === "risk") renderHoldings();
@@ -360,7 +372,19 @@
     if (id === "predict") syncPredictStockBox();
     if (id === "report" && $("report-date")) $("report-date").value = taipeiDay();
     if (id === "advise") paintAdviseWatch();
+    if (id === "chipx") {
+      if ($("chipx-token") && C) $("chipx-token").value = C.getToken() || "";
+      syncChipxTokenStatus();
+    }
     syncMoney();
+  }
+
+  function syncChipxTokenStatus() {
+    const el = $("chipx-token-status");
+    if (!el || !C) return;
+    el.textContent = C.getToken()
+      ? "已儲存 token（本機）。分點資料會優先走 FinMind 付費接口。"
+      : "尚未設定 token：仍可用法人／融資做健檢與主力成本近似。";
   }
 
   function paintAdviseWatch() {
@@ -1040,6 +1064,16 @@
         max = Math.max(max, v);
       });
     });
+    if (candle && plot.mode === "price" && chipCostLines) {
+      if (chipCostLines.cost20 != null) {
+        min = Math.min(min, chipCostLines.cost20);
+        max = Math.max(max, chipCostLines.cost20);
+      }
+      if (chipCostLines.cost60 != null) {
+        min = Math.min(min, chipCostLines.cost60);
+        max = Math.max(max, chipCostLines.cost60);
+      }
+    }
     if (!isFinite(min) || !isFinite(max)) return;
     if (plot.mode === "pct") { min = Math.min(min, 0); max = Math.max(max, 0); }
     const pad = (max - min) * 0.08 || 1;
@@ -1119,6 +1153,25 @@
           ctx.textBaseline = "alphabetic";
         }
       });
+    }
+    if (candle && plot.mode === "price" && chipCostLines) {
+      function drawCost(val, color, tag) {
+        if (val == null || !isFinite(val)) return;
+        const y = yOf(val);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.25;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(width - right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+        ctx.fillText(tag + " " + fmt(val), left + 4, y - 3);
+      }
+      drawCost(chipCostLines.cost20, "rgba(224, 161, 0, 0.85)", "主力20");
+      drawCost(chipCostLines.cost60, "rgba(120, 170, 255, 0.85)", "主力60");
     }
     ctx.fillStyle = "#93a0b0";
     ctx.font = axisFont;
@@ -1595,7 +1648,12 @@
         chipLotsTag(row.trustNet, "投"),
         chipLotsTag(row.dealerNet, "自")
       ].filter(Boolean);
-      el.innerHTML = (parts.join(" ") || '<span class="note">—</span>') +
+      const net = row.instNet != null ? row.instNet : ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0));
+      const lamp = C && C.chipTone ? C.chipTone(net, Math.max(Math.abs(net) * 8, 1)) : null;
+      const lampHtml = lamp
+        ? '<span class="force-lamp ' + lamp.cls + '" title="盤後法人燈號（非逐筆大單）">' + esc(lamp.label) + "</span>"
+        : "";
+      el.innerHTML = lampHtml + (parts.join(" ") || '<span class="note">—</span>') +
         (dateLabel ? '<span class="watch-chip-date">' + esc(dateLabel) + "</span>" : "");
     });
   }
@@ -1716,7 +1774,7 @@
     return n.toFixed(1) + "%";
   }
 
-  function renderStockDetail(detail) {
+  function renderStockDetail(detail, chipx) {
     const box = $("stock-detail");
     if (!box) return;
     if (!detail) { box.hidden = true; box.innerHTML = ""; return; }
@@ -1767,21 +1825,73 @@
         return "<li><span>" + esc(row.date.slice(5)) + '</span><strong class="' + (row.spread > 0 ? "up" : row.spread < 0 ? "down" : "") + '">' +
           row.lots.toLocaleString("zh-Hant") + "</strong></li>";
       }).join("") + "</ul></article>";
-    box.innerHTML = quoteHtml + chipsHtml + ownHtml + finHtml + epsHtml + volHtml;
+    let healthHtml = "";
+    if (chipx && chipx.ok) {
+      const lights = (chipx.lights || []).map(function (L) {
+        const cls = L.ok === true ? "up" : L.ok === false ? "down" : "";
+        const mark = L.ok === true ? "綠" : L.ok === false ? "紅" : "灰";
+        return '<li><span class="health-dot ' + cls + '">' + mark + "</span><span>" + esc(L.name) +
+          "</span><strong>" + esc(L.detail) + "</strong></li>";
+      }).join("");
+      const broker = chipx.broker && chipx.broker.ok && chipx.broker.latest ? chipx.broker.latest : null;
+      const brokerHtml = broker
+        ? '<p class="fine">家數差 ' + broker.brokerDiff +
+          " · 前15買超 " + Math.round(broker.buySum / 1000) + " 張 · 前15賣超 " +
+          Math.round(broker.sellSum / 1000) + " 張</p>" +
+          "<h4>買超前 8</h4><ul class=\"stat-list\">" +
+          broker.topBuy.slice(0, 8).map(function (r) {
+            return "<li><span>" + esc(r.name) + '</span><strong class="up">+' +
+              Math.round(r.net / 1000).toLocaleString("zh-Hant") + " 張</strong></li>";
+          }).join("") + "</ul>" +
+          (broker.dayTrade && broker.dayTrade.length
+            ? "<h4>隔日沖／當沖活躍</h4><ul class=\"stat-list\">" + broker.dayTrade.slice(0, 5).map(function (r) {
+              return "<li><span>" + esc(r.name) + "</span><strong>買 " + Math.round(r.buy / 1000) +
+                "／賣 " + Math.round(r.sell / 1000) + "</strong></li>";
+            }).join("") + "</ul>"
+            : "")
+        : '<p class="fine">' + esc(chipx.note || "") + "</p>";
+      healthHtml = '<article class="card"><h3>籌碼健檢 · ' + esc(chipx.bias) +
+        ' <span class="tag ' + (chipx.tone && chipx.tone.cls || "") + '">' + esc(chipx.tone && chipx.tone.label || "") +
+        "</span></h3><ul class=\"stat-list health-list\">" + lights +
+        "</ul><ul class=\"stat-list\">" +
+        "<li><span>主力成本 20 日</span><strong>" + (chipx.cost20 != null ? fmt(chipx.cost20) : "—") + "</strong></li>" +
+        "<li><span>主力成本 60 日</span><strong>" + (chipx.cost60 != null ? fmt(chipx.cost60) : "—") + "</strong></li>" +
+        "<li><span>集中度近似 5 日</span><strong>" + (chipx.conc && chipx.conc.d5 != null ? (chipx.conc.d5 * 100).toFixed(1) + "%" : "—") + "</strong></li>" +
+        "</ul>" + brokerHtml + "</article>";
+    }
+    box.innerHTML = quoteHtml + chipsHtml + healthHtml + ownHtml + finHtml + epsHtml + volHtml;
   }
 
   async function loadStockDetail(row) {
     const box = $("stock-detail");
     if (!box) return;
-    if (!row) { renderStockDetail(null); return; }
+    if (!row) {
+      chipCostLines = null;
+      renderStockDetail(null);
+      return;
+    }
     box.hidden = false;
     box.innerHTML = '<article class="card"><p class="status">正在讀籌碼與財務…</p></article>';
     try {
       const detail = await M.stockDetail(row.secid, row.code);
       if (!state.focus || state.focus.secid !== row.secid) return;
-      renderStockDetail(detail);
+      let chipx = null;
+      if (C && C.analyzeChip) {
+        try {
+          chipx = await C.analyzeChip(row.code || M.twStockId(row.secid, row.code));
+        } catch (err) { chipx = null; }
+      }
+      if (!state.focus || state.focus.secid !== row.secid) return;
+      if (chipx && chipx.ok) {
+        chipCostLines = { cost20: chipx.cost20, cost60: chipx.cost60 };
+        if (state.plot) draw();
+      } else {
+        chipCostLines = null;
+      }
+      renderStockDetail(detail, chipx);
     } catch (err) {
       if (!state.focus || state.focus.secid !== row.secid) return;
+      chipCostLines = null;
       box.innerHTML = '<article class="card"><p class="note">' + esc(err.message || "明細讀取失敗") + "</p></article>";
     }
   }
@@ -2603,7 +2713,8 @@
       test: "test-pick",
       journal: "j-pick",
       predict: "predict-pick",
-      advise: "advise-pick"
+      advise: "advise-pick",
+      chipx: "chipx-pick"
     }[key]);
     if (label) label.textContent = row.name + " " + row.code + " · " + row.market;
     const hits = {
@@ -2612,9 +2723,11 @@
       test: "test-hits",
       journal: "j-hits",
       predict: "predict-hits",
-      advise: "advise-hits"
+      advise: "advise-hits",
+      chipx: "chipx-hits"
     }[key];
     if (hits) $(hits).innerHTML = "";
+    if (key === "chipx" && $("chipx-q")) $("chipx-q").value = row.code + " " + row.name;
   }
 
   document.addEventListener("click", function (ev) {
@@ -2718,6 +2831,7 @@
     const backWatch = state.focusFrom === "watch";
     state.focus = null;
     state.focusFrom = null;
+    chipCostLines = null;
     renderStockDetail(null);
     paintFocus();
     if (backWatch) setView("watch");
@@ -2909,6 +3023,182 @@
   bindSearch("j-q", "j-hits", "journal", "台股");
   bindSearch("predict-q", "predict-hits", "predict", "台股");
   bindSearch("advise-q", "advise-hits", "advise", "台股");
+  bindSearch("chipx-q", "chipx-hits", "chipx", "台股");
+
+  async function loadUsBoard() {
+    const box = $("us-board-rows");
+    if (!box || !C || !C.usBoard) return;
+    box.innerHTML = '<span class="note">更新美股…</span>';
+    try {
+      const pack = await C.usBoard();
+      box.innerHTML = (pack.rows || []).map(function (row) {
+        if (!row.ok) {
+          return '<div class="us-cell"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
+        }
+        const cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
+        const pct = row.pct == null ? "—" : ((row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%");
+        return '<div class="us-cell"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
+          fmt(row.price) + '</strong><small class="' + cls + '">' + pct + "</small></div>";
+      }).join("");
+    } catch (err) {
+      box.innerHTML = '<span class="note">' + esc(err.message || "美股讀取失敗") + "</span>";
+    }
+  }
+
+  function lotsShort(n) {
+    if (n == null || !isFinite(n)) return "—";
+    const lots = Math.round(n / 1000);
+    return (lots > 0 ? "+" : "") + lots.toLocaleString("zh-Hant") + " 張";
+  }
+
+  async function runChipx() {
+    if (!C) return;
+    const pick = state.picks.chipx;
+    const q = ($("chipx-q") && $("chipx-q").value.trim()) || "";
+    const code = (pick && pick.code) || q;
+    if (!code) {
+      $("chipx-status").textContent = "先選標的或輸入代號。";
+      return;
+    }
+    $("chipx-status").textContent = "正在健檢籌碼…";
+    $("chipx-out").innerHTML = "";
+    try {
+      const r = await C.analyzeChip(code);
+      const lights = (r.lights || []).map(function (L) {
+        const cls = L.ok === true ? "up" : L.ok === false ? "down" : "";
+        return "<li><span class=\"health-dot " + cls + "\">●</span><span>" + esc(L.name) +
+          "</span><strong>" + esc(L.detail) + "</strong></li>";
+      }).join("");
+      let brokerBlock = "";
+      const b = r.broker && r.broker.ok && r.broker.latest;
+      if (b) {
+        brokerBlock = "<h4>分點 · 家數差 " + b.brokerDiff + "</h4>" +
+          "<p class=\"fine\">買超前15合計 " + lotsShort(b.buySum) + " · 賣超前15合計 " + lotsShort(b.sellSum) + "</p>" +
+          "<div class=\"grid2\"><div><h4>買超前 10</h4><ul class=\"stat-list\">" +
+          b.topBuy.slice(0, 10).map(function (row) {
+            return "<li><span>" + esc(row.name) + '</span><strong class="up">' + lotsShort(row.net) + "</strong></li>";
+          }).join("") + "</ul></div><div><h4>賣超前 10</h4><ul class=\"stat-list\">" +
+          b.topSell.slice(0, 10).map(function (row) {
+            return "<li><span>" + esc(row.name) + '</span><strong class="down">' + lotsShort(row.net) + "</strong></li>";
+          }).join("") + "</ul></div></div>" +
+          (b.hoard && b.hoard.length ? "<h4>囤貨券商</h4><ul class=\"stat-list\">" + b.hoard.slice(0, 6).map(function (row) {
+            return "<li><span>" + esc(row.name) + "</span><strong>" + lotsShort(row.net) + "</strong></li>";
+          }).join("") + "</ul>" : "") +
+          (b.dayTrade && b.dayTrade.length ? "<h4>隔日沖主力分點</h4><ul class=\"stat-list\">" + b.dayTrade.slice(0, 6).map(function (row) {
+            return "<li><span>" + esc(row.name) + "</span><strong>買 " + Math.round(row.buy / 1000) +
+              "／賣 " + Math.round(row.sell / 1000) + "</strong></li>";
+          }).join("") + "</ul>" : "");
+      }
+      $("chipx-out").innerHTML = '<article class="card"><h3>' + esc(r.stockId) + " · " + esc(r.bias) +
+        ' <span class="tag ' + (r.tone.cls || "") + '">' + esc(r.tone.label) + "</span></h3>" +
+        '<p class="fine">資料日 ' + esc(r.date || "—") + "</p>" +
+        '<ul class="stat-list health-list">' + lights + "</ul>" +
+        '<ul class="stat-list">' +
+        "<li><span>近1日法人</span><strong class=\"" + (r.flows[1].total > 0 ? "up" : "down") + "\">" + lotsShort(r.flows[1].total) + "</strong></li>" +
+        "<li><span>近5日法人</span><strong class=\"" + (r.flows[5].total > 0 ? "up" : "down") + "\">" + lotsShort(r.flows[5].total) + "</strong></li>" +
+        "<li><span>近10日法人</span><strong class=\"" + (r.flows[10].total > 0 ? "up" : "down") + "\">" + lotsShort(r.flows[10].total) + "</strong></li>" +
+        "<li><span>近20日法人</span><strong class=\"" + (r.flows[20].total > 0 ? "up" : "down") + "\">" + lotsShort(r.flows[20].total) + "</strong></li>" +
+        "<li><span>主力成本20</span><strong>" + (r.cost20 != null ? fmt(r.cost20) : "—") + "</strong></li>" +
+        "<li><span>主力成本60</span><strong>" + (r.cost60 != null ? fmt(r.cost60) : "—") + "</strong></li>" +
+        "</ul>" + brokerBlock +
+        '<p class="fine">' + esc(r.note || "") + "</p></article>";
+      $("chipx-status").textContent = "完成。";
+      chipCostLines = { cost20: r.cost20, cost60: r.cost60 };
+    } catch (err) {
+      $("chipx-status").textContent = err.message || "健檢失敗";
+    }
+  }
+
+  async function runScreen() {
+    if (!C) return;
+    const strategy = $("screen-strategy").value;
+    const days = Number($("screen-days").value) || 5;
+    const wantMa = $("screen-ma20") && $("screen-ma20").checked;
+    $("screen-status").textContent = "正在篩選法人條件…";
+    $("screen-out").innerHTML = "";
+    try {
+      const pack = await C.screenChips(strategy, days);
+      let rows = pack.rows || [];
+      if (wantMa && rows.length) {
+        $("screen-status").textContent = "再檢查月線（最多前 25 檔）…";
+        const keep = [];
+        const sample = rows.slice(0, 25);
+        for (let i = 0; i < sample.length; i++) {
+          const row = sample[i];
+          try {
+            const bars = await M.historyBars("tw." + row.code, row.code, 40);
+            if (!bars || bars.length < 20) continue;
+            let sum = 0;
+            for (let j = bars.length - 20; j < bars.length; j++) sum += bars[j].c;
+            const ma = sum / 20;
+            const last = bars[bars.length - 1].c;
+            if (last >= ma) keep.push(row);
+          } catch (err) { /* skip */ }
+        }
+        rows = keep;
+      }
+      $("screen-out").innerHTML = '<article class="card"><h3>選股結果 · ' + rows.length + " 檔</h3>" +
+        '<p class="fine">' + esc(pack.dateFrom) + "～" + esc(pack.dateTo) + " · " + esc(pack.note) + "</p>" +
+        (rows.length
+          ? '<ul class="stat-list">' + rows.map(function (row) {
+            return "<li><button type=\"button\" class=\"linkish\" data-open-code=\"" + esc(row.code) +
+              "\" data-open-name=\"" + esc(row.name) + "\">" + esc(row.name) + " " + esc(row.code) +
+              "</button><strong class=\"up\">" + lotsShort(row.mainForce || row.totalSum) + "</strong></li>";
+          }).join("") + "</ul>"
+          : '<p class="note">沒有符合的標的。</p>') +
+        "</article>";
+      $("screen-status").textContent = "完成。";
+    } catch (err) {
+      $("screen-status").textContent = err.message || "選股失敗";
+    }
+  }
+
+  async function runChipday() {
+    if (!C) return;
+    $("chipday-status").textContent = "正在讀 T86…";
+    $("chipday-out").innerHTML = "";
+    try {
+      const pack = await C.chipDaily();
+      function listBlock(title, rows, key) {
+        return "<h4>" + title + "</h4><ul class=\"stat-list\">" + rows.map(function (row, i) {
+          const v = row[key];
+          const cls = v > 0 ? "up" : v < 0 ? "down" : "";
+          return "<li><span>" + (i + 1) + ". " + esc(row.name) + " " + esc(row.code) +
+            '</span><strong class="' + cls + '">' + lotsShort(v) + "</strong></li>";
+        }).join("") + "</ul>";
+      }
+      $("chipday-out").innerHTML = '<article class="card"><h3>籌碼日報 ' + esc(pack.date) + "</h3>" +
+        '<p class="fine">' + esc(pack.note) + "</p>" +
+        '<div class="grid2"><div>' + listBlock("法人合計買超 Top", pack.buy.slice(0, 15), "total") +
+        "</div><div>" + listBlock("法人合計賣超 Top", pack.sell.slice(0, 15), "total") +
+        "</div></div>" +
+        '<div class="grid2"><div>' + listBlock("外資買超", pack.foreignBuy.slice(0, 10), "foreign") +
+        "</div><div>" + listBlock("投信買超", pack.trustBuy.slice(0, 10), "trust") +
+        "</div></div></article>";
+      $("chipday-status").textContent = "完成。";
+    } catch (err) {
+      $("chipday-status").textContent = err.message || "日報失敗";
+    }
+  }
+
+  if ($("us-board-refresh")) $("us-board-refresh").addEventListener("click", loadUsBoard);
+  if ($("chipx-token-save")) $("chipx-token-save").addEventListener("click", function () {
+    if (!C) return;
+    C.setToken($("chipx-token").value || "");
+    syncChipxTokenStatus();
+  });
+  if ($("chipx-run")) $("chipx-run").addEventListener("click", runChipx);
+  if ($("screen-run")) $("screen-run").addEventListener("click", runScreen);
+  if ($("chipday-run")) $("chipday-run").addEventListener("click", runChipday);
+
+  document.addEventListener("click", function (ev) {
+    const btn = ev.target.closest("[data-open-code]");
+    if (!btn) return;
+    const code = btn.getAttribute("data-open-code");
+    const name = btn.getAttribute("data-open-name") || code;
+    if (!code) return;
+    openSymbol({ secid: "tw." + code, code: code, name: name, market: "台股" });
+  });
 
   const today = new Date();
   $("j-date").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
@@ -2924,4 +3214,5 @@
   paintChrome(true);
   paintTwii(true);
   startLiveClock();
+  loadUsBoard();
 })();
