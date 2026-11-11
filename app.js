@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 48;
+  const PAGE_BUILD = 49;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -31,8 +31,44 @@
   let liveBusy = false;
   const alertSent = {};
 
+  const TOOL_MENU = [
+    { id: "ideas", title: "交易點子產生器", desc: "掃描台股，列出進場、停損、停利與風報比" },
+    { id: "tech", title: "自動化技術分析師", desc: "日線與週線的支撐壓力、均線、動能與買賣判斷" },
+    { id: "news", title: "新聞轉交易策略", desc: "把消息拆成短長期影響、反映程度與失效條件" },
+    { id: "test", title: "交易策略回測分析師", desc: "勝率、獲利因子、最大回撤與改進方向" },
+    { id: "risk", title: "投資組合風險管理", desc: "配置、相關性、再平衡，以及大盤跌 20% 的避險" },
+    { id: "journal", title: "交易日誌分析師", desc: "最近 20 筆的錯誤、錯過的機會與三條個人規則" },
+    { id: "predict", title: "台股漲跌預測", desc: "八大類加權評分、歷史回測準確率、CSV 匯出" },
+    { id: "report", title: "盤後排序報表", desc: "證交所收盤＋外資／三大法人，依漲跌％或買賣超排序，可下載 HTML" },
+    { id: "advise", title: "個股綜合研判", desc: "基本面＋籌碼面＋是否建議買進，並用 K 線標買賣點" }
+  ];
+  const TOOL_IDS = TOOL_MENU.map(function (t) { return t.id; });
+
   function emptyBook() {
-    return { watch: [], holdings: [], journal: [], capital: 1000000, riskPct: 1, profile: "穩健" };
+    return {
+      watch: [],
+      holdings: [],
+      journal: [],
+      capital: 1000000,
+      riskPct: 1,
+      profile: "穩健",
+      toolOrder: TOOL_IDS.slice()
+    };
+  }
+
+  function normalizeToolOrder(raw) {
+    const seen = {};
+    const out = [];
+    (Array.isArray(raw) ? raw : []).forEach(function (id) {
+      if (TOOL_IDS.indexOf(id) >= 0 && !seen[id]) {
+        seen[id] = true;
+        out.push(id);
+      }
+    });
+    TOOL_IDS.forEach(function (id) {
+      if (!seen[id]) out.push(id);
+    });
+    return out;
   }
 
   function twName(s) {
@@ -89,7 +125,8 @@
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
       riskPct: Number(src.riskPct) > 0 ? Number(src.riskPct) : 1,
-      profile: src.profile || "穩健"
+      profile: src.profile || "穩健",
+      toolOrder: normalizeToolOrder(src.toolOrder)
     };
   }
 
@@ -214,6 +251,41 @@
       setWatchCompose(false);
       renderWatch();
     }
+    if (name === "tools") paintToolMenu();
+  }
+
+  function paintToolMenu() {
+    const box = $("tool-menu");
+    if (!box) return;
+    book.toolOrder = normalizeToolOrder(book.toolOrder);
+    const byId = {};
+    TOOL_MENU.forEach(function (t) { byId[t.id] = t; });
+    box.innerHTML = book.toolOrder.map(function (id, idx) {
+      const t = byId[id];
+      if (!t) return "";
+      return '<div class="menu-row" data-tool-row="' + t.id + '">' +
+        '<button type="button" class="menu-open" data-tool="' + t.id + '">' +
+        esc(t.title) + "<small>" + esc(t.desc) + "</small></button>" +
+        '<div class="menu-move" role="group" aria-label="調整順序">' +
+        '<button type="button" class="ghost menu-up" data-tool-move="up" data-tool-id="' + t.id + '"' +
+        (idx === 0 ? " disabled" : "") + ' aria-label="上移">↑</button>' +
+        '<button type="button" class="ghost menu-down" data-tool-move="down" data-tool-id="' + t.id + '"' +
+        (idx === book.toolOrder.length - 1 ? " disabled" : "") + ' aria-label="下移">↓</button>' +
+        "</div></div>";
+    }).join("");
+  }
+
+  function moveTool(id, dir) {
+    book.toolOrder = normalizeToolOrder(book.toolOrder);
+    const i = book.toolOrder.indexOf(id);
+    if (i < 0) return;
+    const j = dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= book.toolOrder.length) return;
+    const tmp = book.toolOrder[i];
+    book.toolOrder[i] = book.toolOrder[j];
+    book.toolOrder[j] = tmp;
+    paintToolMenu();
+    scheduleSave();
   }
 
   function openTool(id) {
@@ -309,6 +381,7 @@
     }
     syncMoney();
     renderWatch();
+    paintToolMenu();
   }
 
   async function doLogin() {
@@ -2371,7 +2444,9 @@
     const t = ev.target.closest("button");
     if (!t) return;
     if (t.dataset.pick) onPick(t);
-    else if (t.id === "k-pick-clear") clearKSelection();
+    else if (t.dataset.toolMove) {
+      moveTool(t.dataset.toolId, t.dataset.toolMove);
+    } else if (t.id === "k-pick-clear") clearKSelection();
     else if (t.dataset.adviseWatch != null) {
       const item = book.watch[Number(t.dataset.adviseWatch)];
       if (!item) return;
