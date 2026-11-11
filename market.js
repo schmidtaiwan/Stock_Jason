@@ -3481,8 +3481,8 @@
         else techScore -= 0.25;
       });
     }
-    const bullishK = /大陽|長紅|錘頭|晨星|白三兵|紅K吞沒|下跌抵抗/;
-    const bearishK = /大陰|長黑|黃昏|三隻烏鴉|黑K吞沒|先漲後跌|倒T|射擊/;
+    const bullishK = /大陽|晨星|紅三兵|懷抱|曙光|探底|三川|鍋底|上升三法|U字/;
+    const bearishK = /大陰|夜星|黑三兵|覆蓋|烏雲|吊首|三山|半圓天井|下降三法/;
     let kScore = 0;
     patterns.slice(0, 5).forEach(function (p) {
       if (p.bias === "多" || bullishK.test(p.name)) kScore += 1;
@@ -3544,160 +3544,16 @@
     };
   }
 
-  // K 線型態（台股紅漲綠跌）。對照 CMoney 15 種基本形態 + 常見組合。回傳由新到舊。
-  // 參考：https://www.cmoney.tw/notes/note-detail.aspx?nid=291749
+  // K 線型態：酒田戰法 78 式（sakata.js）。回傳由新到舊。
   function kPatterns(bars) {
-    const rows = (bars || []).filter(function (b) {
-      return b && isFinite(b.o) && isFinite(b.h) && isFinite(b.l) && isFinite(b.c);
-    });
-    if (rows.length < 2) return [];
-    function bodyOf(b) { return Math.abs(b.c - b.o); }
-    function avgBody(i, n) {
-      let sum = 0;
-      let count = 0;
-      for (let j = Math.max(0, i - n); j < i; j++) {
-        sum += bodyOf(rows[j]);
-        count += 1;
-      }
-      return count ? sum / count : bodyOf(rows[i]) || 0;
+    if (global.SJSakata && typeof global.SJSakata.detect === "function") {
+      return global.SJSakata.detect(bars);
     }
-    const out = [];
-    function push(i, name, bias, detail) {
-      out.push({
-        i: i,
-        date: String(rows[i].t || "").slice(0, 10),
-        name: name,
-        bias: bias,
-        detail: detail
-      });
-    }
-    function nearZero(v, range) {
-      return v <= Math.max(range * 0.05, 1e-9);
-    }
-    function recentFell(i) {
-      const recent = rows.slice(Math.max(0, i - 5), i);
-      return recent.length >= 2 && recent[0].c > recent[recent.length - 1].c;
-    }
-    function recentRose(i) {
-      const recent = rows.slice(Math.max(0, i - 5), i);
-      return recent.length >= 2 && recent[0].c < recent[recent.length - 1].c;
-    }
+    return [];
+  }
 
-    for (let i = 0; i < rows.length; i++) {
-      const b = rows[i];
-      const o = b.o;
-      const h = b.h;
-      const l = b.l;
-      const c = b.c;
-      const range = Math.max(h - l, 1e-9);
-      const body = bodyOf(b);
-      const top = Math.max(o, c);
-      const bot = Math.min(o, c);
-      const upper = h - top;
-      const lower = bot - l;
-      const ab = avgBody(i, 14) || body;
-      const up = c > o;
-      const down = c < o;
-      const flat = !up && !down;
-      const noUp = nearZero(upper, range);
-      const noDn = nearZero(lower, range);
-      const longBody = body >= Math.max(ab * 1.6, range * 0.55) && body / range >= 0.55;
-
-      // 1–12 單K（由嚴到寬，一棒通常只掛一個主型態）
-      // 一字線：振幅相對股價極小（鎖死／冷門），不可用「振幅≤5%股價」這種過寬條件
-      const flatLine = range <= Math.max(Math.abs(c) * 0.0015, 0.02) && body <= Math.max(Math.abs(c) * 0.001, 0.01);
-      if (flatLine) {
-        push(i, "一字線", "中", "開高低收幾乎同一價，冷門或鎖死常見。");
-      } else if (flat && noUp && !noDn) {
-        push(i, "T字線", recentFell(i) ? "多" : "中",
-          "開收＝最高，曾下殺後拉回；低檔較偏多。");
-      } else if (flat && noDn && !noUp) {
-        push(i, "倒T字線", recentRose(i) ? "空" : "中",
-          "開收＝最低，曾衝高後回落；高檔較偏空（墓碑十字）。");
-      } else if (flat || body / range <= 0.08) {
-        push(i, "十字線", "中",
-          upper >= lower * 1.4 ? "上影較長，多頭攻勢受阻。" :
-            lower >= upper * 1.4 ? "下影較長，空頭殺勢受阻。" :
-              "多空暫時均衡。");
-      } else if (up && noUp && noDn && longBody) {
-        push(i, "大陽線", "多", "幾乎無影線的長紅K，買方一路主導到收盤。");
-      } else if (down && noUp && noDn && longBody) {
-        push(i, "大陰線", "空", "幾乎無影線的長黑K，賣方一路主導到收盤。");
-      } else if (up && noUp && lower >= Math.max(body * 1.2, range * 0.35)) {
-        push(i, "錘子型", recentFell(i) ? "多" : "中",
-          "紅K僅下影，先跌後漲；下跌後出現較有止跌意味。");
-      } else if (down && noUp && lower >= Math.max(body * 1.0, range * 0.3)) {
-        push(i, "下跌抵抗型", "多", "黑K僅下影，低檔有人接；後市可能反彈。");
-      } else if (up && noDn && upper >= Math.max(body * 1.0, range * 0.3)) {
-        push(i, "上升阻力型", "多", "紅K僅上影，上漲中遇賣壓，整體仍偏多。");
-      } else if (down && noDn && upper >= Math.max(body * 1.2, range * 0.35)) {
-        push(i, "先漲後跌型", "空", "黑K僅上影（墓碑型），衝高後被空頭壓回。");
-      } else if (up && !noUp && !noDn) {
-        if (longBody) {
-          push(i, "長紅棒", "多", "實體放大的紅K，買盤偏強。");
-        } else {
-          push(i, "反轉試探型", recentRose(i) ? "空" : recentFell(i) ? "多" : "中",
-            "紅K帶上下影；大漲後偏警戒、大跌後偏反彈試探。");
-        }
-      } else if (down && !noUp && !noDn) {
-        if (longBody) {
-          push(i, "長黑棒", "空", "實體放大的黑K，賣壓偏重。");
-        } else {
-          push(i, "彈升試探型", recentFell(i) ? "多" : recentRose(i) ? "空" : "中",
-            "黑K帶上下影；大跌後偏承接、大漲後偏轉弱。");
-        }
-      } else if (longBody) {
-        push(i, up ? "長紅棒" : "長黑棒", up ? "多" : "空",
-          up ? "實體明顯放大，買盤強。" : "實體明顯放大，賣壓重。");
-      }
-
-      // 組合型態
-      if (i >= 1) {
-        const prev = rows[i - 1];
-        const prevBody = bodyOf(prev);
-        const prevUp = prev.c > prev.o;
-        const prevDown = prev.c < prev.o;
-        if (prevDown && up && o <= prev.c && c >= prev.o && body > prevBody * 1.05) {
-          push(i, "紅K吞沒", "多", "紅K吃掉前一根黑K實體。");
-        }
-        if (prevUp && down && o >= prev.c && c <= prev.o && body > prevBody * 1.05) {
-          push(i, "黑K吞沒", "空", "黑K吃掉前一根紅K實體。");
-        }
-      }
-      if (i >= 2) {
-        const a = rows[i - 2];
-        const m = rows[i - 1];
-        const ab3 = avgBody(i, 14) || body;
-        const aUp = a.c > a.o;
-        const mUp = m.c > m.o;
-        const aDown = a.c < a.o;
-        const mDown = m.c < m.o;
-        // 白三兵／三隻烏鴉（CMoney）
-        if (aUp && mUp && up && m.c > a.c && c > m.c &&
-            bodyOf(a) > ab3 * 0.55 && bodyOf(m) > ab3 * 0.55 && body > ab3 * 0.55) {
-          push(i, "白三兵", "多", "連續三根紅K抬高，多頭主導。");
-        }
-        if (aDown && mDown && down && m.c < a.c && c < m.c &&
-            bodyOf(a) > ab3 * 0.55 && bodyOf(m) > ab3 * 0.55 && body > ab3 * 0.55) {
-          push(i, "三隻烏鴉", "空", "連續三根黑K走低，空頭主導。");
-        }
-        // 黃昏之星：長紅 → 小實體 → 長黑，收進第一根實體中段
-        const midBody = bodyOf(m);
-        const aBody = bodyOf(a);
-        const aTop = Math.max(a.o, a.c);
-        const aBot = Math.min(a.o, a.c);
-        if (aUp && aBody > ab3 * 0.9 && midBody <= Math.max(aBody * 0.45, ab3 * 0.5) &&
-            down && body > ab3 * 0.7 && c < (aBot + aTop) / 2 && c < m.c) {
-          push(i, "黃昏之星", "空", "長紅後出現小K再長黑，上漲末端轉弱訊號。");
-        }
-        // 晨星（黃昏之星的多頭對應，實務常用）
-        if (aDown && aBody > ab3 * 0.9 && midBody <= Math.max(aBody * 0.45, ab3 * 0.5) &&
-            up && body > ab3 * 0.7 && c > (aBot + aTop) / 2 && c > m.c) {
-          push(i, "晨星", "多", "長黑後出現小K再長紅，下跌末端轉強訊號。");
-        }
-      }
-    }
-    return out.reverse();
+  function sakataCatalog() {
+    return (global.SJSakata && global.SJSakata.CATALOG) || [];
   }
 
   // 解讀使用者框選的一段 K 線（代表意思＋型態）
@@ -3730,24 +3586,25 @@
 
     let tone = "整理";
     let meaning = "";
-    if (chg >= 0.08 && downN > upN && /黃昏|墓碑|先漲後跌|黑K吞沒|三隻烏鴉/.test(topNames.join(","))) {
+    const names = topNames.join(",");
+    if (chg >= 0.08 && downN > upN && /夜星|烏雲|覆蓋|黑三兵|吊首|三山|半圓天井/.test(names)) {
       tone = "衝高轉弱";
-      meaning = "這段先明顯上漲，隨後出現轉弱型態，屬於高檔出貨／漲勢末端常見結構，不宜再追高。";
+      meaning = "酒田語境偏「轉賣」：這段先漲後出現夜星／覆蓋／黑三兵等，高檔不宜追。";
     } else if (chg <= -0.06 || (downN >= upN + 2 && span >= 0.05)) {
       tone = "賣壓主導";
-      meaning = "這段以下跌與黑K為主，空方力道較強；若伴隨長黑或吞沒，短線偏續跌或反彈後再測低。";
+      meaning = "這段黑K／跳空偏多，空方力道較強；若見下降三法或三空下跳，短線偏續跌。";
     } else if (chg >= 0.06 && upN > downN) {
       tone = "買盤推升";
-      meaning = "這段紅K較多、價格抬高，買方較積極；若末端出現上影或黃昏結構，改成保守看待。";
+      meaning = "紅K與紅三兵／跳空偏多，買方較積極；末端若夜星或前阻，改保守。";
     } else if (span < 0.03) {
       tone = "窄幅盤整";
-      meaning = "高低震幅不大，多空暫時膠著，等方向突破較有意義。";
-    } else if (chg > 0 && /錘頭|晨星|紅K吞沒|下跌抵抗|白三兵/.test(topNames.join(","))) {
+      meaning = "高低震幅不大（極短／連續線常見），多空膠著，等突破。";
+    } else if (/晨星|探底|曙光|懷抱線|紅三兵|三川|鍋底|U字/.test(names)) {
       tone = "止跌試探";
-      meaning = "雖未必大漲，但出現偏多承接型態，可視為短線止跌或反彈試探。";
+      meaning = "出現晨星／探底／三川等偏多酒田型，可視為止跌或反彈試探。";
     } else {
       tone = chg >= 0 ? "偏多整理" : "偏空整理";
-      meaning = "這段沒有單一極端訊號，宜搭配前後趨勢與量能再看；下列型態供對照。";
+      meaning = "這段無單一極端戰法，下列酒田型態供對照前後勢。";
     }
 
     const from = String(first.t || "").slice(0, 10);
@@ -3802,6 +3659,7 @@
     twseDailyReport: twseDailyReport,
     sortDailyReportRows: sortDailyReportRows,
     kPatterns: kPatterns,
+    sakataCatalog: sakataCatalog,
     explainKRange: explainKRange,
     watchChips: watchChips,
     stockAdvice: stockAdvice

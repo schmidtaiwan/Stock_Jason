@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 49;
+  const PAGE_BUILD = 50;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
@@ -1017,21 +1017,24 @@
       if ($("k-pick")) { $("k-pick").hidden = true; $("k-pick").innerHTML = ""; }
       return;
     }
-    const rows = M.kPatterns(item.bars).slice(0, 16);
-    const ref = '<p class="fine">型態對照 <a href="https://www.cmoney.tw/notes/note-detail.aspx?nid=291749" target="_blank" rel="noopener">CMoney 15種基本K線</a>。也可在圖上拖曳紅框解讀該段；點下列型態會反白對應K。偏多／偏空是提示，不是下單建議。</p>';
+    const rows = M.kPatterns(item.bars).slice(0, 24);
+    const catN = M.sakataCatalog ? M.sakataCatalog().length : 78;
+    const ref = '<p class="fine">依<strong>酒田戰法 ' + catN +
+      ' 式</strong>辨識（大陽／覆蓋／紅黑三兵／晨星夜星／三法／三山三川／三空等）。圖上可拖曳紅框解讀；點下列型態反白對應K。偏多／偏空是提示，不是下單建議。</p>';
     if (!rows.length) {
       box.hidden = false;
-      box.innerHTML = "<h3>K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯型態。</p>';
+      box.innerHTML = "<h3>酒田K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯戰法型態。</p>';
       return;
     }
     box.hidden = false;
-    box.innerHTML = "<h3>K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
+    box.innerHTML = "<h3>酒田K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
       rows.map(function (row) {
         const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
-        const span = /白三兵|三隻烏鴉|黃昏之星|晨星|吞沒/.test(row.name) ? 2 : 0;
+        const span = /三兵|三星|夜星|晨星|三法|懷抱|覆蓋|舍子|烏雲|曙光/.test(row.name) ? 2 : 0;
+        const idTag = row.id != null ? "#" + row.id + " " : "";
         return '<li data-k-focus="' + row.i + '" data-k-span="' + span + '">' +
           '<span class="k-date">' + esc(row.date.slice(5)) + "</span>" +
-          '<span class="k-name ' + cls + '">' + esc(row.name) + "</span>" +
+          '<span class="k-name ' + cls + '">' + esc(idTag + row.name) + "</span>" +
           '<span class="k-detail">' + esc(row.detail) + "</span></li>";
       }).join("") + "</ul>";
   }
