@@ -4164,6 +4164,7 @@
     watchChips: watchChips,
     stockAdvice: stockAdvice,
     twPulse: twPulse,
+    yahooSymbolQuote: yahooSymbolQuote,
     latestTwseT86: latestTwseT86,
     twseT86Days: async function (days) {
       const n = Math.max(1, Math.min(20, Number(days) || 5));

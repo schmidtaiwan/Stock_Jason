@@ -1,8 +1,10 @@
 (function () {
-  const PAGE_BUILD = 66;
+  const PAGE_BUILD = 67;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
+  let stockDetailsOn = true;
   let chipCostLines = null;
+  let stockChipCostLines = null;
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -29,18 +31,29 @@
     on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true },
     focus: null,
     focusFrom: null,
+    stock: null,
+    stockBack: null,
     view: "chart",
     tool: "",
     picks: {},
     plot: null,
+    stockPlot: null,
     chartGen: 0,
+    stockChartGen: 0,
     foreignGen: 0,
     custom: false,
     from: "",
     to: "",
     chartStyle: "line",
+    stockRange: "1y",
+    stockCustom: false,
+    stockDateFrom: "",
+    stockDateTo: "",
+    stockStyle: "candle",
     kSel: null,
-    kDrag: null
+    kDrag: null,
+    stockKSel: null,
+    stockKDrag: null
   };
 
   function newWatchGroupId() {
@@ -298,18 +311,27 @@
   function setView(name) {
     state.view = name;
     $("view-chart").hidden = name !== "chart";
+    if ($("view-stock")) $("view-stock").hidden = name !== "stock";
     if ($("view-pulse")) $("view-pulse").hidden = name !== "pulse";
     $("view-watch").hidden = name !== "watch";
     $("view-tools").hidden = name !== "tools";
     $("view-tool").hidden = name !== "tool";
+    const dockView = name === "tool" ? "tools" : name === "stock" ? "watch" : name;
     document.querySelectorAll(".dock button").forEach(function (btn) {
-      const on = btn.getAttribute("data-view") === (name === "tool" ? "tools" : name);
+      const on = btn.getAttribute("data-view") === dockView;
       if (on) btn.setAttribute("aria-current", "page");
       else btn.removeAttribute("aria-current");
     });
     if (name === "chart") {
       loadChart();
       loadUsBoard();
+    }
+    if (name === "stock") {
+      buildStockToggles();
+      paintStockHeader();
+      syncStockDetailsUi();
+      loadStockChart();
+      if (state.stock) loadStockDetail(state.stock);
     }
     if (name === "pulse") loadPulse();
     if (name === "watch") {
@@ -649,9 +671,31 @@
     syncDateInputs();
   }
 
+  function buildStockToggles() {
+    const box = $("stock-ranges");
+    if (!box) return;
+    box.innerHTML = Object.keys(M.RANGES).map(function (id) {
+      const spec = M.RANGES[id];
+      const on = !state.stockCustom && state.stockRange === id;
+      return '<button type="button" class="chip" data-stock-range="' + id + '" aria-pressed="' + on + '">' + spec.label + "</button>";
+    }).join("");
+    const styles = $("stock-styles");
+    if (styles) {
+      styles.querySelectorAll("[data-stock-style]").forEach(function (btn) {
+        btn.setAttribute("aria-pressed", btn.dataset.stockStyle === state.stockStyle ? "true" : "false");
+      });
+    }
+    syncStockDateInputs();
+  }
+
   function setChartStyle(style) {
     state.chartStyle = style === "candle" ? "candle" : "line";
     buildToggles();
+  }
+
+  function setStockStyle(style) {
+    state.stockStyle = style === "candle" ? "candle" : "line";
+    buildStockToggles();
   }
 
   function syncDateInputs() {
@@ -665,6 +709,17 @@
     to.classList.toggle("custom", !!state.custom);
   }
 
+  function syncStockDateInputs() {
+    const from = $("stock-from");
+    const to = $("stock-to");
+    if (!from || !to) return;
+    if (document.activeElement === from || document.activeElement === to) return;
+    if (state.stockDateFrom) from.value = state.stockDateFrom;
+    if (state.stockDateTo) to.value = state.stockDateTo;
+    from.classList.toggle("custom", !!state.stockCustom);
+    to.classList.toggle("custom", !!state.stockCustom);
+  }
+
   function isoToday() {
     const d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
@@ -676,10 +731,29 @@
     return !state.custom && state.range === "1d";
   }
 
+  function isStockOneDayRange() {
+    if (state.stockCustom && state.stockDateFrom && state.stockDateTo) {
+      return state.stockDateFrom === state.stockDateTo;
+    }
+    return !state.stockCustom && state.stockRange === "1d";
+  }
+
   function plotWindow() {
     if (state.custom && state.from && state.to) return { from: state.from, to: state.to };
     if (!state.custom && state.range === "1d") {
       const day = state.from && state.to && state.from === state.to ? state.from : isoToday();
+      return { from: day, to: day };
+    }
+    return null;
+  }
+
+  function stockPlotWindow() {
+    if (state.stockCustom && state.stockDateFrom && state.stockDateTo) {
+      return { from: state.stockDateFrom, to: state.stockDateTo };
+    }
+    if (!state.stockCustom && state.stockRange === "1d") {
+      const day = state.stockDateFrom && state.stockDateTo && state.stockDateFrom === state.stockDateTo
+        ? state.stockDateFrom : isoToday();
       return { from: day, to: day };
     }
     return null;
@@ -704,6 +778,25 @@
     syncDateInputs();
   }
 
+  function fillStockDatesFromPlot() {
+    const plot = state.stockPlot;
+    if (!plot || !plot.axis || !plot.axis.length) return;
+    let first = "";
+    let last = "";
+    for (let i = 0; i < plot.axis.length; i++) {
+      const d = String(plot.axis[i] || "").slice(0, 10);
+      if (d.length >= 10) { first = d; break; }
+    }
+    for (let i = plot.axis.length - 1; i >= 0; i--) {
+      const d = String(plot.axis[i] || "").slice(0, 10);
+      if (d.length >= 10) { last = d; break; }
+    }
+    if (!first || !last) return;
+    state.stockDateFrom = first;
+    state.stockDateTo = last;
+    syncStockDateInputs();
+  }
+
   function applyCustomDates() {
     const from = $("range-from").value;
     const to = $("range-to").value;
@@ -725,13 +818,18 @@
   }
 
   function paintFocus() {
-    const on = !!state.focus;
-    $("focus-bar").hidden = !on;
-    $("market-box").hidden = on;
-    if (on) {
-      $("focus-name").textContent = state.focus.name + " " + state.focus.code + " · " + (state.focus.market || "");
-      $("focus-clear").textContent = state.focusFrom === "watch" ? "回自選" : "回到市場";
-    }
+    // 主畫面走勢不再共用個股 focus；個股改走 view-stock
+    if ($("market-box")) $("market-box").hidden = false;
+    if ($("focus-bar")) $("focus-bar").hidden = true;
+  }
+
+  function paintStockHeader() {
+    const title = $("stock-title");
+    const row = state.stock;
+    if (!title) return;
+    title.textContent = row
+      ? (row.name + " " + row.code + " · " + (row.market || "台股"))
+      : "個股";
   }
 
   function isTwMarketOpen(now) {
@@ -755,7 +853,7 @@
 
   function liveSecids() {
     const ids = [];
-    if (state.focus && state.focus.secid) ids.push(state.focus.secid);
+    if (state.stock && state.stock.secid) ids.push(state.stock.secid);
     M.MARKETS.forEach(function (m) {
       if (state.on[m.id]) ids.push(m.secid);
     });
@@ -947,26 +1045,21 @@
       const align = win
         ? ((Date.parse(win.to) - Date.parse(win.from)) / 86400000 <= 5 ? "index" : "date")
         : ((M.RANGES[state.range] || {}).align || "date");
-      if (state.focus) {
-        const series = await M.bars(state.focus.secid, state.range, win);
-        items = [{ name: state.focus.name, color: "#e0a100", bars: series }];
-      } else {
-        const picked = M.MARKETS.filter(function (m) { return state.on[m.id]; });
-        if (!picked.length) {
-          $("chart-status").textContent = "至少選擇一個市場。";
-          renderKPatterns(null);
-          return;
-        }
-        const got = await Promise.all(picked.map(async function (m) {
-          try { return { name: m.name, color: m.color, bars: await M.bars(m.secid, state.range, win) }; }
-          catch (err) { return { name: m.name, error: err.message || "失敗" }; }
-        }));
-        if (gen !== state.chartGen) return;
-        items = got.filter(function (row) { return row.bars && row.bars.length; });
-        const bad = got.filter(function (row) { return !row.bars; }).map(function (row) { return row.name; });
-        if (!items.length) throw new Error("行情暫時讀不到");
-        statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
+      const picked = M.MARKETS.filter(function (m) { return state.on[m.id]; });
+      if (!picked.length) {
+        $("chart-status").textContent = "至少選擇一個市場。";
+        renderKPatterns(null);
+        return;
       }
+      const got = await Promise.all(picked.map(async function (m) {
+        try { return { name: m.name, color: m.color, bars: await M.bars(m.secid, state.range, win) }; }
+        catch (err) { return { name: m.name, error: err.message || "失敗" }; }
+      }));
+      if (gen !== state.chartGen) return;
+      items = got.filter(function (row) { return row.bars && row.bars.length; });
+      const bad = got.filter(function (row) { return !row.bars; }).map(function (row) { return row.name; });
+      if (!items.length) throw new Error("行情暫時讀不到");
+      statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
       if (gen !== state.chartGen) return;
       // 單日區間強制 K 線（五分）
       if (isOneDayRange() && state.chartStyle !== "candle") {
@@ -995,11 +1088,58 @@
       renderLegend(items, mode);
       renderKPatterns(candle ? items[0] : null);
       fillDatesFromPlot();
-      $("chart-status").textContent = state.focus && !statusNote ? "" : statusNote;
+      $("chart-status").textContent = statusNote;
     } catch (err) {
       if (gen === state.chartGen) {
         $("chart-status").textContent = err.message || "讀取失敗";
         renderKPatterns(null);
+      }
+    }
+  }
+
+  async function loadStockChart() {
+    const row = state.stock;
+    const status = $("stock-chart-status");
+    if (!row) {
+      if (status) status.textContent = "尚未選擇個股。";
+      return;
+    }
+    const gen = ++state.stockChartGen;
+    if (status) status.textContent = "正在讀 " + row.name + "…";
+    paintStockHeader();
+    try {
+      const win = stockPlotWindow();
+      const align = win
+        ? ((Date.parse(win.to) - Date.parse(win.from)) / 86400000 <= 5 ? "index" : "date")
+        : ((M.RANGES[state.stockRange] || {}).align || "date");
+      const series = await M.bars(row.secid, state.stockRange, win);
+      if (gen !== state.stockChartGen) return;
+      if (!series || !series.length) throw new Error("個股行情暫時讀不到");
+      let statusNote = "";
+      if (isStockOneDayRange() && state.stockStyle !== "candle") {
+        state.stockStyle = "candle";
+        buildStockToggles();
+      }
+      const candle = state.stockStyle === "candle";
+      if (candle && isStockOneDayRange()) statusNote = "單日五分 K。";
+      const items = [{ name: row.name, color: "#e0a100", bars: series }];
+      state.stockPlot = buildPlot(items, "price", align);
+      state.stockPlot.style = candle ? "candle" : "line";
+      if (!candle) clearStockKSelection();
+      else {
+        state.stockKSel = null;
+        state.stockKDrag = null;
+        renderStockKPick(null);
+      }
+      drawStock();
+      renderStockLegend(items);
+      renderStockKPatterns(candle ? items[0] : null);
+      fillStockDatesFromPlot();
+      if (status) status.textContent = statusNote;
+    } catch (err) {
+      if (gen === state.stockChartGen && status) {
+        status.textContent = err.message || "讀取失敗";
+        renderStockKPatterns(null);
       }
     }
   }
@@ -1146,25 +1286,36 @@
     const view = $("view-chart");
     const btn = $("chart-detail-toggle");
     const details = $("chart-details");
-    const extra = $("stock-detail");
     if (view) view.classList.toggle("chart-compact", !chartDetailsOn);
     if (btn) {
       btn.setAttribute("aria-pressed", chartDetailsOn ? "true" : "false");
       btn.textContent = chartDetailsOn ? "細部資料" : "顯示細部";
     }
     if (details) details.hidden = !chartDetailsOn;
-    if (extra && !chartDetailsOn) {
-      // 隱藏時一併收起個股明細區塊的可見細項（本身可能已 hidden）
-      extra.classList.add("chart-details-collapsed");
-    } else if (extra) {
-      extra.classList.remove("chart-details-collapsed");
+  }
+
+  function syncStockDetailsUi() {
+    const view = $("view-stock");
+    const btn = $("stock-detail-toggle");
+    const details = $("stock-chart-details");
+    const extra = $("stock-detail");
+    if (view) view.classList.toggle("chart-compact", !stockDetailsOn);
+    if (btn) {
+      btn.setAttribute("aria-pressed", stockDetailsOn ? "true" : "false");
+      btn.textContent = stockDetailsOn ? "細部資料" : "顯示細部";
+    }
+    if (details) details.hidden = !stockDetailsOn;
+    if (extra) {
+      if (!stockDetailsOn) extra.classList.add("chart-details-collapsed");
+      else extra.classList.remove("chart-details-collapsed");
     }
   }
 
-  function draw() {
-    const canvas = $("chart");
-    const plot = state.plot;
-    if (!plot) return;
+  function drawOn(canvas, plot, opts) {
+    opts = opts || {};
+    if (!canvas || !plot) return;
+    const cost = opts.costLines || null;
+    const sel = opts.sel || null;
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth || 320;
     const height = canvas.clientHeight || 260;
@@ -1205,14 +1356,14 @@
         max = Math.max(max, v);
       });
     });
-    if (candle && plot.mode === "price" && chipCostLines) {
-      if (chipCostLines.cost20 != null) {
-        min = Math.min(min, chipCostLines.cost20);
-        max = Math.max(max, chipCostLines.cost20);
+    if (candle && plot.mode === "price" && cost) {
+      if (cost.cost20 != null) {
+        min = Math.min(min, cost.cost20);
+        max = Math.max(max, cost.cost20);
       }
-      if (chipCostLines.cost60 != null) {
-        min = Math.min(min, chipCostLines.cost60);
-        max = Math.max(max, chipCostLines.cost60);
+      if (cost.cost60 != null) {
+        min = Math.min(min, cost.cost60);
+        max = Math.max(max, cost.cost60);
       }
     }
     if (!isFinite(min) || !isFinite(max)) return;
@@ -1251,7 +1402,6 @@
       plot.series.forEach(function (s) {
         drawCandles(ctx, s, xOf, yOf, plot.axis.length);
       });
-      const sel = state.kDrag || state.kSel;
       if (sel && sel.from != null && sel.to != null && plot.axis.length) {
         const a = Math.max(0, Math.min(sel.from, sel.to));
         const b = Math.min(plot.axis.length - 1, Math.max(sel.from, sel.to));
@@ -1295,7 +1445,7 @@
         }
       });
     }
-    if (candle && plot.mode === "price" && chipCostLines) {
+    if (candle && plot.mode === "price" && cost) {
       function drawCost(val, color, tag) {
         if (val == null || !isFinite(val)) return;
         const y = yOf(val);
@@ -1311,8 +1461,8 @@
         ctx.font = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
         ctx.fillText(tag + " " + fmt(val), left + 4, y - 3);
       }
-      drawCost(chipCostLines.cost20, "rgba(224, 161, 0, 0.85)", "主力20");
-      drawCost(chipCostLines.cost60, "rgba(120, 170, 255, 0.85)", "主力60");
+      drawCost(cost.cost20, "rgba(224, 161, 0, 0.85)", "主力20");
+      drawCost(cost.cost60, "rgba(120, 170, 255, 0.85)", "主力60");
     }
     ctx.fillStyle = "#93a0b0";
     ctx.font = axisFont;
@@ -1333,6 +1483,20 @@
       mode: plot.mode,
       style: plot.style || "line"
     };
+  }
+
+  function draw() {
+    drawOn($("chart"), state.plot, {
+      costLines: null,
+      sel: state.kDrag || state.kSel
+    });
+  }
+
+  function drawStock() {
+    drawOn($("stock-chart"), state.stockPlot, {
+      costLines: stockChipCostLines,
+      sel: state.stockKDrag || state.stockKSel
+    });
   }
 
   function renderKPatterns(item) {
@@ -1368,8 +1532,53 @@
       }).join("") + "</ul>";
   }
 
-  function chartIndexAt(clientX) {
-    const canvas = $("chart");
+  function renderStockKPatterns(item) {
+    const box = $("stock-k-patterns");
+    const hint = $("stock-k-select-hint");
+    if (hint) hint.hidden = !(item && state.stockStyle === "candle");
+    if (!box) return;
+    if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
+      box.hidden = true;
+      box.innerHTML = "";
+      if ($("stock-k-pick")) { $("stock-k-pick").hidden = true; $("stock-k-pick").innerHTML = ""; }
+      return;
+    }
+    const rows = M.kPatterns(item.bars).slice(0, 24);
+    const catN = M.sakataCatalog ? M.sakataCatalog().length : 78;
+    const ref = '<p class="fine">依<strong>酒田戰法 ' + catN +
+      ' 式</strong>辨識。圖上可拖曳紅框解讀；點下列型態反白對應K。</p>';
+    if (!rows.length) {
+      box.hidden = false;
+      box.innerHTML = "<h3>酒田K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯戰法型態。</p>';
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = "<h3>酒田K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
+      rows.map(function (row) {
+        const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
+        const span = /三兵|三星|夜星|晨星|三法|懷抱|覆蓋|舍子|烏雲|曙光/.test(row.name) ? 2 : 0;
+        const idTag = row.id != null ? "#" + row.id + " " : "";
+        return '<li data-stock-k-focus="' + row.i + '" data-k-span="' + span + '">' +
+          '<span class="k-date">' + esc(row.date.slice(5)) + "</span>" +
+          '<span class="k-name ' + cls + '">' + esc(idTag + row.name) + "</span>" +
+          '<span class="k-detail">' + esc(row.detail) + "</span></li>";
+      }).join("") + "</ul>";
+  }
+
+  function renderStockLegend(items) {
+    const box = $("stock-legend");
+    if (!box) return;
+    box.innerHTML = items.map(function (item) {
+      const first = item.bars[0].c;
+      const last = item.bars[item.bars.length - 1].c;
+      const change = first ? last / first - 1 : 0;
+      return '<div><span class="swatch" style="background:' + item.color + '"></span>' + esc(item.name) +
+        " " + fmt(last) + ' <span class="' + pctClass(change) + '">' + pct(change) + "</span></div>";
+    }).join("");
+  }
+
+  function chartIndexAt(clientX, canvasId) {
+    const canvas = $(canvasId || "chart");
     const layout = canvas && canvas._layout;
     if (!layout || !layout.axis || !layout.axis.length) return null;
     const rect = canvas.getBoundingClientRect();
@@ -1379,8 +1588,7 @@
     return Math.max(0, Math.min(n - 1, Math.round((x - layout.left) / layout.width * (n - 1))));
   }
 
-  function selectedBars(from, to) {
-    const plot = state.plot;
+  function selectedBarsFrom(plot, from, to) {
     if (!plot || !plot.series || !plot.series[0]) return [];
     const s = plot.series[0];
     const a = Math.max(0, Math.min(from, to));
@@ -1398,6 +1606,10 @@
       });
     }
     return out;
+  }
+
+  function selectedBars(from, to) {
+    return selectedBarsFrom(state.plot, from, to);
   }
 
   function renderKPick(report) {
@@ -1424,6 +1636,32 @@
       "<p>" + esc(report.meaning) + "</p>" +
       (pats ? "<ul>" + pats + "</ul>" : "") +
       '<p class="fine"><button type="button" class="ghost" id="k-pick-clear">清除框選</button></p>';
+  }
+
+  function renderStockKPick(report) {
+    const box = $("stock-k-pick");
+    if (!box) return;
+    if (!report) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    const cls = /弱|賣|空/.test(report.tone) ? "down" : /多|買|升|止跌/.test(report.tone) ? "up" : "";
+    const pats = (report.patterns || []).map(function (p) {
+      const pc = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
+      return "<li><span class=\"" + pc + "\">" + esc(p.name) + "</span> " +
+        esc((p.date || "").slice(5)) + " · " + esc(p.detail) + "</li>";
+    }).join("");
+    box.hidden = false;
+    box.innerHTML = "<h3>框選解讀 · " + esc(report.name || "") + "</h3>" +
+      "<p><span class=\"k-pick-tone " + cls + "\">" + esc(report.tone) + "</span>" +
+      esc(report.from.slice(5)) + "～" + esc(report.to.slice(5)) +
+      " · " + report.bars + " 根 · 開 " + fmt(report.open) + " → 收 " + fmt(report.close) +
+      ' <span class="' + pctClass(report.change) + '">' + pct(report.change) + "</span>" +
+      " · 高 " + fmt(report.high) + "／低 " + fmt(report.low) + "</p>" +
+      "<p>" + esc(report.meaning) + "</p>" +
+      (pats ? "<ul>" + pats + "</ul>" : "") +
+      '<p class="fine"><button type="button" class="ghost" id="stock-k-pick-clear">清除框選</button></p>';
   }
 
   function applyKSelection(from, to, opts) {
@@ -1454,6 +1692,34 @@
     }
   }
 
+  function applyStockKSelection(from, to, opts) {
+    opts = opts || {};
+    const plot = state.stockPlot;
+    if (!plot || plot.style !== "candle") return;
+    let a = Math.min(from, to);
+    let b = Math.max(from, to);
+    if (a === b && !opts.exact) {
+      a = Math.max(0, a - 2);
+      b = Math.min(plot.axis.length - 1, b + 2);
+    }
+    state.stockKSel = { from: a, to: b };
+    state.stockKDrag = null;
+    drawStock();
+    const bars = selectedBarsFrom(plot, a, b);
+    const name = plot.series[0] && plot.series[0].name;
+    const report = M.explainKRange ? M.explainKRange(bars, name) : null;
+    renderStockKPick(report);
+    const list = $("stock-k-patterns");
+    if (list) {
+      list.querySelectorAll("[data-stock-k-focus]").forEach(function (el) {
+        const i = Number(el.getAttribute("data-stock-k-focus"));
+        const span = Number(el.getAttribute("data-k-span") || 0);
+        const hit = i >= a && i <= b || (span && i - span >= a && i <= b);
+        el.classList.toggle("on", hit);
+      });
+    }
+  }
+
   function clearKSelection() {
     state.kSel = null;
     state.kDrag = null;
@@ -1461,6 +1727,15 @@
     const list = $("k-patterns");
     if (list) list.querySelectorAll("[data-k-focus].on").forEach(function (el) { el.classList.remove("on"); });
     if (state.plot && state.plot.style === "candle") draw();
+  }
+
+  function clearStockKSelection() {
+    state.stockKSel = null;
+    state.stockKDrag = null;
+    renderStockKPick(null);
+    const list = $("stock-k-patterns");
+    if (list) list.querySelectorAll("[data-stock-k-focus].on").forEach(function (el) { el.classList.remove("on"); });
+    if (state.stockPlot && state.stockPlot.style === "candle") drawStock();
   }
 
   function renderLegend(items, mode) {
@@ -2032,7 +2307,7 @@
     const box = $("stock-detail");
     if (!box) return;
     if (!row) {
-      chipCostLines = null;
+      stockChipCostLines = null;
       renderStockDetail(null);
       return;
     }
@@ -2040,38 +2315,41 @@
     box.innerHTML = '<article class="card"><p class="status">正在讀籌碼與財務…</p></article>';
     try {
       const detail = await M.stockDetail(row.secid, row.code);
-      if (!state.focus || state.focus.secid !== row.secid) return;
+      if (!state.stock || state.stock.secid !== row.secid) return;
       let chipx = null;
       if (C && C.analyzeChip) {
         try {
           chipx = await C.analyzeChip(row.code || M.twStockId(row.secid, row.code));
         } catch (err) { chipx = null; }
       }
-      if (!state.focus || state.focus.secid !== row.secid) return;
+      if (!state.stock || state.stock.secid !== row.secid) return;
       if (chipx && chipx.ok) {
-        chipCostLines = { cost20: chipx.cost20, cost60: chipx.cost60 };
-        if (state.plot) draw();
+        stockChipCostLines = { cost20: chipx.cost20, cost60: chipx.cost60 };
+        if (state.stockPlot) drawStock();
       } else {
-        chipCostLines = null;
+        stockChipCostLines = null;
       }
       renderStockDetail(detail, chipx);
+      syncStockDetailsUi();
     } catch (err) {
-      if (!state.focus || state.focus.secid !== row.secid) return;
-      chipCostLines = null;
+      if (!state.stock || state.stock.secid !== row.secid) return;
+      stockChipCostLines = null;
       box.innerHTML = '<article class="card"><p class="note">' + esc(err.message || "明細讀取失敗") + "</p></article>";
     }
   }
 
   function openSymbol(row) {
-    state.focus = row;
-    state.focusFrom = "watch";
-    state.range = state.range === "1d" ? "1d" : "1y";
-    state.custom = false;
-    state.chartStyle = "candle";
-    setView("chart");
-    buildToggles();
-    paintFocus();
-    loadStockDetail(row);
+    if (!row) return;
+    state.stock = row;
+    state.stockBack = "watch";
+    state.focus = null;
+    state.focusFrom = null;
+    state.stockRange = state.stockRange === "1d" ? "1d" : "1y";
+    state.stockCustom = false;
+    state.stockStyle = "candle";
+    state.stockPlot = null;
+    stockChipCostLines = null;
+    setView("stock");
   }
 
   function addFromForm() {
@@ -2904,10 +3182,18 @@
       if (isFinite(i)) applyKSelection(Math.max(0, i - span), i, { exact: true });
       return;
     }
+    const stockFocusLi = ev.target.closest("[data-stock-k-focus]");
+    if (stockFocusLi && $("stock-k-patterns") && $("stock-k-patterns").contains(stockFocusLi)) {
+      const i = Number(stockFocusLi.getAttribute("data-stock-k-focus"));
+      const span = Number(stockFocusLi.getAttribute("data-k-span") || 0);
+      if (isFinite(i)) applyStockKSelection(Math.max(0, i - span), i, { exact: true });
+      return;
+    }
     const t = ev.target.closest("button");
     if (!t) return;
     if (t.dataset.pick) onPick(t);
     else if (t.id === "k-pick-clear") clearKSelection();
+    else if (t.id === "stock-k-pick-clear") clearStockKSelection();
     else if (t.dataset.adviseWatch != null) {
       const item = book.watch[Number(t.dataset.adviseWatch)];
       if (!item) return;
@@ -2932,6 +3218,18 @@
       }
       buildToggles();
       loadChart();
+    } else if (t.dataset.stockRange) {
+      state.stockRange = t.dataset.stockRange;
+      state.stockCustom = false;
+      if (state.stockRange === "1d") {
+        const day = isoToday();
+        state.stockDateFrom = day;
+        state.stockDateTo = day;
+        state.stockStyle = "candle";
+        syncStockDateInputs();
+      }
+      buildStockToggles();
+      loadStockChart();
     } else if (t.dataset.market) {
       state.on[t.dataset.market] = t.getAttribute("aria-pressed") !== "true";
       buildToggles();
@@ -2939,9 +3237,15 @@
     } else if (t.dataset.chartStyle) {
       setChartStyle(t.dataset.chartStyle);
       loadChart();
+    } else if (t.dataset.stockStyle) {
+      setStockStyle(t.dataset.stockStyle);
+      loadStockChart();
     } else if (t.id === "chart-detail-toggle") {
       chartDetailsOn = !chartDetailsOn;
       syncChartDetailsUi();
+    } else if (t.id === "stock-detail-toggle") {
+      stockDetailsOn = !stockDetailsOn;
+      syncStockDetailsUi();
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
     else if (t.dataset.openWatch != null) openSymbol(book.watch[Number(t.dataset.openWatch)]);
@@ -2999,16 +3303,47 @@
     paintChrome();
     renderWatch(true);
   });
-  $("focus-clear").addEventListener("click", function () {
-    const backWatch = state.focusFrom === "watch";
-    state.focus = null;
-    state.focusFrom = null;
-    chipCostLines = null;
-    renderStockDetail(null);
-    paintFocus();
-    if (backWatch) setView("watch");
-    else loadChart();
-  });
+  if ($("focus-clear")) {
+    $("focus-clear").addEventListener("click", function () {
+      state.focus = null;
+      state.focusFrom = null;
+      paintFocus();
+      loadChart();
+    });
+  }
+  if ($("stock-back")) {
+    $("stock-back").addEventListener("click", function () {
+      state.stock = null;
+      state.stockBack = null;
+      state.stockPlot = null;
+      stockChipCostLines = null;
+      renderStockDetail(null);
+      setView("watch");
+    });
+  }
+  function applyStockCustomDates() {
+    const fromEl = $("stock-from");
+    const toEl = $("stock-to");
+    if (!fromEl || !toEl) return;
+    const from = fromEl.value;
+    const to = toEl.value;
+    if (!from || !to) return;
+    if (from > to) {
+      if ($("stock-chart-status")) $("stock-chart-status").textContent = "起始日不能晚於結束日。";
+      return;
+    }
+    state.stockCustom = true;
+    state.stockDateFrom = from;
+    state.stockDateTo = to;
+    if (from === to) {
+      state.stockRange = "1d";
+      state.stockStyle = "candle";
+    }
+    buildStockToggles();
+    loadStockChart();
+  }
+  if ($("stock-from")) $("stock-from").addEventListener("change", applyStockCustomDates);
+  if ($("stock-to")) $("stock-to").addEventListener("change", applyStockCustomDates);
   $("idea-run").addEventListener("click", runIdeas);
   $("tech-run").addEventListener("click", runTech);
   $("advise-run").addEventListener("click", runAdvise);
@@ -3071,6 +3406,64 @@
     state.kDrag = null;
     if (state.kSel) draw();
   });
+
+  function onStockChartPointer(ev) {
+    const canvas = $("stock-chart");
+    const tip = $("stock-hover");
+    if (!canvas || !tip) return;
+    const layout = canvas._layout;
+    if (!layout || !state.stockPlot) { tip.hidden = true; return; }
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const n = layout.axis.length;
+    if (n < 1 || x < layout.left || x > layout.left + layout.width) { tip.hidden = true; return; }
+    const i = Math.round((x - layout.left) / layout.width * (n - 1));
+    const parts = layout.series.map(function (s) {
+      return seriesLabel(s, i, layout.mode, layout.style);
+    }).filter(Boolean);
+    if (!parts.length) { tip.hidden = true; return; }
+    tip.hidden = false;
+    tip.textContent = (layout.axis[i] || "") + "  " + parts.join(" · ");
+  }
+
+  if ($("stock-chart")) {
+    $("stock-chart").addEventListener("pointermove", function (ev) {
+      if (state.stockKDrag && state.stockPlot && state.stockPlot.style === "candle") {
+        const i = chartIndexAt(ev.clientX, "stock-chart");
+        if (i != null) {
+          state.stockKDrag.to = i;
+          drawStock();
+        }
+        return;
+      }
+      onStockChartPointer(ev);
+    });
+    $("stock-chart").addEventListener("pointerleave", function () {
+      if ($("stock-hover")) $("stock-hover").hidden = true;
+    });
+    $("stock-chart").addEventListener("pointerdown", function (ev) {
+      if (!state.stockPlot || state.stockPlot.style !== "candle") return;
+      const i = chartIndexAt(ev.clientX, "stock-chart");
+      if (i == null) return;
+      state.stockKDrag = { from: i, to: i };
+      try { $("stock-chart").setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+      if ($("stock-hover")) $("stock-hover").hidden = true;
+      drawStock();
+      ev.preventDefault();
+    });
+    $("stock-chart").addEventListener("pointerup", function () {
+      if (!state.stockKDrag) return;
+      const from = state.stockKDrag.from;
+      const to = state.stockKDrag.to != null ? state.stockKDrag.to : from;
+      state.stockKDrag = null;
+      applyStockKSelection(from, to);
+    });
+    $("stock-chart").addEventListener("pointercancel", function () {
+      state.stockKDrag = null;
+      if (state.stockKSel) drawStock();
+    });
+  }
+
   function paintNotifyValChrome(idx) {
     const box = $("watch-list");
     if (!box || !book.watch[idx]) return;
@@ -3185,7 +3578,10 @@
     if (cost != null) book.holdings[Number(cost)].cost = ev.target.value;
     scheduleSave();
   });
-  window.addEventListener("resize", draw);
+  window.addEventListener("resize", function () {
+    draw();
+    if (state.view === "stock") drawStock();
+  });
 
   bindSearch("watch-q", "watch-hits", "watch", "台股");
   bindSearch("tech-q", "tech-hits", "tech", "台股");
@@ -3309,23 +3705,57 @@
     }
   }
 
+  function renderUsBrief(brief) {
+    const box = $("us-brief");
+    if (!box) return;
+    if (!brief) {
+      box.innerHTML = "";
+      return;
+    }
+    const biasCls = /多|開高/.test(brief.bias || "") ? "up"
+      : /空|開低/.test(brief.bias || "") ? "down" : "";
+    const checks = (brief.checks || []).map(function (c) {
+      return '<div class="us-check"><span class="us-check-q">' + esc(c.q) +
+        '</span><strong class="' + esc(c.cls || "") + '">' + esc(c.a) +
+        "</strong><small>" + esc(c.detail || "") + "</small></div>";
+    }).join("");
+    const lines = (brief.lines || []).length
+      ? "<ul>" + brief.lines.map(function (line) {
+        return "<li>" + esc(line) + "</li>";
+      }).join("") + "</ul>"
+      : "";
+    box.innerHTML = '<div class="us-bias">今日台股節奏預判 <strong class="' + biasCls + '">' +
+      esc(brief.bias || "—") + "</strong></div>" +
+      '<div class="us-checks">' + checks + "</div>" + lines +
+      '<p class="fine">' + esc(brief.tip || "") + "</p>";
+  }
+
   async function loadUsBoard() {
     const box = $("us-board-rows");
     if (!box || !C || !C.usBoard) return;
     box.innerHTML = '<span class="note">更新美股…</span>';
+    if ($("us-brief")) $("us-brief").innerHTML = '<span class="note">解讀中…</span>';
     try {
       const pack = await C.usBoard();
-      box.innerHTML = (pack.rows || []).map(function (row) {
+      renderUsBrief(pack.brief);
+      const core = (pack.rows || []).filter(function (row) { return row.core; });
+      const rest = (pack.rows || []).filter(function (row) { return !row.core; });
+      const cells = core.concat(rest).map(function (row) {
+        const coreCls = row.core ? " us-cell-core" : "";
         if (!row.ok) {
-          return '<div class="us-cell"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
+          return '<div class="us-cell' + coreCls + '"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
         }
         const cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
-        const pct = row.pct == null ? "—" : ((row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%");
-        return '<div class="us-cell"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
-          fmt(row.price) + '</strong><small class="' + cls + '">' + pct + "</small></div>";
+        let priceTxt = fmt(row.price);
+        if (row.key === "tnx" && row.price != null) priceTxt = row.price.toFixed(2) + "%";
+        const pctTxt = row.pct == null ? "—" : ((row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%");
+        return '<div class="us-cell' + coreCls + '"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
+          priceTxt + '</strong><small class="' + cls + '">' + pctTxt + "</small></div>";
       }).join("");
+      box.innerHTML = cells;
     } catch (err) {
       box.innerHTML = '<span class="note">' + esc(err.message || "美股讀取失敗") + "</span>";
+      if ($("us-brief")) $("us-brief").innerHTML = "";
     }
   }
 

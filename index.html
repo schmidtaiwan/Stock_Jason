@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=66">
+  <link rel="stylesheet" href="app.css?v=67">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -70,15 +70,13 @@
             </label>
           </div>
         </div>
-        <div id="focus-bar" class="focus-bar" hidden>
-          <strong id="focus-name"></strong>
-          <button id="focus-clear" class="ghost" type="button">回到市場</button>
-        </div>
-        <div id="us-board" class="us-board" aria-label="美股即時">
+        <div id="us-board" class="us-board" aria-label="美股觀察">
           <div class="us-board-head">
-            <strong>美股開盤／即時</strong>
+            <strong>美股觀察指標</strong>
             <button id="us-board-refresh" class="ghost" type="button">更新</button>
           </div>
+          <p class="fine">早盤 3 分鐘：看費半／台積電 ADR 方向 → VIX 力道 → 美債／美元資金。夏令 21:30–04:00、冬令 22:30–05:00（台灣時間）。</p>
+          <div id="us-brief" class="us-brief"></div>
           <div id="us-board-rows" class="us-board-rows"><span class="note">載入中…</span></div>
         </div>
         <div id="market-box">
@@ -104,8 +102,50 @@
             <div id="foreign" class="foreign"></div>
           </div>
         </div>
-        <div id="stock-detail" class="stock-detail chart-details-extra" hidden></div>
         <p id="hover" class="tip" hidden></p>
+      </section>
+
+      <section id="view-stock" hidden>
+        <div class="stock-top">
+          <div class="focus-bar stock-focus">
+            <strong id="stock-title">個股</strong>
+            <button id="stock-back" class="ghost" type="button">回自選</button>
+          </div>
+          <div class="range-row">
+            <div id="stock-ranges" class="ranges"></div>
+            <div class="span-dates" aria-label="個股區間日期">
+              <label class="span-date">
+                <span>起</span>
+                <input id="stock-from" type="date" inputmode="numeric">
+              </label>
+              <span class="span-sep">～</span>
+              <label class="span-date">
+                <span>迄</span>
+                <input id="stock-to" type="date" inputmode="numeric">
+              </label>
+            </div>
+          </div>
+          <div id="stock-styles" class="chart-styles" aria-label="個股圖表類型">
+            <span class="chart-styles-label">圖表</span>
+            <div class="chips">
+              <button type="button" class="chip" data-stock-style="line" aria-pressed="false">線圖</button>
+              <button type="button" class="chip" data-stock-style="candle" aria-pressed="true">K線</button>
+            </div>
+            <button id="stock-detail-toggle" class="ghost chart-detail-btn" type="button" aria-pressed="true">細部資料</button>
+          </div>
+          <div class="card chart-card">
+            <canvas id="stock-chart" width="640" height="520"></canvas>
+            <p id="stock-chart-status" class="status" role="status"></p>
+            <div id="stock-chart-details" class="chart-details">
+              <p id="stock-k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思。</p>
+              <div id="stock-k-pick" class="k-pick" hidden></div>
+              <div id="stock-legend" class="legend"></div>
+              <div id="stock-k-patterns" class="k-patterns" hidden></div>
+            </div>
+          </div>
+          <div id="stock-detail" class="stock-detail" hidden></div>
+          <p id="stock-hover" class="tip" hidden></p>
+        </div>
       </section>
 
       <section id="view-pulse" hidden>
@@ -461,11 +501,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=66"></script>
-  <script src="drive.js?v=66"></script>
-  <script src="sakata.js?v=66"></script>
-  <script src="market.js?v=66"></script>
-  <script src="chips.js?v=66"></script>
-  <script src="app.js?v=66"></script>
+  <script src="google_config.js?v=67"></script>
+  <script src="drive.js?v=67"></script>
+  <script src="sakata.js?v=67"></script>
+  <script src="market.js?v=67"></script>
+  <script src="chips.js?v=67"></script>
+  <script src="app.js?v=67"></script>
 </body>
 </html>

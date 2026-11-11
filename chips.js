@@ -2,20 +2,23 @@
 (function (global) {
   const TOKEN_KEY = "sj-finmind-token";
   const US_BOARD = [
-    { symbol: "^DJI", name: "道瓊" },
-    { symbol: "^GSPC", name: "標普" },
-    { symbol: "^IXIC", name: "那斯達克" },
-    { symbol: "^SOX", name: "費半" },
-    { symbol: "AAPL", name: "蘋果" },
-    { symbol: "MSFT", name: "微軟" },
-    { symbol: "NVDA", name: "輝達" },
-    { symbol: "TSLA", name: "特斯拉" },
-    { symbol: "AMD", name: "超微" },
-    { symbol: "META", name: "Meta" },
-    { symbol: "GOOGL", name: "Google" },
-    { symbol: "AMZN", name: "亞馬遜" },
-    { symbol: "QQQ", name: "QQQ" },
-    { symbol: "SPY", name: "SPY" }
+    { symbol: "^SOX", name: "費半", key: "sox", core: true },
+    { symbol: "TSM", name: "台積電ADR", key: "tsm", core: true },
+    { symbol: "NVDA", name: "輝達", key: "nvda", core: true },
+    { symbol: "^VIX", name: "VIX恐慌", key: "vix", core: true },
+    { symbol: "^TNX", name: "美債10年", key: "tnx", core: true },
+    { symbol: "DX-Y.NYB", name: "美元指數", key: "dxy", core: true },
+    { symbol: "^DJI", name: "道瓊", key: "dji" },
+    { symbol: "^GSPC", name: "標普", key: "spx" },
+    { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
+    { symbol: "AAPL", name: "蘋果", key: "aapl" },
+    { symbol: "MSFT", name: "微軟", key: "msft" },
+    { symbol: "AMD", name: "超微", key: "amd" },
+    { symbol: "META", name: "Meta", key: "meta" },
+    { symbol: "GOOGL", name: "Google", key: "googl" },
+    { symbol: "AMZN", name: "亞馬遜", key: "amzn" },
+    { symbol: "QQQ", name: "QQQ", key: "qqq" },
+    { symbol: "SPY", name: "SPY", key: "spy" }
   ];
 
   function num(v) {
@@ -444,50 +447,216 @@
     };
   }
 
+  async function fetchYahooChart(symbol, query) {
+    const path = "https://query1.finance.yahoo.com/v8/finance/chart/" +
+      encodeURIComponent(symbol) + "?" + (query || "interval=1d&range=1d");
+    let json = null;
+    try {
+      const res = await fetch(path);
+      if (res.ok) json = await res.json();
+    } catch (err) { /* relay */ }
+    if (!json) {
+      const relay = await fetch("https://r.jina.ai/" + path);
+      const text = await relay.text();
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start >= 0 && end > start) json = JSON.parse(text.slice(start, end + 1));
+    }
+    return json;
+  }
+
+  function quoteFromYahooJson(json) {
+    const result = json && json.chart && json.chart.result && json.chart.result[0];
+    if (!result) return null;
+    const meta = result.meta || {};
+    const q = ((result.indicators || {}).quote || [])[0] || {};
+    const closes = (q.close || []).filter(function (v) { return v != null && isFinite(Number(v)); }).map(Number);
+    const highs = (q.high || []).map(num);
+    const lows = (q.low || []).map(num);
+    const opens = (q.open || []).map(num);
+    const price = closes.length ? closes[closes.length - 1] : num(meta.regularMarketPrice);
+    const prev = num(meta.previousClose) || num(meta.chartPreviousClose) ||
+      (closes.length > 1 ? closes[closes.length - 2] : null);
+    if (!(price > 0)) return null;
+    const pct = prev > 0 ? (price / prev - 1) * 100 : num(meta.regularMarketChangePercent);
+    const i = closes.length - 1;
+    return {
+      price: price,
+      prev: prev,
+      pct: pct,
+      open: opens[i] != null ? opens[i] : null,
+      high: highs[i] != null ? highs[i] : null,
+      low: lows[i] != null ? lows[i] : null,
+      closes: closes
+    };
+  }
+
   async function usBoard() {
     const M = global.SJMarket;
     const out = [];
     for (let i = 0; i < US_BOARD.length; i++) {
       const item = US_BOARD[i];
       try {
-        let price = null;
-        let prev = null;
-        let pct = null;
-        let name = item.name;
-        if (M && M.quoteMap) {
-          // yahoo via market helper using synthetic secid
+        let q = null;
+        if (M && typeof M.yahooSymbolQuote === "function") {
+          const hit = await M.yahooSymbolQuote(item.symbol).catch(function () { return null; });
+          if (hit) q = { price: hit.price, pct: hit.pct, prev: null, open: null, high: null, low: null, closes: [] };
         }
-        const path = "https://query1.finance.yahoo.com/v8/finance/chart/" +
-          encodeURIComponent(item.symbol) + "?interval=1m&range=1d";
-        let json = null;
-        try {
-          const res = await fetch(path);
-          if (res.ok) json = await res.json();
-        } catch (err) { /* relay */ }
-        if (!json) {
-          const relay = await fetch("https://r.jina.ai/" + path);
-          const text = await relay.text();
-          const start = text.indexOf("{");
-          const end = text.lastIndexOf("}");
-          if (start >= 0 && end > start) json = JSON.parse(text.slice(start, end + 1));
+        if (!q) {
+          const json = await fetchYahooChart(item.symbol, "interval=1m&range=1d");
+          q = quoteFromYahooJson(json);
         }
-        const result = json && json.chart && json.chart.result && json.chart.result[0];
-        if (result) {
-          const meta = result.meta || {};
-          const closes = ((((result.indicators || {}).quote || [])[0] || {}).close || [])
-            .filter(function (v) { return v != null && isFinite(Number(v)); })
-            .map(Number);
-          price = closes.length ? closes[closes.length - 1] : num(meta.regularMarketPrice);
-          prev = num(meta.previousClose) || num(meta.chartPreviousClose);
-          if (price > 0 && prev > 0) pct = (price / prev - 1) * 100;
-          else pct = num(meta.regularMarketChangePercent);
+        if (!q) {
+          const json2 = await fetchYahooChart(item.symbol, "interval=1d&range=5d");
+          q = quoteFromYahooJson(json2);
         }
-        out.push({ symbol: item.symbol, name: name, price: price, pct: pct, ok: price > 0 });
+        out.push({
+          symbol: item.symbol,
+          name: item.name,
+          key: item.key,
+          core: !!item.core,
+          price: q && q.price,
+          pct: q && q.pct,
+          ok: !!(q && q.price > 0)
+        });
       } catch (err) {
-        out.push({ symbol: item.symbol, name: item.name, price: null, pct: null, ok: false });
+        out.push({ symbol: item.symbol, name: item.name, key: item.key, core: !!item.core, price: null, pct: null, ok: false });
       }
     }
-    return { ok: true, updatedAt: Date.now(), rows: out };
+    const brief = await buildUsBrief(out);
+    return { ok: true, updatedAt: Date.now(), rows: out, brief: brief };
+  }
+
+  function maOf(closes, n) {
+    if (!closes || closes.length < n) return null;
+    let s = 0;
+    for (let i = closes.length - n; i < closes.length; i++) s += closes[i];
+    return s / n;
+  }
+
+  async function buildUsBrief(rows) {
+    const byKey = {};
+    (rows || []).forEach(function (r) { if (r.key) byKey[r.key] = r; });
+    const sox = byKey.sox || {};
+    const tsm = byKey.tsm || {};
+    const nvda = byKey.nvda || {};
+    const vix = byKey.vix || {};
+    const tnx = byKey.tnx || {};
+    const dxy = byKey.dxy || {};
+
+    let soxMa = { ma20: null, ma60: null, above20: null, above60: null, wick: null, intradayLowPct: null };
+    try {
+      const json = await fetchYahooChart("^SOX", "interval=1d&range=6mo");
+      const q = quoteFromYahooJson(json);
+      if (q && q.closes && q.closes.length) {
+        const ma20 = maOf(q.closes, 20);
+        const ma60 = maOf(q.closes, 60);
+        const last = q.closes[q.closes.length - 1];
+        soxMa.ma20 = ma20;
+        soxMa.ma60 = ma60;
+        soxMa.above20 = ma20 != null ? last >= ma20 : null;
+        soxMa.above60 = ma60 != null ? last >= ma60 : null;
+        if (q.high != null && q.low != null && q.open != null && last != null && q.high > q.low) {
+          const lower = Math.min(q.open, last) - q.low;
+          const body = Math.abs(last - q.open);
+          const range = q.high - q.low;
+          soxMa.wick = range > 0 && lower / range >= 0.45 && body / range <= 0.4;
+          if (q.prev > 0) soxMa.intradayLowPct = (q.low / q.prev - 1) * 100;
+        }
+      }
+    } catch (err) { /* ignore */ }
+
+    const checks = [];
+    // 1 direction
+    let dir = "中性";
+    let dirDetail = "費半／ADR 資料不足";
+    if (sox.pct != null || tsm.pct != null) {
+      const soxPct = sox.pct != null ? sox.pct : 0;
+      const tsmPct = tsm.pct != null ? tsm.pct : soxPct;
+      if (soxPct >= 2) { dir = "偏多跳空"; dirDetail = "費半大漲 ≥2%，台股早盤易開高"; }
+      else if (soxPct <= -2) { dir = "偏空提款"; dirDetail = "費半大跌 ≤-2%，慎防開盤接刀"; }
+      else if (tsmPct >= 1.5 && soxPct < 0) { dir = "ADR撐盤"; dirDetail = "費半弱但台積電 ADR 強，權值仍可能撐盤"; }
+      else if (tsmPct <= -1.5) { dir = "ADR承壓"; dirDetail = "台積電 ADR 弱，加權易承壓"; }
+      else if ((soxPct + tsmPct) / 2 > 0.3) { dir = "偏多"; dirDetail = "費半／ADR 小幅偏多"; }
+      else if ((soxPct + tsmPct) / 2 < -0.3) { dir = "偏空"; dirDetail = "費半／ADR 小幅偏空"; }
+      else { dir = "中性"; dirDetail = "費半／ADR 震盪不大"; }
+    }
+    checks.push({ q: "看方向（費半／ADR）", a: dir, detail: dirDetail, cls: /多|撐/.test(dir) ? "up" : /空|壓|提款/.test(dir) ? "down" : "" });
+
+    // 2 force VIX
+    let force = "中性";
+    let forceDetail = "VIX 資料不足";
+    if (vix.price != null) {
+      if (vix.price >= 30) { force = "極度恐慌"; forceDetail = "VIX≥30，波動劇烈、外資提款風險高"; }
+      else if (vix.price >= 20) { force = "避險升溫"; forceDetail = "VIX≥20，今天易劇烈洗盤"; }
+      else if (vix.price <= 15) { force = "平靜樂觀"; forceDetail = "VIX≤15，風險偏好偏佳"; }
+      else { force = "溫和"; forceDetail = "VIX 在 15～20，波動一般"; }
+      if (vix.pct != null && vix.pct <= -8 && vix.price < 25) {
+        force = "高檔回落";
+        forceDetail = "VIX 快速回落，恐慌緩解偏多";
+      }
+    }
+    checks.push({ q: "看力道（VIX）", a: force, detail: forceDetail, cls: /樂觀|回落|平靜/.test(force) ? "up" : /恐慌|避險/.test(force) ? "down" : "" });
+
+    // 3 money TNX + DXY
+    let money = "中性";
+    let moneyDetail = "美債／美元資料不足";
+    const tnxPx = tnx.price;
+    // Yahoo ^TNX often already in percent units (e.g. 4.25)
+    if (tnxPx != null || dxy.price != null) {
+      const tnxHot = tnxPx != null && (tnxPx >= 4.3 || (tnx.pct != null && tnx.pct >= 3));
+      const dxyHot = dxy.price != null && (dxy.price >= 105 || (dxy.pct != null && dxy.pct >= 0.4));
+      const tnxCalm = tnxPx != null && tnxPx <= 4.0 && (tnx.pct == null || tnx.pct <= 0);
+      const dxySoft = dxy.price != null && dxy.price <= 102 && (dxy.pct == null || dxy.pct <= 0);
+      if (tnxHot || dxyHot) {
+        money = "資金偏緊";
+        moneyDetail = tnxHot && dxyHot ? "美債急升＋美元強，科技估值與匯出壓力同現"
+          : (tnxHot ? "美債殖利率偏高／急升，壓縮高本益比科技股" : "美元偏強，資金易回流美、外資偏撤");
+      } else if (tnxCalm || dxySoft) {
+        money = "資金偏寬";
+        moneyDetail = "美債／美元偏弱或穩定，利好風險資產與台股";
+      } else {
+        money = "中性";
+        moneyDetail = "美債與美元尚無明顯極端訊號";
+      }
+    }
+    checks.push({ q: "看資金（美債／美元）", a: money, detail: moneyDetail, cls: /寬/.test(money) ? "up" : /緊/.test(money) ? "down" : "" });
+
+    const lines = [];
+    if (sox.pct != null) {
+      if (sox.pct >= 2) lines.push("費半大漲 ≥2%：強勢多頭，台股易跳空開高");
+      else if (sox.pct <= -2) lines.push("費半大跌 ≤-2%：轉弱，早盤提款賣壓加重");
+    }
+    if (soxMa.above20 != null || soxMa.above60 != null) {
+      if (soxMa.above20 && soxMa.above60) lines.push("費半站上月線／季線：科技上升趨勢，拉回可偏多");
+      else if (soxMa.above60 === false) lines.push("費半在季線下：半導體波段修正風險");
+    }
+    if (soxMa.wick && soxMa.intradayLowPct != null && soxMa.intradayLowPct <= -2) {
+      lines.push("費半長下影（盤中深跌後收回）：留意台股開低走高／利空出盡");
+    }
+    if (tsm.pct != null && nvda.pct != null && Math.abs(tsm.pct - (sox.pct || 0)) >= 1.5) {
+      lines.push("龍頭分化：請同時對照台積電 ADR " + (tsm.pct > 0 ? "+" : "") + tsm.pct.toFixed(2) +
+        "%、輝達 " + (nvda.pct > 0 ? "+" : "") + nvda.pct.toFixed(2) + "%");
+    }
+
+    let bias = "中性觀望";
+    let score = 0;
+    if (/多|撐|樂觀|回落|寬/.test(dir + force + money)) score += 1;
+    if (/空|壓|提款|恐慌|避險|緊/.test(dir + force + money)) score -= 1;
+    if (/多|撐/.test(dir)) score += 1;
+    if (/空|壓|提款/.test(dir)) score -= 1;
+    if (score >= 2) bias = "偏多開高";
+    else if (score <= -2) bias = "偏空開低";
+    else if (score > 0) bias = "偏多震盪";
+    else if (score < 0) bias = "偏空震盪";
+
+    return {
+      bias: bias,
+      checks: checks,
+      lines: lines,
+      soxMa: soxMa,
+      tip: "口訣：方向看費半＋ADR → 力道看 VIX → 資金看美債／美元。規則試算，非投資建議。"
+    };
   }
 
   global.SJChips = {

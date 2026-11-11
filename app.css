@@ -985,6 +985,38 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   margin-bottom: 8px;
 }
 .us-board-head strong { font-size: 14px; }
+.us-brief {
+  margin: 0 0 10px;
+  display: grid;
+  gap: 8px;
+}
+.us-bias {
+  font-size: 14px;
+}
+.us-bias strong { font-size: 16px; }
+.us-checks {
+  display: grid;
+  gap: 6px;
+}
+.us-check {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+  background: #10161e;
+}
+.us-check-q { color: var(--muted); font-size: 12px; }
+.us-check strong { font-size: 14px; }
+.us-check small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.us-brief ul {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .us-board-rows {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
@@ -999,9 +1031,16 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   flex-direction: column;
   gap: 2px;
 }
+.us-cell-core {
+  border-color: rgba(224, 161, 0, 0.45);
+  background: rgba(224, 161, 0, 0.06);
+}
 .us-cell span { color: var(--muted); font-size: 12px; }
 .us-cell strong { font-size: 15px; font-variant-numeric: tabular-nums; }
 .us-cell small { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.stock-top { display: grid; gap: 8px; }
+.stock-focus strong { font-size: 16px; }
 
 .force-lamp {
   display: inline-block;
