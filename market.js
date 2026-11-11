@@ -11,14 +11,14 @@
   };
 
   const MARKETS = [
-    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#ff6b6b" },
-    { id: "spx", name: "標普", region: "美股", secid: "100.SPX", color: "#6cb6ff" },
-    { id: "ndx", name: "那斯達克", region: "美股", secid: "100.NDX", color: "#d38bff" },
-    { id: "dji", name: "道瓊", region: "美股", secid: "100.DJIA", color: "#e0a100" },
-    { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#ff7a8a" },
-    { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#4fd2e0" },
-    { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#f2c14e" },
-    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#38bdf8" }
+    { id: "tw", name: "台股", region: "台股", secid: "100.TWII", color: "#ff1f1f" },
+    { id: "spx", name: "標普", region: "美股", secid: "100.SPX", color: "#3b82f6" },
+    { id: "ndx", name: "那斯達克", region: "美股", secid: "100.NDX", color: "#d946ef" },
+    { id: "dji", name: "道瓊", region: "美股", secid: "100.DJIA", color: "#facc15" },
+    { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#4ade80" },
+    { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#22d3ee" },
+    { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#fb923c" },
+    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#e2e8f0" }
   ];
 
   const UNIVERSE = [

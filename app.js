@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 40;
+  const PAGE_BUILD = 41;
   const PAGE_DATE = "2026-11-11";
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
