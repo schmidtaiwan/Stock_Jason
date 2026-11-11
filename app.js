@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 91;
+  const PAGE_BUILD = 92;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2174,54 +2174,47 @@
   }
 
   function renderWatchFull(box) {
-    box.innerHTML = '<div class="watch-full-list" role="list">' + book.watch.map(function (item, idx) {
-      const shares = item.shares == null ? "" : item.shares;
-      const cost = item.cost == null ? "" : item.cost;
-      normalizeNotify(item);
-      const mode = notifyModeOf(item);
-      const meta = NOTIFY_MODES[mode];
-      const val = notifyValOf(item);
-      const valText = val == null ? "" : String(val);
-      if (item.market) item.market = twName(item.market);
-      const label = watchLabel(item);
-      const modeOpts = Object.keys(NOTIFY_MODES).map(function (key) {
-        return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
-          NOTIFY_MODES[key].label + "</option>";
-      }).join("");
-      return '<article class="watch-full-card" role="listitem" data-watch-row="' + idx + '" data-price="">' +
-        '<div class="watch-full-top">' +
-        '<div class="watch-name">' +
-        '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button>" +
-        '<div class="watch-chips" data-watch-chips="' + idx + '"><span class="note">籌碼…</span></div>' +
-        "</div>" +
-        '<div class="watch-col-price">' +
-        '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span>' +
-        '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div>' +
-        '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span>' +
-        "</div></div>" +
-        '<div class="watch-full-meta">' +
-        '<label class="watch-meta-field">買價' +
-        '<input class="watch-input" data-watch-cost="' + idx + '" inputmode="decimal" value="' +
-        esc(cost) + '" placeholder="—" aria-label="買價"></label>' +
-        '<div class="watch-meta-field watch-meta-pnl"><span class="watch-meta-label">損益</span>' +
-        '<strong class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</strong></div>' +
-        '<label class="watch-meta-field">股數' +
-        '<input class="watch-input" data-watch-shares="' + idx + '" inputmode="numeric" value="' +
-        esc(shares) + '" placeholder="—" aria-label="股數"></label>' +
-        '<button type="button" class="danger watch-full-del" data-del-watch="' + idx + '">移除</button>' +
-        "</div>" +
-        '<div class="watch-alert-cell"><div class="watch-alert">' +
-        '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
-        (item.notify ? " checked" : "") + "> 開</label>" +
-        '<select class="watch-alert-mode" data-watch-notify-mode="' + idx + '" aria-label="通知條件">' +
-        modeOpts + "</select>" +
-        '<label class="watch-alert-val"><span data-alert-prefix="1">' + esc(meta.prefix) + "</span>" +
-        '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
-        '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
-        '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
-        "</label></div></div>" +
-        "</article>";
-    }).join("") + "</div>";
+    box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
+      '<th>標的</th><th>目前</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th><th></th><th>通知</th>' +
+      "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
+        const shares = item.shares == null ? "" : item.shares;
+        const cost = item.cost == null ? "" : item.cost;
+        normalizeNotify(item);
+        const mode = notifyModeOf(item);
+        const meta = NOTIFY_MODES[mode];
+        const val = notifyValOf(item);
+        const valText = val == null ? "" : String(val);
+        if (item.market) item.market = twName(item.market);
+        const label = watchLabel(item);
+        const modeOpts = Object.keys(NOTIFY_MODES).map(function (key) {
+          return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
+            NOTIFY_MODES[key].label + "</option>";
+        }).join("");
+        return '<tr data-watch-row="' + idx + '" data-price="">' +
+          '<td class="watch-name">' +
+          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button>" +
+          '<div class="watch-chips" data-watch-chips="' + idx + '"><span class="note">籌碼…</span></div></td>' +
+          '<td class="watch-col-price">' +
+          '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span>' +
+          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div>' +
+          '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></td>' +
+          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
+          '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
+          '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
+          '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
+          '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
+          '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
+          '<td class="watch-alert-cell"><div class="watch-alert">' +
+          '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
+          (item.notify ? " checked" : "") + "> 開</label>" +
+          '<select class="watch-alert-mode" data-watch-notify-mode="' + idx + '" aria-label="通知條件">' +
+          modeOpts + "</select>" +
+          '<label class="watch-alert-val"><span data-alert-prefix="1">' + esc(meta.prefix) + "</span>" +
+          '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
+          '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
+          '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
+          "</label></div></td></tr>";
+      }).join("") + "</tbody></table></div>";
   }
 
   function renderWatch(force) {
