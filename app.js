@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 89;
+  const PAGE_BUILD = 90;
   const PAGE_DATE = "2026-11-11";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -9,6 +9,8 @@
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
+  let ocrWorker = null;
+  let ocrWorkerPromise = null;
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -2715,38 +2717,63 @@
     });
   }
 
+  function setOcrStatus(msg) {
+    if ($("watch-status")) $("watch-status").textContent = msg;
+  }
+
+  async function getOcrWorker() {
+    if (ocrWorker) return ocrWorker;
+    if (ocrWorkerPromise) return ocrWorkerPromise;
+    ocrWorkerPromise = (async function () {
+      await loadTesseract();
+      setOcrStatus("辨識準備中（第一次會下載字庫）…");
+      const worker = await window.Tesseract.createWorker("chi_tra+eng", 1, {
+        logger: function (msg) {
+          if (!msg) return;
+          if (msg.status === "recognizing text") {
+            setOcrStatus("辨識中 " + Math.round((msg.progress || 0) * 100) + "%");
+          } else if (msg.status === "loading language traineddata") {
+            setOcrStatus("下載字庫 " + Math.round((msg.progress || 0) * 100) + "%");
+          } else if (msg.status) {
+            setOcrStatus("辨識準備中…");
+          }
+        }
+      });
+      await worker.setParameters({
+        tessedit_pageseg_mode: "6",
+        preserve_interword_spaces: "1"
+      });
+      ocrWorker = worker;
+      ocrWorkerPromise = null;
+      return worker;
+    })();
+    try {
+      return await ocrWorkerPromise;
+    } catch (err) {
+      ocrWorkerPromise = null;
+      throw err;
+    }
+  }
+
   function prepImage(file) {
     return new Promise(function (resolve, reject) {
       const img = new Image();
       img.onload = function () {
-        // 券商截圖：略過頂部深藍標題與底部導覽，保留白色庫存表
-        const top = Math.round(img.height * 0.16);
-        const bottom = Math.round(img.height * 0.88);
+        // 券商截圖：略過頂部標題與底部備註／導覽，保留表格
+        const top = Math.round(img.height * 0.14);
+        const bottom = Math.round(img.height * 0.90);
         const cropH = Math.max(1, bottom - top);
-        const scale = img.width < 2000 ? 2000 / img.width : 1;
+        // 不放大圖（放大只拖慢 OCR）；最寬 1200 足夠讀表格
+        const scale = Math.min(1, 1200 / Math.max(1, img.width));
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(cropH * scale);
-        const ctx = canvas.getContext("2d");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(cropH * scale));
+        const ctx = canvas.getContext("2d", { alpha: false });
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.filter = "grayscale(1) contrast(1.28) brightness(1.04)";
         ctx.drawImage(img, 0, top, img.width, cropH, 0, 0, canvas.width, canvas.height);
-        const out = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const px = out.data;
-        let min = 255;
-        let max = 0;
-        for (let i = 0; i < px.length; i += 4) {
-          const L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-          if (L < min) min = L;
-          if (L > max) max = L;
-        }
-        const span = Math.max(1, max - min);
-        for (let i = 0; i < px.length; i += 4) {
-          let L = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
-          L = ((L - min) / span) * 255;
-          L = (L - 128) * 1.35 + 128;
-          L = L < 0 ? 0 : L > 255 ? 255 : L;
-          px[i] = px[i + 1] = px[i + 2] = L;
-        }
-        ctx.putImageData(out, 0, 0);
+        ctx.filter = "none";
         URL.revokeObjectURL(img.src);
         resolve(canvas);
       };
@@ -2776,42 +2803,47 @@
   }
 
   async function resolveParsed(parsed) {
-    const out = [];
-    for (let i = 0; i < parsed.length; i++) {
-      const row = parsed[i];
+    const tasks = (parsed || []).map(async function (row) {
       let hit = null;
       const want = String(row.code || "").toUpperCase();
-      try {
-        const found = await M.search(row.code);
-        hit = found.find(function (item) { return String(item.code).toUpperCase() === want && item.market === "台股"; })
-          || found.find(function (item) { return String(item.code).toUpperCase() === want; })
-          || null;
-      } catch (err) { /* 單一代號失敗就留白，讓使用者改 */ }
       const byName = usefulWatchName(row.name);
-      if (byName) {
+      try {
+        const found = await M.search(row.code || byName || "");
+        hit = found.find(function (item) {
+          return String(item.code).toUpperCase() === want && item.market === "台股";
+        }) || found.find(function (item) {
+          return String(item.code).toUpperCase() === want;
+        }) || null;
+        if (!hit && byName) {
+          hit = found.find(function (item) {
+            return item.market === "台股" && (
+              String(item.name || "").indexOf(byName.slice(0, 2)) >= 0 ||
+              byName.indexOf(String(item.name || "").slice(0, 2)) >= 0
+            );
+          }) || found.find(function (item) { return item.market === "台股"; }) || null;
+        }
+      } catch (err) { /* 單一代號失敗就留白，讓使用者改 */ }
+      if (!hit && byName && want) {
         try {
           const named = await M.search(byName);
-          const nameHit = named.find(function (item) {
+          hit = named.find(function (item) {
             return item.market === "台股" && (
               String(item.name || "").indexOf(byName.slice(0, 2)) >= 0 ||
               byName.indexOf(String(item.name || "").slice(0, 2)) >= 0
             );
           }) || named.find(function (item) { return item.market === "台股"; }) || null;
-          if (nameHit) {
-            const codeOk = hit && String(hit.code).toUpperCase() === String(nameHit.code).toUpperCase();
-            if (!hit || !codeOk) hit = nameHit;
-          }
         } catch (err) { /* 名稱備援失敗就用代號結果 */ }
       }
       const item = {
         code: hit ? hit.code : row.code,
         name: hit ? hit.name : (byName || row.code),
-        secid: hit ? hit.secid : "",
+        secid: hit ? hit.secid : (want ? "178." + want : ""),
         market: hit ? hit.market : "台股",
         shares: row.shares,
         cost: "",
         note: ""
       };
+      if (!item.secid && item.code) item.secid = "178." + String(item.code).toUpperCase();
       const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
@@ -2823,7 +2855,6 @@
           if (quote && quote.price > 0 && row.shares > 0) {
             let cost = null;
             let note = "";
-            // 獲利率比損益數字穩，優先用％回推
             if (row.pct != null && isFinite(row.pct) && Math.abs(row.pct) < 80 && row.pct !== -100) {
               cost = quote.price / (1 + row.pct / 100);
               note = "現價 " + fmt(quote.price) + "，獲利 " + row.pct + "%，回推買價";
@@ -2839,9 +2870,9 @@
         } catch (err) { /* 沒報價就讓使用者自己填買價 */ }
       }
       if (!item.note && row.pnl != null) item.note = "圖上損益 " + row.pnl + "，請補買價";
-      out.push(item);
-    }
-    return out;
+      return item;
+    });
+    return Promise.all(tasks);
   }
 
   async function readFubonHoldingsJson(file) {
@@ -2873,49 +2904,41 @@
 
   async function readInventoryPhoto(file) {
     $("watch-photo-btn").disabled = true;
-    $("watch-status").textContent = "正在讀圖。第一次會下載中文辨識資料。";
-    let worker = null;
+    setOcrStatus("正在讀圖…");
     try {
-      await loadTesseract();
-      worker = await window.Tesseract.createWorker("chi_tra+eng", 1, {
-        logger: function (msg) {
-          if (!msg) return;
-          if (msg.status === "recognizing text") {
-            $("watch-status").textContent = "辨識中 " + Math.round((msg.progress || 0) * 100) + "%";
-          } else {
-            $("watch-status").textContent = "辨識準備中…";
-          }
-        }
-      });
+      const worker = await getOcrWorker();
       const canvas = await prepImage(file);
-      // 多種排版模式合併，提高券商表格讀取率
+      setOcrStatus("辨識中…");
+      await worker.setParameters({ tessedit_pageseg_mode: "6" });
+      const first = await worker.recognize(canvas);
       const texts = [];
-      for (let i = 0; i < 3; i++) {
-        const psm = ["6", "4", "11"][i];
-        $("watch-status").textContent = "辨識中（模式 " + (i + 1) + "/3）…";
-        await worker.setParameters({ tessedit_pageseg_mode: psm });
-        const ret = await worker.recognize(canvas);
-        if (ret && ret.data && ret.data.text) texts.push(ret.data.text);
+      if (first && first.data && first.data.text) texts.push(first.data.text);
+      let parsed = M.parseInventory(texts.join("\n"));
+      // 只在第一次讀太少時再補掃一次，避免固定跑 3 次
+      if (parsed.length < 2) {
+        setOcrStatus("辨識中（補強）…");
+        await worker.setParameters({ tessedit_pageseg_mode: "4" });
+        const second = await worker.recognize(canvas);
+        if (second && second.data && second.data.text) texts.push("---PSM---\n" + second.data.text);
+        parsed = M.parseInventory(texts.join("\n"));
       }
-      const parsed = M.parseInventory(texts.join("\n"));
       if (!parsed.length) {
-        $("watch-status").textContent = "沒讀到商品與股數。請上傳較清晰的庫存／未實現損益截圖，或改用上方搜尋。";
+        setOcrStatus("沒讀到商品與股數。請上傳較清晰的庫存／未實現損益截圖，或改用上方搜尋。");
         importRows = [];
         renderImport();
         return;
       }
       const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
-      $("watch-status").textContent = priced
+      setOcrStatus(priced
         ? "讀到 " + parsed.length + " 檔，其中 " + priced + " 檔用圖上的成本均價當買價。"
-        : "讀到 " + parsed.length + " 檔，正在查現價回推買價…";
+        : "讀到 " + parsed.length + " 檔，正在查現價回推買價…");
       importRows = await resolveParsed(parsed);
       renderImport();
-      $("watch-status").textContent = "確認股數與買價後按匯入。圖只在這台手機辨識，不會另存。";
+      setOcrStatus("確認股數與買價後按匯入。圖只在這台手機辨識，不會另存。");
     } catch (err) {
-      $("watch-status").textContent = err.message || "讀圖失敗";
+      setOcrStatus(err.message || "讀圖失敗");
     } finally {
       $("watch-photo-btn").disabled = false;
-      if (worker) worker.terminate();
     }
   }
 
