@@ -742,12 +742,13 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-mini-card {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: flex-start;
-  gap: 2px;
+  gap: 4px 6px;
   width: 100%;
-  min-height: 64px;
+  min-height: 0;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -758,33 +759,31 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-mini-name {
   display: inline-flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0;
-  width: 100%;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 14px;
   font-weight: 500;
-  line-height: 1.25;
+  line-height: 1.2;
   color: #fff;
   word-break: break-word;
 }
-.watch-mini-name .watch-mini-title,
-.watch-mini-name .watch-mini-code {
+.watch-mini-name .watch-mini-title {
   font-size: 14px;
   font-weight: 500;
-  line-height: 1.25;
+  line-height: 1.2;
   color: inherit;
 }
 .watch-mini-px {
   display: inline-flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex: 0 1 auto;
+  width: auto;
   text-align: left;
   font-size: 15px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 .watch-mini-px small {
   display: inline;

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 102;
+  const PAGE_BUILD = 103;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2125,12 +2125,7 @@
       ? M.preferTwName(item.name, "", item.code)
       : twName(item.name || "");
     const title = name || String(item.code || "");
-    const code = String(item.code || "");
-    if (!code || title === code) {
-      return '<span class="watch-mini-title">' + esc(title) + "</span>";
-    }
-    return '<span class="watch-mini-title">' + esc(title) +
-      '</span><span class="watch-mini-code">' + esc(code) + "</span>";
+    return '<span class="watch-mini-title">' + esc(title) + "</span>";
   }
 
   function applyWatchQuoteRow(box, m, idx) {
@@ -2239,8 +2234,9 @@
   function renderWatchMini(box) {
     box.innerHTML = '<div class="watch-mini-grid">' + book.watch.map(function (item, idx) {
       if (item.market) item.market = twName(item.market);
+      const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
-        '" data-open-watch="' + idx + '" data-price="">' +
+        '" data-open-watch="' + idx + '" data-price="" title="' + esc(tip) + '">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
         '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
         "</button>";
