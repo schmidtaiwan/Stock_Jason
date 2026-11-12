@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 125;
+  const PAGE_BUILD = 126;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -16,6 +16,9 @@
   let stockSessionTimer = 0;
   let stockSessionBusy = false;
   let stockSessionGen = 0;
+  let chartSessionTimer = 0;
+  let chartSessionBusy = false;
+  let chartSessionGen = 0;
   let watchLastQuotes = [];
   let watchLastLevels = [];
   let chipCostLines = null;
@@ -44,7 +47,7 @@
   const TOOL_IDS = TOOL_MENU.map(function (t) { return t.id; });
 
   const state = {
-    range: "20d",
+    range: "1d",
     on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true },
     focus: null,
     focusFrom: null,
@@ -63,7 +66,7 @@
     from: "",
     to: "",
     chartStyle: "line",
-    stockRange: "1y",
+    stockRange: "1d",
     stockCustom: false,
     stockDateFrom: "",
     stockDateTo: "",
@@ -418,6 +421,10 @@
     });
     if (name === "chart") {
       loadChart();
+      loadChartSession();
+      startChartSessionClock();
+    } else {
+      stopChartSessionClock();
     }
     if (name === "stock") {
       buildStockToggles();
@@ -1155,23 +1162,24 @@
     };
   }
 
-  function renderStockSession(diag) {
-    const box = $("stock-session");
-    if (!box) return;
-    if (!diag) { box.hidden = true; box.innerHTML = ""; return; }
-    box.hidden = false;
-    if (!diag.ok) {
-      box.innerHTML = '<article class="card stock-session-card"><h3>盤中狀態診斷</h3><p class="note">' +
-        esc(diag.reason || "暫無診斷") + "</p></article>";
-      return;
+  function sessionToneClass(tone) {
+    return tone === "up" ? "up" : tone === "down" ? "down" : "";
+  }
+
+  function renderSessionDiagnoseCard(diag, opts) {
+    opts = opts || {};
+    const title = opts.title || "盤中狀態診斷";
+    if (!diag || !diag.ok) {
+      return '<article class="card stock-session-card"><h3>' + esc(title) + "</h3><p class=\"note\">" +
+        esc((diag && diag.reason) || "暫無診斷") + "</p></article>";
     }
-    const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
+    const tone = sessionToneClass(diag.stateTone);
     const sessionTag = diag.sessionOpen ? "盤中" : "非開盤時段";
     const meta = "現價 " + (diag.price != null ? fmt(diag.price) : "—") +
       " · 今高 " + (diag.dayHigh != null ? fmt(diag.dayHigh) : "—") +
       " · 今低 " + (diag.dayLow != null ? fmt(diag.dayLow) : "—") +
       (diag.cost != null ? " · 成本 " + fmt(diag.cost) : "") +
-      " · 量能比 " + (diag.volRatio != null ? diag.volRatio.toFixed(2) : "—") +
+      (diag.volRatio != null ? " · 量能比 " + diag.volRatio.toFixed(2) : "") +
       " · " + sessionTag + " " + esc(diag.asOf || "");
     const why = (diag.why || []).map(function (line) {
       return "<li>" + esc(line) + "</li>";
@@ -1186,13 +1194,117 @@
       esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
       "<li><span>盤中防守價</span><strong>" +
       (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li></ul>";
-    box.innerHTML = '<article class="card stock-session-card">' +
-      "<h3>盤中狀態診斷 <span class=\"tag " + tone + "\">" + esc(diag.stateLabel) + "</span></h3>" +
+    return '<article class="card stock-session-card">' +
+      '<details class="session-fold">' +
+      "<summary><span class=\"session-fold-title\">" + esc(title) + "</span>" +
+      '<span class="tag ' + tone + '">' + esc(diag.stateLabel) + "</span></summary>" +
+      '<div class="session-fold-body">' +
       '<p class="stock-session-meta">' + meta + "</p>" +
       "<h4>多空判斷</h4><ul class=\"session-list\">" + why + "</ul>" +
       "<h4>建議操作 · " + esc(diag.action) + "</h4><ul class=\"session-list\">" + steps + "</ul>" +
       levels +
-      '<p class="fine">' + esc(diag.tip || "") + "</p></article>";
+      '<p class="fine">' + esc(diag.tip || "") + "</p>" +
+      "</div></details></article>";
+  }
+
+  function renderHorizonCard(diag, opts) {
+    opts = opts || {};
+    const title = opts.title || "明日／5 日操作建議";
+    if (!diag || !diag.ok) {
+      return "<h3>" + esc(title) + '</h3><p class="fine">' +
+        esc((diag && diag.reason) || "暫無建議") + "</p>";
+    }
+    const tone = sessionToneClass(diag.stateTone);
+    const tm = diag.tomorrow || { label: "—", steps: [] };
+    const d5 = diag.days5 || { label: "—", steps: [] };
+    const tmLis = (tm.steps || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const d5Lis = (d5.steps || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const levels = '<ul class="stat-list">' +
+      "<li><span>盤中防守</span><strong>" + (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li>" +
+      "<li><span>日 K 支撐</span><strong class=\"down\">" +
+      esc((diag.support && (diag.support.focusText || diag.support.text)) || "—") + "</strong></li>" +
+      "<li><span>日 K 壓力</span><strong class=\"up\">" +
+      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
+      (diag.cost != null
+        ? "<li><span>自選成本</span><strong>" + fmt(diag.cost) + "</strong></li>"
+        : "") +
+      "</ul>";
+    return '<details class="session-fold horizon-fold">' +
+      "<summary><span class=\"session-fold-title\">" + esc(title) + "</span>" +
+      '<span class="tag ' + tone + '">' + esc(diag.stateLabel || "") + "</span></summary>" +
+      '<div class="session-fold-body">' +
+      '<p class="stock-session-meta">現價 ' + (diag.price != null ? fmt(diag.price) : "—") +
+      (diag.asOf ? " · " + esc(diag.asOf) : "") + "</p>" +
+      '<details class="session-subfold">' +
+      "<summary>明日 · " + esc(tm.label || "") + "</summary>" +
+      '<ul class="session-list">' + tmLis + "</ul></details>" +
+      '<details class="session-subfold">' +
+      "<summary>近 5 日 · " + esc(d5.label || "") + "</summary>" +
+      '<ul class="session-list">' + d5Lis + "</ul></details>" +
+      levels +
+      '<p class="fine">' + esc(diag.tip || "規則試算，非投資建議。") + "</p>" +
+      "</div></details>";
+  }
+
+  function renderStockSession(diag) {
+    const box = $("stock-session");
+    if (!box) return;
+    if (!diag) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = renderSessionDiagnoseCard(diag, { title: "盤中狀態診斷" });
+  }
+
+  function renderChartSession(diag) {
+    const box = $("chart-session");
+    if (!box) return;
+    if (!diag) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = renderSessionDiagnoseCard(diag, { title: "加權盤中診斷" });
+  }
+
+  function stopChartSessionClock() {
+    if (chartSessionTimer) clearInterval(chartSessionTimer);
+    chartSessionTimer = 0;
+  }
+
+  function startChartSessionClock() {
+    stopChartSessionClock();
+    chartSessionTimer = setInterval(function () {
+      if (document.hidden || state.view !== "chart") return;
+      loadChartSession(true);
+    }, 60000);
+  }
+
+  async function loadChartSession(quiet) {
+    const box = $("chart-session");
+    if (!box || !M || !M.intradaySessionDiagnose) return;
+    if (chartSessionBusy) return;
+    chartSessionBusy = true;
+    const gen = ++chartSessionGen;
+    if (!quiet) {
+      box.hidden = false;
+      box.innerHTML = '<article class="card"><p class="status">讀取加權盤中診斷…</p></article>';
+    }
+    try {
+      const diag = await M.intradaySessionDiagnose("100.TWII", "TWII", {});
+      if (gen !== chartSessionGen || state.view !== "chart") return;
+      if (diag && diag.ok) diag.stateLabel = diag.stateLabel || "區間震盪";
+      renderChartSession(diag);
+      renderChartHorizon(diag);
+    } catch (err) {
+      if (gen !== chartSessionGen) return;
+      if (!quiet) {
+        const fail = { ok: false, reason: (err && err.message) || "加權診斷失敗" };
+        renderChartSession(fail);
+        renderChartHorizon(fail);
+      }
+    } finally {
+      chartSessionBusy = false;
+    }
   }
 
   async function loadStockSession(row, quiet) {
@@ -2035,36 +2147,12 @@
   }
 
   function renderKPatterns(item) {
-    const box = $("k-patterns");
     const hint = $("k-select-hint");
     if (hint) hint.hidden = !(item && state.chartStyle === "candle");
-    if (!box) return;
-    if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
-      box.hidden = true;
-      box.innerHTML = "";
+    if (!item) {
       if ($("k-pick")) { $("k-pick").hidden = true; $("k-pick").innerHTML = ""; }
-      return;
     }
-    const rows = M.kPatterns(item.bars).slice(0, 24);
-    const catN = M.sakataCatalog ? M.sakataCatalog().length : 78;
-    const ref = '<p class="fine">依<strong>酒田戰法 ' + catN +
-      ' 式</strong>辨識（大陽／覆蓋／紅黑三兵／晨星夜星／三法／三山三川／三空等）。圖上可拖曳紅框解讀；點下列型態反白對應K。偏多／偏空是提示，不是下單建議。</p>';
-    if (!rows.length) {
-      box.hidden = false;
-      box.innerHTML = "<h3>酒田K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯戰法型態。</p>';
-      return;
-    }
-    box.hidden = false;
-    box.innerHTML = "<h3>酒田K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
-      rows.map(function (row) {
-        const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
-        const span = /三兵|三星|夜星|晨星|三法|懷抱|覆蓋|舍子|烏雲|曙光/.test(row.name) ? 2 : 0;
-        const idTag = row.id != null ? "#" + row.id + " " : "";
-        return '<li data-k-focus="' + row.i + '" data-k-span="' + span + '">' +
-          '<span class="k-date">' + esc(row.date.slice(5)) + "</span>" +
-          '<span class="k-name ' + cls + '">' + esc(idTag + row.name) + "</span>" +
-          '<span class="k-detail">' + esc(row.detail) + "</span></li>";
-      }).join("") + "</ul>";
+    // 走勢頁酒田已改為加權明日／5 日操作，內容由 loadChartSession 寫入
   }
 
   function renderStockKPatterns(item) {
@@ -2089,38 +2177,19 @@
       return;
     }
     box.hidden = false;
-    if (!diag.ok) {
-      box.innerHTML = '<h3>明日／5 日操作建議</h3><p class="fine">' +
-        esc(diag.reason || "暫無建議") + "</p>";
+    box.innerHTML = renderHorizonCard(diag);
+  }
+
+  function renderChartHorizon(diag) {
+    const box = $("chart-horizon") || $("k-patterns");
+    if (!box) return;
+    if (!diag) {
+      box.hidden = true;
+      box.innerHTML = "";
       return;
     }
-    const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
-    const tm = diag.tomorrow || { label: "—", steps: [] };
-    const d5 = diag.days5 || { label: "—", steps: [] };
-    const tmLis = (tm.steps || []).map(function (line) {
-      return "<li>" + esc(line) + "</li>";
-    }).join("");
-    const d5Lis = (d5.steps || []).map(function (line) {
-      return "<li>" + esc(line) + "</li>";
-    }).join("");
-    const levels = '<ul class="stat-list">' +
-      "<li><span>盤中防守</span><strong>" + (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li>" +
-      "<li><span>日 K 支撐</span><strong class=\"down\">" +
-      esc((diag.support && (diag.support.focusText || diag.support.text)) || "—") + "</strong></li>" +
-      "<li><span>日 K 壓力</span><strong class=\"up\">" +
-      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
-      (diag.cost != null
-        ? "<li><span>自選成本</span><strong>" + fmt(diag.cost) + "</strong></li>"
-        : "") +
-      "</ul>";
-    box.innerHTML = "<h3>明日／5 日操作建議 <span class=\"tag " + tone + "\">" +
-      esc(diag.stateLabel || "") + "</span></h3>" +
-      '<p class="stock-session-meta">現價 ' + (diag.price != null ? fmt(diag.price) : "—") +
-      (diag.asOf ? " · " + esc(diag.asOf) : "") + "</p>" +
-      "<h4>明日 · " + esc(tm.label || "") + "</h4><ul class=\"session-list\">" + tmLis + "</ul>" +
-      "<h4>近 5 日 · " + esc(d5.label || "") + "</h4><ul class=\"session-list\">" + d5Lis + "</ul>" +
-      levels +
-      '<p class="fine">' + esc(diag.tip || "規則試算，非投資建議。") + "</p>";
+    box.hidden = false;
+    box.innerHTML = renderHorizonCard(diag, { title: "加權明日／5 日操作" });
   }
 
   function renderStockLegend(items) {
@@ -3303,7 +3372,7 @@
     state.stockBack = "watch";
     state.focus = null;
     state.focusFrom = null;
-    state.stockRange = state.stockRange === "1d" ? "1d" : "1y";
+    state.stockRange = "1d";
     state.stockCustom = false;
     state.stockStyle = "line";
     state.stockPlot = null;

@@ -513,6 +513,9 @@ canvas {
 .stock-session {
   margin: 8px 0 10px;
 }
+.stock-session-card {
+  padding: 8px 10px;
+}
 .stock-session-card h3 {
   margin: 0 0 8px;
   font-size: 16px;
@@ -520,6 +523,61 @@ canvas {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+.session-fold,
+.session-subfold {
+  margin: 0;
+}
+.session-fold > summary,
+.session-subfold > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  user-select: none;
+}
+.session-fold > summary::-webkit-details-marker,
+.session-subfold > summary::-webkit-details-marker {
+  display: none;
+}
+.session-fold > summary::after,
+.session-subfold > summary::after {
+  content: "▸";
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+.session-fold[open] > summary::after,
+.session-subfold[open] > summary::after {
+  content: "▾";
+}
+.session-fold-title {
+  font-weight: 700;
+}
+.session-fold-body {
+  margin-top: 8px;
+}
+.session-subfold {
+  margin-top: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.session-subfold > summary {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.k-patterns .session-fold {
+  padding: 2px 0;
+}
+.k-patterns .session-fold > summary {
+  font-size: 14px;
 }
 .stock-session-card h4 {
   margin: 12px 0 6px;

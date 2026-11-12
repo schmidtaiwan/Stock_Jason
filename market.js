@@ -4352,7 +4352,9 @@
   // 盤中 1 分 K＋日 K 支撐壓力＋自選成本 → 狀態診斷與操作建議
   async function intradaySessionDiagnose(secid, code, opts) {
     opts = opts || {};
-    const stockId = twStockId(secid, code);
+    const sid = String(secid || "");
+    const isTwii = sid === "100.TWII" || String(code || "").toUpperCase() === "TWII";
+    const stockId = twStockId(secid, code) || (isTwii ? "TWII" : "");
     if (!stockId) return { ok: false, reason: "目前僅支援台股盤中診斷。" };
     const clock = twSessionClock();
     let intra = [];
@@ -4362,7 +4364,9 @@
     }
     let daily = [];
     try { daily = await bars(secid, "180d"); } catch (err) {
-      try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+      if (!isTwii) {
+        try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+      } else daily = [];
     }
     if (!intra.length && !daily.length) {
       return { ok: false, reason: "盤中 K／日 K 暫讀不到。" };
