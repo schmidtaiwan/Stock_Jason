@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 136;
+  const PAGE_BUILD = 137;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -314,12 +314,35 @@
 
   function paintChrome(skipTwii) {
     const account = D.account();
-    $("who").textContent = account ? account.email : "尚未登入";
-    $("login").hidden = !!account;
-    $("logout").hidden = !account;
+    const login = $("login");
+    const acctBtn = $("account-btn");
+    if (login) login.hidden = !!account;
+    if (acctBtn) {
+      acctBtn.hidden = !account;
+      acctBtn.title = account && account.email
+        ? (account.email + "（點擊登出）")
+        : "";
+      acctBtn.setAttribute("aria-label", acctBtn.title || "Gmail 帳號");
+    }
+    if ($("who")) {
+      $("who").hidden = true;
+      $("who").textContent = "";
+    }
     $("watch-note").textContent = "";
     $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
     if (!skipTwii) paintTwii(false);
+  }
+
+  function flashStatus(msg) {
+    const el = $("who");
+    if (!el || !msg) return;
+    el.hidden = false;
+    el.textContent = msg;
+    clearTimeout(flashStatus._t);
+    flashStatus._t = setTimeout(function () {
+      el.hidden = true;
+      el.textContent = "";
+    }, 4000);
   }
 
   let twiiBusy = false;
@@ -745,7 +768,7 @@
       if (D.account()) await D.writeBook(book);
       else sessionStorage.setItem("sj-book", JSON.stringify(book));
     } catch (err) {
-      $("who").textContent = "雲端寫入失敗：" + (err.message || err);
+      flashStatus("雲端寫入失敗：" + (err.message || err));
     }
   }
 
@@ -848,7 +871,7 @@
       else book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
     } catch (err) {
       book = emptyBook();
-      $("who").textContent = "讀取雲端失敗：" + (err.message || err);
+      flashStatus("讀取雲端失敗：" + (err.message || err));
     }
     syncMoney();
     renderWatch();
@@ -860,7 +883,7 @@
     const url = (D.liveUrl && D.liveUrl()) || "https://schmidtaiwan.github.io/Stock_Jason/";
     const msg = "Cursor 右側瀏覽器無法顯示 Google 登入（會變白頁）。請用 Chrome／Edge 開啟 " + url + " 再登入；這裡仍可按「先看走勢」看圖。";
     if ($("gate-msg")) $("gate-msg").textContent = msg;
-    if ($("who") && $("app") && !$("app").hidden) $("who").textContent = msg;
+    if ($("app") && !$("app").hidden) flashStatus(msg);
     return true;
   }
 
@@ -884,13 +907,13 @@
       $("gate").hidden = true;
       $("app").hidden = false;
       paintChrome(true);
-      if ($("who")) $("who").textContent = account.email + " · 正在同步自選…";
+      flashStatus("正在同步自選…");
       paintTwii(true).catch(function () { /* 失敗時 paintTwii 已寫狀態 */ });
       try {
         await loadBook();
       } catch (bookErr) {
         book = emptyBook();
-        if ($("who")) $("who").textContent = "讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr);
+        flashStatus("讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr));
       }
       paintChrome(true);
       if (state.view === "chart") loadChart();
@@ -898,9 +921,7 @@
       else if (state.view === "watch") renderWatch(true);
     } catch (err) {
       $("gate-msg").textContent = D.friendly(err);
-      if ($("app") && !$("app").hidden) {
-        $("who").textContent = D.friendly(err);
-      }
+      if ($("app") && !$("app").hidden) flashStatus(D.friendly(err));
     } finally {
       $("gate-login").disabled = false;
       if (headerLogin) headerLogin.disabled = false;
@@ -4418,9 +4439,7 @@
     if (ext) ext.hidden = false;
     // Cursor 右側預覽：直接進站方便調版面（登入仍請用系統瀏覽器）
     if ($("gate") && !$("gate").hidden) showApp();
-    if ($("who") && !D.account()) {
-      $("who").textContent = "右側預覽可調版面（登入請用 Chrome）";
-    }
+    if (!D.account()) flashStatus("右側預覽可調版面（登入請用 Chrome）");
   } else {
     const ext = $("gate-open-browser");
     if (ext) ext.hidden = true;
@@ -4429,7 +4448,7 @@
   $("range-from").addEventListener("change", applyCustomDates);
   $("range-to").addEventListener("change", applyCustomDates);
   $("login").addEventListener("click", doLogin);
-  $("logout").addEventListener("click", function () {
+  if ($("account-btn")) $("account-btn").addEventListener("click", function () {
     D.logout();
     book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
     paintChrome();
