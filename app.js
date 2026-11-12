@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 106;
+  const PAGE_BUILD = 107;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2029,8 +2029,8 @@
     return (n > 0 ? "+" : "") + fmtPx(n);
   }
 
-  // 台股預估損益：扣賣出手續費（萬元 1.425‰、單筆最低 20）與證交稅（股票 0.3%、ETF 0.1%）
-  // 買價視為券商平均成本（多半已含買進費），不再重扣買進手續費。
+  // 對齊券商未實現淨損益：成本為成交均價（不含費）；另扣買進手續費、賣出(估)手續費、證交稅
+  // 手續費 1.425‰、單筆最低 20（無條件捨去）；股票證交稅 0.3%、ETF 0.1%
   const BROKER_FEE_RATE = 0.001425;
   const BROKER_FEE_MIN = 20;
   const TAX_STOCK = 0.003;
@@ -2046,7 +2046,7 @@
 
   function brokerFee(amount) {
     if (!(amount > 0)) return 0;
-    return Math.max(BROKER_FEE_MIN, Math.round(amount * BROKER_FEE_RATE));
+    return Math.max(BROKER_FEE_MIN, Math.floor(amount * BROKER_FEE_RATE));
   }
 
   function sellTax(amount, code) {
@@ -2058,13 +2058,26 @@
     const p = Number(price);
     const c = Number(cost);
     const s = Number(shares);
-    if (!(p > 0) || !isFinite(c) || !(s > 0)) return { text: "—", cls: "", value: null };
+    if (!(p > 0) || !isFinite(c) || !(s > 0)) {
+      return { text: "—", cls: "", value: null, tip: "" };
+    }
+    const costAmt = c * s;
     const mv = p * s;
-    const v = mv - c * s - brokerFee(mv) - sellTax(mv, code);
+    const buyFee = brokerFee(costAmt);
+    const sellFee = brokerFee(mv);
+    const tax = sellTax(mv, code);
+    const v = mv - costAmt - buyFee - sellFee - tax;
+    const tip = "未實現淨損益 " + Math.round(v).toLocaleString("zh-Hant") + " 元\n" +
+      "買進手續費 " + buyFee.toLocaleString("zh-Hant") + "\n" +
+      "賣出(估)手續費 " + sellFee.toLocaleString("zh-Hant") + "\n" +
+      "證交稅 " + tax.toLocaleString("zh-Hant") + "\n" +
+      "成本 " + (Math.round(c * 100) / 100) + " · " +
+      (s >= 1000 ? (s / 1000) + " 張" : s + " 股");
     return {
       text: (v > 0 ? "+" : "") + Math.round(v).toLocaleString("zh-Hant"),
       cls: v > 0 ? "up" : v < 0 ? "down" : "",
-      value: v
+      value: v,
+      tip: tip
     };
   }
 
@@ -2080,6 +2093,8 @@
     if (!cell) return;
     cell.className = "watch-num watch-col-pnl" + (pnl.cls ? " " + pnl.cls : "");
     cell.textContent = pnl.text;
+    if (pnl.tip) cell.title = pnl.tip;
+    else cell.removeAttribute("title");
   }
 
   function paintWatchTotal() {
