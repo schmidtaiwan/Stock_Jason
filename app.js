@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 111;
+  const PAGE_BUILD = 112;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -63,7 +63,7 @@
     stockCustom: false,
     stockDateFrom: "",
     stockDateTo: "",
-    stockStyle: "candle",
+    stockStyle: "line",
     kSel: null,
     kDrag: null,
     stockKSel: null,
@@ -1362,14 +1362,10 @@
       const series = await M.bars(row.secid, state.stockRange, win);
       if (gen !== state.stockChartGen) return;
       if (!series || !series.length) throw new Error("個股行情暫時讀不到");
-      let statusNote = "";
-      if (isStockOneDayRange() && state.stockStyle !== "candle") {
-        state.stockStyle = "candle";
-        buildStockToggles();
-      }
       const candle = state.stockStyle === "candle";
-      if (candle && isStockOneDayRange()) statusNote = "上方線圖 · 下方單日五分 K。";
-      else if (candle) statusNote = "上方線圖 · 下方 K 線與酒田。";
+      let statusNote = "";
+      if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 下方酒田。";
+      else if (candle) statusNote = "K 線 · 下方酒田。";
       else statusNote = "線圖。";
       const items = [{ name: row.name, color: "#e0a100", bars: series }];
       state.stockPlot = buildPlot(items, "price", align);
@@ -1810,15 +1806,19 @@
   function drawStock() {
     const plot = state.stockPlot;
     if (!plot) return;
-    // 上方固定線圖；K 線畫在最下方酒田之上
-    drawOn($("stock-chart"), Object.assign({}, plot, { style: "line" }), {
-      costLines: stockChipCostLines,
-      sel: null
-    });
+    const showK = state.stockStyle === "candle";
+    const lineCanvas = $("stock-chart");
+    const lineCard = lineCanvas && lineCanvas.closest(".chart-card");
     const kCard = $("stock-k-card");
     const kCanvas = $("stock-k-chart");
-    const showK = state.stockStyle === "candle";
+    if (lineCard) lineCard.hidden = !!showK;
     if (kCard) kCard.hidden = !showK;
+    if (!showK && lineCanvas) {
+      drawOn(lineCanvas, Object.assign({}, plot, { style: "line" }), {
+        costLines: stockChipCostLines,
+        sel: null
+      });
+    }
     if (showK && kCanvas) {
       drawOn(kCanvas, Object.assign({}, plot, { style: "candle" }), {
         costLines: stockChipCostLines,
@@ -2273,6 +2273,8 @@
       }
     }
     const priceCell = row.querySelector("[data-watch-price]");
+    const chgCell = row.querySelector("[data-watch-chg]");
+    const pctCell = row.querySelector("[data-watch-pct]");
     if (priceCell) {
       const miniPx = isWatchMini() ? " watch-mini-px" : "";
       if (m && m.price != null && isFinite(m.price)) {
@@ -2282,14 +2284,30 @@
         }
         const tone = chg != null && isFinite(chg) ? chg : (m.pct || 0);
         const cls = pctClass(tone);
-        const chgTxt = chg != null && isFinite(chg) ? signedPx(chg) : "";
         priceCell.className = "watch-px watch-num" + miniPx + " " + cls;
-        priceCell.innerHTML = fmtPx(m.price) +
-          (chgTxt ? '<small class="' + cls + '">' + chgTxt + "</small>" : "");
+        if (isWatchMini()) {
+          const chgTxt = chg != null && isFinite(chg) ? signedPx(chg) : "";
+          priceCell.innerHTML = fmtPx(m.price) +
+            (chgTxt ? '<small class="' + cls + '">' + chgTxt + "</small>" : "");
+        } else {
+          priceCell.textContent = fmtPx(m.price);
+        }
+        if (chgCell) {
+          chgCell.className = "watch-num watch-col-chg " + cls;
+          chgCell.textContent = chg != null && isFinite(chg) ? signedPx(chg) : "—";
+        }
+        if (pctCell) {
+          pctCell.className = "watch-num watch-col-pct " + cls;
+          pctCell.textContent = m.pct != null && isFinite(m.pct)
+            ? Math.abs(m.pct).toFixed(2) + "%"
+            : "—";
+        }
         row.setAttribute("data-price", String(m.price));
       } else {
         priceCell.className = "watch-px watch-num" + miniPx;
         priceCell.textContent = "—";
+        if (chgCell) { chgCell.className = "watch-num watch-col-chg"; chgCell.textContent = "—"; }
+        if (pctCell) { pctCell.className = "watch-num watch-col-pct"; pctCell.textContent = "—"; }
         row.setAttribute("data-price", "");
       }
     }
@@ -2374,7 +2392,8 @@
 
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      '<th>標的</th><th>目前</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
+      '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
+      '<th>漲跌</th><th>幅度</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
       '<th>籌碼</th><th>突</th><th>支</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
@@ -2392,12 +2411,14 @@
             NOTIFY_MODES[key].label + "</option>";
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
-          '<td class="watch-name">' +
+          '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
           '" title="' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + '</span></button></td>' +
-          '<td class="watch-col-price">' +
+          '<td class="watch-col-price watch-pin watch-pin-2">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
+          '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +
           '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
           '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
@@ -2968,7 +2989,7 @@
     state.focusFrom = null;
     state.stockRange = state.stockRange === "1d" ? "1d" : "1y";
     state.stockCustom = false;
-    state.stockStyle = "candle";
+    state.stockStyle = "line";
     state.stockPlot = null;
     stockChipCostLines = null;
     stockLivePv = null;
@@ -3954,7 +3975,6 @@
         const day = isoToday();
         state.stockDateFrom = day;
         state.stockDateTo = day;
-        state.stockStyle = "candle";
         syncStockDateInputs();
       }
       buildStockToggles();
@@ -4071,10 +4091,7 @@
     state.stockCustom = true;
     state.stockDateFrom = from;
     state.stockDateTo = to;
-    if (from === to) {
-      state.stockRange = "1d";
-      state.stockStyle = "candle";
-    }
+    if (from === to) state.stockRange = "1d";
     syncStockDateInputs();
     buildStockToggles();
     loadStockChart();

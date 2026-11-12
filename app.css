@@ -997,9 +997,10 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-table {
   width: 100%;
-  min-width: 760px;
-  border-collapse: collapse;
-  font-size: 10px;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
 }
 .watch-table th {
   color: var(--muted);
@@ -1007,35 +1008,45 @@ textarea { min-height: 120px; resize: vertical; }
   white-space: nowrap;
   background: #182028;
   border-bottom: 1px solid var(--line);
-  padding: 1px 4px;
+  padding: 6px 8px;
   text-align: left;
-  line-height: 1;
+  line-height: 1.15;
 }
 .watch-table td {
   border-bottom: 1px solid var(--line);
-  padding: 0 4px;
+  padding: 8px;
   vertical-align: middle;
-  line-height: 1;
+  line-height: 1.15;
+  background: #12181f;
 }
 .watch-table tr:last-child td { border-bottom: 0; }
-.watch-table th:nth-child(2),
-.watch-table th:nth-child(3),
-.watch-table th:nth-child(4),
-.watch-table th:nth-child(5),
-.watch-table th:nth-child(7),
-.watch-table th:nth-child(8),
+.watch-table th:nth-child(n+2),
 .watch-table .watch-num,
-.watch-table td:nth-child(2),
-.watch-table td:nth-child(3),
-.watch-table td:nth-child(4),
-.watch-table td:nth-child(5),
-.watch-table td:nth-child(7),
-.watch-table td:nth-child(8) {
+.watch-table td:nth-child(n+2) {
   text-align: right;
 }
+.watch-table th:nth-child(8),
+.watch-table td:nth-child(8) {
+  text-align: left;
+}
+.watch-pin {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #12181f !important;
+  box-shadow: 1px 0 0 var(--line);
+}
+.watch-table thead .watch-pin {
+  background: #182028 !important;
+  z-index: 4;
+}
+.watch-pin-2 {
+  left: 5.5em;
+}
 .watch-name {
-  min-width: 132px;
-  max-width: 180px;
+  min-width: 5.5em;
+  max-width: 7em;
+  width: 5.5em;
   text-align: left !important;
   white-space: nowrap;
 }
@@ -1049,12 +1060,12 @@ textarea { min-height: 120px; resize: vertical; }
   background: transparent;
   border: 0;
   padding: 0;
-  color: var(--ink);
-  font-size: 14px;
+  color: #fff;
+  font-size: 18px;
   font-weight: 700;
   text-align: left;
   min-height: 0;
-  line-height: 1;
+  line-height: 1.15;
 }
 .watch-lamp-chip {
   display: inline;
@@ -1066,13 +1077,20 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-lamp-chip.up { color: var(--up); }
 .watch-lamp-chip.down { color: var(--down); }
 .watch-col-price {
+  min-width: 4.8em;
   text-align: right;
   white-space: nowrap;
   vertical-align: middle;
 }
+.watch-col-chg,
+.watch-col-pct {
+  min-width: 4.2em;
+  font-size: 15px;
+  font-weight: 700;
+}
 .watch-col-lv {
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1094,16 +1112,14 @@ textarea { min-height: 120px; resize: vertical; }
   font-weight: 500;
 }
 .watch-table .watch-px {
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0;
-  font-size: 13px;
-  line-height: 1;
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: right;
 }
 .watch-table .watch-px small {
-  display: block;
-  font-size: 8px;
-  line-height: 1;
+  display: none;
 }
 .watch-col-chips {
   min-width: 120px;
@@ -1222,7 +1238,7 @@ textarea { min-height: 120px; resize: vertical; }
 @media (max-width: 720px) {
   .gate, .app { width: 100%; }
   .watch-table {
-    min-width: 820px;
+    min-width: 960px;
   }
 }
 .badge {
