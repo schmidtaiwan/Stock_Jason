@@ -1071,9 +1071,9 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-lamp-chip {
   display: inline;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
   white-space: nowrap;
 }
 .watch-lamp-chip.up { color: var(--up); }
@@ -1084,26 +1084,36 @@ textarea { min-height: 120px; resize: vertical; }
   white-space: nowrap;
   vertical-align: middle;
 }
+/* 成交與右側數值同大字（與成交價 22px 一致） */
+.watch-table td:nth-child(n+2) {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
 .watch-col-chg,
 .watch-col-pct,
 .watch-col-pnl,
 .watch-col-chip,
-.watch-col-lv {
+.watch-col-lv,
+.watch-col-lamp {
   min-width: 4.2em;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .watch-col-lamp {
-  min-width: 3.2em;
-  font-size: 14px;
-  font-weight: 700;
+  min-width: 3.6em;
   text-align: center !important;
-  white-space: nowrap;
 }
 .watch-lv-brk.up { color: #d49292; }
 .watch-lv-sup.down { color: #6eae8e; }
+.watch-lv {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
 .watch-px {
   display: inline-flex;
   align-items: baseline;
@@ -1134,10 +1144,10 @@ textarea { min-height: 120px; resize: vertical; }
   font-variant-numeric: tabular-nums;
 }
 .watch-input {
-  width: 52px;
+  width: 4.5em;
   min-width: 0;
-  min-height: 22px;
-  height: 22px;
+  min-height: 28px;
+  height: 28px;
   padding: 0;
   text-align: right;
   border: 0;
@@ -1145,8 +1155,9 @@ textarea { min-height: 120px; resize: vertical; }
   background: transparent;
   box-shadow: none;
   color: var(--ink);
-  font-size: 14px;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   appearance: none;
   -webkit-appearance: none;
@@ -1161,15 +1172,16 @@ textarea { min-height: 120px; resize: vertical; }
   background: transparent;
   color: #ff8a8a;
   border: 0;
-  min-height: 22px;
-  height: 22px;
+  min-height: 28px;
+  height: 28px;
   padding: 0 2px;
-  font-size: 14px;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
   white-space: nowrap;
 }
 .watch-alert-cell {
-  min-width: 140px;
+  min-width: 160px;
   text-align: right;
   vertical-align: middle;
 }
@@ -1180,7 +1192,8 @@ textarea { min-height: 120px; resize: vertical; }
   align-items: center;
   gap: 2px 4px;
   margin: 0;
-  font-size: 14px;
+  font-size: 22px;
+  font-weight: 800;
   color: var(--muted);
 }
 .watch-alert-toggle,
@@ -1190,34 +1203,36 @@ textarea { min-height: 120px; resize: vertical; }
   gap: 2px;
   margin: 0;
   color: var(--muted);
-  font-weight: 400;
-  font-size: 14px;
+  font-weight: 800;
+  font-size: 22px;
 }
 .watch-alert input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   accent-color: var(--accent);
 }
 .watch-alert-mode {
   width: auto;
   min-width: 3.8em;
   max-width: 5.2em;
-  min-height: 22px;
-  height: 22px;
+  min-height: 28px;
+  height: 28px;
   padding: 0 4px;
   border-radius: 3px;
-  font-size: 14px;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
 }
 .watch-alert-val input {
-  width: 36px;
-  min-height: 22px;
-  height: 22px;
+  width: 2.4em;
+  min-height: 28px;
+  height: 28px;
   padding: 0 2px;
   text-align: center;
   border-radius: 3px;
-  font-size: 14px;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
 }
 @media (max-width: 720px) {
   .gate, .app { width: 100%; }
