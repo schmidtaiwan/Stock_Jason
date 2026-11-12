@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 108;
+  const PAGE_BUILD = 109;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1337,7 +1337,9 @@
         buildStockToggles();
       }
       const candle = state.stockStyle === "candle";
-      if (candle && isStockOneDayRange()) statusNote = "單日五分 K。";
+      if (candle && isStockOneDayRange()) statusNote = "上方線圖 · 下方單日五分 K。";
+      else if (candle) statusNote = "上方線圖 · 下方 K 線與酒田。";
+      else statusNote = "線圖。";
       const items = [{ name: row.name, color: "#e0a100", bars: series }];
       state.stockPlot = buildPlot(items, "price", align);
       state.stockPlot.style = candle ? "candle" : "line";
@@ -1775,10 +1777,23 @@
   }
 
   function drawStock() {
-    drawOn($("stock-chart"), state.stockPlot, {
+    const plot = state.stockPlot;
+    if (!plot) return;
+    // 上方固定線圖；K 線畫在最下方酒田之上
+    drawOn($("stock-chart"), Object.assign({}, plot, { style: "line" }), {
       costLines: stockChipCostLines,
-      sel: state.stockKDrag || state.stockKSel
+      sel: null
     });
+    const kCard = $("stock-k-card");
+    const kCanvas = $("stock-k-chart");
+    const showK = state.stockStyle === "candle";
+    if (kCard) kCard.hidden = !showK;
+    if (showK && kCanvas) {
+      drawOn(kCanvas, Object.assign({}, plot, { style: "candle" }), {
+        costLines: stockChipCostLines,
+        sel: state.stockKDrag || state.stockKSel
+      });
+    }
   }
 
   function renderKPatterns(item) {
@@ -1817,12 +1832,16 @@
   function renderStockKPatterns(item) {
     const box = $("stock-k-patterns");
     const hint = $("stock-k-select-hint");
-    if (hint) hint.hidden = !(item && state.stockStyle === "candle");
+    const kCard = $("stock-k-card");
+    const showK = !!(item && state.stockStyle === "candle");
+    if (hint) hint.hidden = !showK;
+    if (kCard && !showK) kCard.hidden = true;
     if (!box) return;
     if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
       box.hidden = true;
       box.innerHTML = "";
       if ($("stock-k-pick")) { $("stock-k-pick").hidden = true; $("stock-k-pick").innerHTML = ""; }
+      if (kCard) kCard.hidden = true;
       return;
     }
     const rows = M.kPatterns(item.bars).slice(0, 24);
@@ -3921,7 +3940,7 @@
   });
 
   function onStockChartPointer(ev) {
-    const canvas = $("stock-chart");
+    const canvas = (ev && ev.currentTarget) || $("stock-chart");
     const tip = $("stock-hover");
     if (!canvas || !tip) return;
     const layout = canvas._layout;
@@ -3940,9 +3959,16 @@
   }
 
   if ($("stock-chart")) {
-    $("stock-chart").addEventListener("pointermove", function (ev) {
-      if (state.stockKDrag && state.stockPlot && state.stockPlot.style === "candle") {
-        const i = chartIndexAt(ev.clientX, "stock-chart");
+    $("stock-chart").addEventListener("pointermove", onStockChartPointer);
+    $("stock-chart").addEventListener("pointerleave", function () {
+      if ($("stock-hover")) $("stock-hover").hidden = true;
+    });
+  }
+
+  if ($("stock-k-chart")) {
+    $("stock-k-chart").addEventListener("pointermove", function (ev) {
+      if (state.stockKDrag && state.stockPlot && state.stockStyle === "candle") {
+        const i = chartIndexAt(ev.clientX, "stock-k-chart");
         if (i != null) {
           state.stockKDrag.to = i;
           drawStock();
@@ -3951,27 +3977,27 @@
       }
       onStockChartPointer(ev);
     });
-    $("stock-chart").addEventListener("pointerleave", function () {
+    $("stock-k-chart").addEventListener("pointerleave", function () {
       if ($("stock-hover")) $("stock-hover").hidden = true;
     });
-    $("stock-chart").addEventListener("pointerdown", function (ev) {
-      if (!state.stockPlot || state.stockPlot.style !== "candle") return;
-      const i = chartIndexAt(ev.clientX, "stock-chart");
+    $("stock-k-chart").addEventListener("pointerdown", function (ev) {
+      if (!state.stockPlot || state.stockStyle !== "candle") return;
+      const i = chartIndexAt(ev.clientX, "stock-k-chart");
       if (i == null) return;
       state.stockKDrag = { from: i, to: i };
-      try { $("stock-chart").setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
+      try { $("stock-k-chart").setPointerCapture(ev.pointerId); } catch (err) { /* ignore */ }
       if ($("stock-hover")) $("stock-hover").hidden = true;
       drawStock();
       ev.preventDefault();
     });
-    $("stock-chart").addEventListener("pointerup", function () {
+    $("stock-k-chart").addEventListener("pointerup", function () {
       if (!state.stockKDrag) return;
       const from = state.stockKDrag.from;
       const to = state.stockKDrag.to != null ? state.stockKDrag.to : from;
       state.stockKDrag = null;
       applyStockKSelection(from, to);
     });
-    $("stock-chart").addEventListener("pointercancel", function () {
+    $("stock-k-chart").addEventListener("pointercancel", function () {
       state.stockKDrag = null;
       if (state.stockKSel) drawStock();
     });

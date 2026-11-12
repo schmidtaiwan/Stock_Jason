@@ -343,8 +343,17 @@ main {
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+.stock-k-card {
+  margin-top: 12px;
+}
+.stock-k-card canvas {
+  width: 100%;
+  height: auto;
+  min-height: 220px;
+  touch-action: none;
+}
 .stock-k-patterns-foot {
-  margin-top: 14px;
+  margin-top: 10px;
   margin-bottom: 8px;
   padding: 12px 10px;
   border: 1px solid var(--line);
