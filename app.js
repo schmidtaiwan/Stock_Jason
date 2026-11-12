@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 129;
+  const PAGE_BUILD = 130;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2612,13 +2612,14 @@
       : twName(item.name || "");
     const title = name || String(item.code || "");
     return '<span class="watch-mini-title">' + esc(title) + "</span>" +
-      '<span class="watch-diag" data-watch-diag-slot hidden></span>';
+      '<span class="watch-mini-state" data-watch-state-slot hidden></span>';
   }
 
   function paintWatchSessionTags(box, quotes, levels) {
     if (!box || !M.watchSessionDiagnose) return;
     const qRows = quotes || watchLastQuotes || [];
     const lvRows = levels || watchLastLevels || [];
+    const mini = isWatchMini();
     book.watch.forEach(function (item, idx) {
       const row = box.querySelector('[data-watch-row="' + idx + '"]');
       if (!row) return;
@@ -2631,28 +2632,66 @@
           el = slot;
         }
       }
-      if (!el) return;
+      let stateEl = row.querySelector("[data-watch-state]");
+      if (!stateEl) {
+        const st = row.querySelector("[data-watch-state-slot]");
+        if (st) {
+          st.setAttribute("data-watch-state", String(idx));
+          st.removeAttribute("data-watch-state-slot");
+          stateEl = st;
+        }
+      }
+      let opsEl = row.querySelector("[data-watch-ops]");
       const cost = item.cost != null && item.cost !== "" ? Number(item.cost) : null;
       const diag = M.watchSessionDiagnose(qRows[idx], lvRows[idx], {
         cost: cost != null && isFinite(cost) && cost > 0 ? cost : null
       });
       if (!diag || !diag.ok) {
-        el.hidden = true;
-        el.textContent = "";
-        el.className = "watch-diag";
-        el.removeAttribute("title");
+        if (el) {
+          el.hidden = true;
+          el.textContent = "";
+          el.className = "watch-diag";
+          el.removeAttribute("title");
+        }
+        if (stateEl) {
+          stateEl.hidden = true;
+          stateEl.textContent = "";
+        }
+        if (opsEl) {
+          opsEl.hidden = true;
+          opsEl.innerHTML = "";
+        }
         return;
       }
       const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
-      el.hidden = false;
-      el.className = "watch-diag" + (tone ? " " + tone : "");
-      el.textContent = diag.stateLabel;
       const tip = [
         diag.stateLabel,
-        diag.defense != null ? ("防守 " + fmt(diag.defense)) : "",
+        diag.buyLevel != null ? ("試買 " + fmt(diag.buyLevel)) : "",
+        diag.sellLevel != null ? ("減碼 " + fmt(diag.sellLevel)) : "",
+        diag.stopPoint != null ? ("停損 " + fmt(diag.stopPoint)) : "",
         diag.cost != null ? ("成本 " + fmt(diag.cost)) : ""
       ].filter(Boolean).join(" · ");
-      el.title = tip;
+      if (el) {
+        el.hidden = false;
+        el.className = "watch-diag" + (tone ? " " + tone : "");
+        el.textContent = diag.stateLabel;
+        el.title = tip;
+      }
+      if (stateEl) {
+        stateEl.hidden = false;
+        stateEl.textContent = diag.stateLabel;
+        stateEl.className = "watch-mini-state" + (tone ? " " + tone : "");
+      }
+      if (opsEl) {
+        opsEl.hidden = false;
+        opsEl.innerHTML =
+          '<span class="watch-diag' + (tone ? " " + tone : "") + '">' + esc(diag.stateLabel) + "</span>" +
+          sessionOpsSummaryHtml(diag);
+        opsEl.title = tip;
+      } else if (mini && el) {
+        // 舊結構後援：把買賣停寫在狀態列後
+        el.innerHTML = esc(diag.stateLabel);
+      }
     });
   }
 
@@ -2791,8 +2830,11 @@
       const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
         '" data-open-watch="' + idx + '" data-price="" title="' + esc(tip) + '">' +
+        '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
         '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
+        "</span>" +
+        '<span class="watch-mini-ops" data-watch-ops="' + idx + '" hidden></span>' +
         "</button>";
     }).join("") + "</div>";
   }

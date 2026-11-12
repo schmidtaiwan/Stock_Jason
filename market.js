@@ -4336,6 +4336,8 @@
       belowSup ? (support && support.low != null ? support.low : supFocus) : supFocus,
       dayLow + tickSize(price)
     ));
+    const buyLevel = roundPx(Math.max(supFocus, dayLow));
+    const sellLevel = roundPx(brkFocus);
     return {
       ok: true,
       stateId: stateId,
@@ -4344,6 +4346,9 @@
       price: roundPx(price),
       cost: cost != null ? roundPx(cost) : null,
       defense: defense,
+      buyLevel: buyLevel,
+      sellLevel: sellLevel,
+      stopPoint: defense,
       support: support,
       breakout: breakout
     };
