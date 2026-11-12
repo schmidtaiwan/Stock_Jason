@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 99;
+  const PAGE_BUILD = 100;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2155,17 +2155,21 @@
     const priceCell = row.querySelector("[data-watch-price]");
     if (priceCell) {
       const miniPx = isWatchMini() ? " watch-mini-px" : "";
+      const oldLamp = !isWatchMini() ? priceCell.querySelector("[data-watch-lamp]") : null;
+      const lampHtml = oldLamp ? oldLamp.outerHTML
+        : (!isWatchMini() ? '<small class="watch-lamp-under" data-watch-lamp="' + idx + '"></small>' : "");
       if (m && m.price != null && isFinite(m.price)) {
         const cls = pctClass((m.pct || 0) / 100);
         const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
           (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
         priceCell.className = "watch-px watch-num" + miniPx + " " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
-          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
+          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "") +
+          lampHtml;
         row.setAttribute("data-price", String(m.price));
       } else {
         priceCell.className = "watch-px watch-num" + miniPx;
-        priceCell.textContent = "—";
+        priceCell.innerHTML = "—" + lampHtml;
         row.setAttribute("data-price", "");
       }
     }
@@ -2270,10 +2274,10 @@
           '<td class="watch-name">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
           '" title="' + esc(label) + '">' +
-          '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
-          '<span class="watch-lamp-inline" data-watch-lamp="' + idx + '"></span></button></td>' +
+          '<span data-watch-name="' + idx + '">' + esc(nameOnly) + '</span></button></td>' +
           '<td class="watch-col-price">' +
-          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
+          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span>' +
+          '<small class="watch-lamp-under" data-watch-lamp="' + idx + '"></small></div></td>' +
           '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
           '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
@@ -2367,7 +2371,7 @@
       if (!row) {
         if (el) el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
         if (lampEl) {
-          lampEl.className = "watch-lamp-inline";
+          lampEl.className = "watch-lamp-under";
           lampEl.textContent = "";
           lampEl.removeAttribute("title");
         }
@@ -2382,11 +2386,11 @@
       const lamp = C && C.chipTone ? C.chipTone(net, Math.max(Math.abs(net) * 8, 1)) : null;
       if (lampEl) {
         if (lamp && lamp.label) {
-          lampEl.className = "watch-lamp-inline" + (lamp.cls ? " " + lamp.cls : "");
+          lampEl.className = "watch-lamp-under" + (lamp.cls ? " " + lamp.cls : "");
           lampEl.textContent = "(" + lamp.label + ")";
           lampEl.title = "盤後法人燈號（非逐筆大單）";
         } else {
-          lampEl.className = "watch-lamp-inline";
+          lampEl.className = "watch-lamp-under";
           lampEl.textContent = "";
           lampEl.removeAttribute("title");
         }

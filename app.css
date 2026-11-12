@@ -899,14 +899,19 @@ textarea { min-height: 120px; resize: vertical; }
   min-height: 0;
   line-height: 1;
 }
-.watch-lamp-inline {
-  font-size: 13px;
-  font-weight: 700;
-  margin-left: 1px;
+.watch-lamp-under {
+  display: block;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
   white-space: nowrap;
 }
-.watch-lamp-inline.up { color: var(--up); }
-.watch-lamp-inline.down { color: var(--down); }
+.watch-lamp-under.up { color: var(--up); }
+.watch-lamp-under.down { color: var(--down); }
+.watch-table .watch-px .watch-lamp-under {
+  font-size: 9px;
+  line-height: 1;
+}
 .watch-col-price {
   text-align: right;
   white-space: nowrap;
