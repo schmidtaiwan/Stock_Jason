@@ -493,7 +493,7 @@ canvas {
   gap: 10px;
 }
 .stock-session {
-  margin-top: 12px;
+  margin: 8px 0 10px;
 }
 .stock-session-card h3 {
   margin: 0 0 8px;
