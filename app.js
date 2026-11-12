@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 113;
+  const PAGE_BUILD = 114;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1509,27 +1509,29 @@
     });
     if (!(hiI >= 0) || !(loI >= 0) || !isFinite(hi) || !isFinite(lo)) return;
     const markFont = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-    function mark(i, val, label, up) {
+    function mark(i, val, up) {
       const x = xOf(i);
       const y = yOf(val);
-      const txt = label + " " + fmt(val);
+      const txt = fmt(val);
       ctx.font = markFont;
       const tw = ctx.measureText(txt).width;
       let tx = x - tw / 2;
       tx = Math.max(left + 2, Math.min(width - right - tw - 2, tx));
-      let ty = up ? y - 8 : y + 14;
-      if (ty < top + 10) ty = y + 14;
-      if (ty > top + ih - 4) ty = y - 8;
       ctx.fillStyle = up ? "rgba(255, 90, 90, 0.95)" : "rgba(80, 200, 140, 0.95)";
       ctx.beginPath();
       ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = up ? "#ff8a8a" : "#6eae8e";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(txt, tx, ty);
+      if (up) {
+        ctx.textBaseline = "bottom";
+        ctx.fillText(txt, tx, Math.max(top + 2, y - 6));
+      } else {
+        ctx.textBaseline = "top";
+        ctx.fillText(txt, tx, Math.min(top + ih - 2, y + 6));
+      }
     }
-    mark(hiI, hi, "最高", true);
-    mark(loI, lo, "最低", false);
+    mark(hiI, hi, true);
+    mark(loI, lo, false);
   }
 
   function drawCandles(ctx, s, xOf, yOf, n) {
@@ -1813,6 +1815,15 @@
     const kCanvas = $("stock-k-chart");
     if (lineCard) lineCard.hidden = !!showK;
     if (kCard) kCard.hidden = !showK;
+    if (lineCanvas) {
+      lineCanvas.style.pointerEvents = "none";
+      lineCanvas.style.cursor = "default";
+    }
+    if (kCanvas) {
+      kCanvas.style.pointerEvents = showK ? "auto" : "none";
+      kCanvas.style.cursor = showK ? "crosshair" : "default";
+    }
+    if (!showK && $("stock-hover")) $("stock-hover").hidden = true;
     if (!showK && lineCanvas) {
       drawOn(lineCanvas, Object.assign({}, plot, { style: "line" }), {
         costLines: stockChipCostLines,
@@ -2394,7 +2405,7 @@
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
       '<th>漲跌</th><th>幅度</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
-      '<th>籌碼</th><th>突</th><th>支</th><th></th><th>通知</th>' +
+      '<th>燈</th><th>外</th><th>投</th><th>自</th><th>突</th><th>支</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -2424,12 +2435,14 @@
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
-          '<td class="watch-col-chips"><div class="watch-chips" data-watch-chips="' + idx +
-          '"><span class="watch-lamp-chip" data-watch-lamp="' + idx + '"></span>' +
-          '<span class="note">…</span></div></td>' +
-          '<td class="watch-col-lv"><span class="watch-lv watch-lv-brk" data-watch-brk="' + idx +
+          '<td class="watch-num watch-col-lamp"><span class="watch-lamp-chip" data-watch-lamp="' +
+          idx + '">—</span></td>' +
+          '<td class="watch-num watch-col-chip" data-watch-foreign="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-chip" data-watch-trust="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-chip" data-watch-dealer="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-lv"><span class="watch-lv watch-lv-brk" data-watch-brk="' + idx +
           '"></span></td>' +
-          '<td class="watch-col-lv"><span class="watch-lv watch-lv-sup" data-watch-sup="' + idx +
+          '<td class="watch-num watch-col-lv"><span class="watch-lv watch-lv-sup" data-watch-sup="' + idx +
           '"></span></td>' +
           '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
@@ -2491,13 +2504,15 @@
     });
   }
 
-  function chipLotsTag(n, tag) {
-    if (n == null || !isFinite(n)) return "";
+  function chipLotsCell(n) {
+    if (n == null || !isFinite(n)) return { html: "—", cls: "" };
     const lots = Math.round(n / 1000);
     const cls = lots > 0 ? "up" : lots < 0 ? "down" : "";
     const sign = lots > 0 ? "+" : lots < 0 ? "-" : "";
-    return '<span class="' + cls + '" title="' + esc(tag) + '買賣超">' + esc(tag) + sign +
-      Math.abs(lots).toLocaleString("zh-Hant") + "張</span>";
+    return {
+      html: sign + Math.abs(lots).toLocaleString("zh-Hant") + "張",
+      cls: cls
+    };
   }
 
   function paintWatchChipRows(box, pack) {
@@ -2505,32 +2520,51 @@
     const byCode = (pack && pack.byCode) || {};
     const date = pack && pack.date ? String(pack.date) : "";
     const dateLabel = date.length === 8 ? date.slice(4, 6) + "/" + date.slice(6, 8) : "";
+    const titleBase = dateLabel ? "盤後法人 " + dateLabel : "盤後法人燈號（非逐筆大單）";
     book.watch.forEach(function (item, idx) {
-      const el = box.querySelector('[data-watch-chips="' + idx + '"]');
-      if (!el) return;
+      const lampEl = box.querySelector('[data-watch-lamp="' + idx + '"]');
+      const foreignEl = box.querySelector('[data-watch-foreign="' + idx + '"]');
+      const trustEl = box.querySelector('[data-watch-trust="' + idx + '"]');
+      const dealerEl = box.querySelector('[data-watch-dealer="' + idx + '"]');
+      if (!lampEl && !foreignEl && !trustEl && !dealerEl) return;
       const code = String(item && item.code || "").toUpperCase();
       const row = code && byCode[code];
+      const empty = function (el) {
+        if (!el) return;
+        el.className = el.className.replace(/\b(up|down)\b/g, "").trim();
+        el.textContent = "—";
+        el.removeAttribute("title");
+      };
       if (!row) {
-        el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
+        if (lampEl) {
+          lampEl.className = "watch-lamp-chip";
+          lampEl.textContent = dateLabel ? "無" : "—";
+          lampEl.title = titleBase;
+        }
+        empty(foreignEl);
+        empty(trustEl);
+        empty(dealerEl);
         return;
       }
-      const parts = [
-        chipLotsTag(row.foreignNet, "外"),
-        chipLotsTag(row.trustNet, "投"),
-        chipLotsTag(row.dealerNet, "自")
-      ].filter(Boolean);
       const net = row.instNet != null ? row.instNet : ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0));
       const lamp = C && C.chipTone ? C.chipTone(net, Math.max(Math.abs(net) * 8, 1)) : null;
-      const lampHtml = lamp && lamp.label
-        ? '<span class="watch-lamp-chip' + (lamp.cls ? " " + lamp.cls : "") +
-          '" data-watch-lamp="' + idx + '" title="盤後法人燈號（非逐筆大單）">(' +
-          esc(lamp.label) + ")</span>"
-        : "";
-      let chips = parts.length ? parts.join(" ") : '<span class="note">—</span>';
-      if (dateLabel && parts.length) {
-        chips += ' <span class="watch-chip-date">' + esc(dateLabel) + "</span>";
+      if (lampEl) {
+        lampEl.className = "watch-lamp-chip" + (lamp && lamp.cls ? " " + lamp.cls : "");
+        lampEl.textContent = lamp && lamp.label ? lamp.label : "—";
+        lampEl.title = titleBase;
       }
-      el.innerHTML = lampHtml + chips;
+      [
+        [foreignEl, row.foreignNet, "外資買賣超"],
+        [trustEl, row.trustNet, "投信買賣超"],
+        [dealerEl, row.dealerNet, "自營買賣超"]
+      ].forEach(function (pair) {
+        const el = pair[0];
+        if (!el) return;
+        const cell = chipLotsCell(pair[1]);
+        el.className = ("watch-num watch-col-chip " + cell.cls).trim();
+        el.textContent = cell.html;
+        el.title = pair[2] + (dateLabel ? " " + dateLabel : "");
+      });
     });
   }
 
@@ -2544,7 +2578,7 @@
       if (brk) {
         if (lv.breakout && lv.breakout.text) {
           brk.className = "watch-lv watch-lv-brk up";
-          brk.textContent = "突" + lv.breakout.text;
+          brk.textContent = lv.breakout.text;
           brk.title = (lv.breakout.why || "上漲突破點") + " " + lv.breakout.text;
         } else {
           brk.className = "watch-lv watch-lv-brk";
@@ -2559,7 +2593,7 @@
           sup.className = "watch-lv watch-lv-sup down";
           // 列表用單點 focusText；區間留給 title
           const short = s.focusText || String(s.text).split("–")[0];
-          sup.textContent = "支" + short;
+          sup.textContent = short;
           sup.title = (s.why || "下跌支撐點") + " " + (s.text || short);
         } else {
           sup.className = "watch-lv watch-lv-sup";
@@ -4167,6 +4201,11 @@
     const canvas = (ev && ev.currentTarget) || $("stock-chart");
     const tip = $("stock-hover");
     if (!canvas || !tip) return;
+    // 線圖只看、不可點選／懸停解讀
+    if (state.stockStyle !== "candle" || (canvas.id === "stock-chart")) {
+      tip.hidden = true;
+      return;
+    }
     const layout = canvas._layout;
     if (!layout || !state.stockPlot) { tip.hidden = true; return; }
     const rect = canvas.getBoundingClientRect();
@@ -4183,6 +4222,8 @@
   }
 
   if ($("stock-chart")) {
+    $("stock-chart").style.pointerEvents = "none";
+    $("stock-chart").style.cursor = "default";
     $("stock-chart").addEventListener("pointermove", onStockChartPointer);
     $("stock-chart").addEventListener("pointerleave", function () {
       if ($("stock-hover")) $("stock-hover").hidden = true;
