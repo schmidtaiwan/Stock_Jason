@@ -4444,6 +4444,104 @@
       ];
     }
 
+    const mid = roundPx((supFocus + brkFocus) / 2);
+    const weekLow = roundPx(supFocus - atrNow * 0.8);
+    const weekHigh = roundPx(brkFocus + atrNow * 0.5);
+    let tomorrow = { label: "續抱觀察", steps: [] };
+    let days5 = { label: "波段觀望", steps: [] };
+    if (stateId === "weak_break") {
+      tomorrow = {
+        label: "反彈減碼／停損優先",
+        steps: [
+          "開盤若低開或翻黑，先看能否站回 " + formatLevelPx(defense) + "；站不回則執行停損",
+          "反彈至 " + formatLevelPx(bounceSell) + (cost != null ? "／成本 " + formatLevelPx(cost) : "") + " 分批減碼，不攤平",
+          "唯有帶量長陽收復 " + formatLevelPx(supFocus) + " 才改續抱，加碼仍暫緩"
+        ]
+      };
+      days5 = {
+        label: "偏空控險",
+        steps: [
+          "5 日內以反彈減碼為主，目標壓在 " + formatLevelPx(mid) + "～" + formatLevelPx(brkFocus),
+          "日線若連破 " + formatLevelPx(weekLow) + "，倉位降到輕倉或清倉",
+          cost != null && underWater
+            ? "成本 " + formatLevelPx(cost) + " 上方反彈先減虧，勿一次回補攤平"
+            : "未站回日 K 支撐前，只允許極小試單且嚴設停損"
+        ]
+      };
+    } else if (stateId === "fake_break") {
+      tomorrow = {
+        label: "不追高、反彈減",
+        steps: [
+          "開高不追；若再測 " + formatLevelPx(brkFocus) + " 量能不足則減碼",
+          "回落守 " + formatLevelPx(defense) + " 可續抱觀察，破則停損／減到底",
+          "反彈 " + formatLevelPx(roundPx((price + dayHigh) / 2)) + "～" + formatLevelPx(dayHigh) + " 先出部分"
+        ]
+      };
+      days5 = {
+        label: "壓力區高賣低等",
+        steps: [
+          "5 日內壓力盯 " + formatLevelPx(brkFocus) + "，假突破後宜高賣低等",
+          "收復並站穩壓力之上再轉偏多；否則區間上緣減碼",
+          "防守失守 " + formatLevelPx(supFocus) + " 後，等回測確認再決定是否回補"
+        ]
+      };
+    } else if (stateId === "dry_base") {
+      tomorrow = {
+        label: "續抱／支撐小試",
+        steps: [
+          "開盤量縮震盪以續抱為主，不追價",
+          "回測 " + formatLevelPx(trialBuy) + " 可小量低接，破 " + formatLevelPx(defense) + " 立刻停試單",
+          cost != null && underWater
+            ? "反彈靠近成本 " + formatLevelPx(cost) + " 先減虧一部分"
+            : "帶量站上 " + formatLevelPx(mid) + " 再考慮加碼"
+        ]
+      };
+      days5 = {
+        label: "打底等待轉強",
+        steps: [
+          "5 日內守 " + formatLevelPx(supFocus) + " 當底；量縮盤整可續抱",
+          "帶量突破 " + formatLevelPx(brkFocus) + " 才轉偏多加碼，目標上看 " + formatLevelPx(weekHigh),
+          "日線失守 " + formatLevelPx(defense) + " 則改偏空，反彈減碼"
+        ]
+      };
+    } else if (stateId === "vol_turn") {
+      tomorrow = {
+        label: "續抱、回檔試單",
+        steps: [
+          "開盤偏強可續抱；回檔不破 " + formatLevelPx(supFocus) + " 可試單／加碼",
+          "接近 " + formatLevelPx(brkFocus) + " 先別追，等站穩再加",
+          "若翻弱跌破 " + formatLevelPx(defense) + "，先減碼保利"
+        ]
+      };
+      days5 = {
+        label: "偏多抱股控回檔",
+        steps: [
+          "5 日偏多：回檔買在 " + formatLevelPx(supFocus) + "～" + formatLevelPx(mid),
+          "站穩 " + formatLevelPx(brkFocus) + " 後再往 " + formatLevelPx(weekHigh) + " 看漲",
+          "日線轉弱跌破 " + formatLevelPx(defense) + " 則降倉，等量縮再接"
+        ]
+      };
+    } else {
+      tomorrow = {
+        label: "觀望／區間操作",
+        steps: [
+          "開盤先看落在支撐 " + formatLevelPx(supFocus) + " 與壓力 " + formatLevelPx(brkFocus) + " 哪一側",
+          "破 " + formatLevelPx(defense) + " 減碼；帶量過壓力再偏多",
+          cost != null
+            ? "對照成本 " + formatLevelPx(cost) + "：浮盈可規畫減碼比例，浮虧勿急攤"
+            : "無成本時以支撐壓力紀律進出"
+        ]
+      };
+      days5 = {
+        label: "區間高賣低買",
+        steps: [
+          "5 日以 " + formatLevelPx(supFocus) + "～" + formatLevelPx(brkFocus) + " 高賣低買",
+          "有效跌破 " + formatLevelPx(weekLow) + " 改偏空；站穩 " + formatLevelPx(weekHigh) + " 改偏多",
+          "方向未明前部位不宜過重，設好防守再等訊號"
+        ]
+      };
+    }
+
     return {
       ok: true,
       code: stockId,
@@ -4466,6 +4564,8 @@
       why: why,
       action: action,
       actionSteps: actionSteps,
+      tomorrow: tomorrow,
+      days5: days5,
       tip: "規則依盤中分 K＋日 K 支撐壓力試算，非投資建議；盤中籌碼可能尚未公告。"
     };
   }

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 122;
+  const PAGE_BUILD = 123;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1202,16 +1202,24 @@
     if (!quiet) {
       box.hidden = false;
       box.innerHTML = '<article class="card"><p class="status">讀取盤中 1 分 K 與支撐壓力…</p></article>';
+      const hz = $("stock-k-patterns");
+      if (hz) {
+        hz.hidden = false;
+        hz.innerHTML = '<p class="status">整理明日／5 日操作建議…</p>';
+      }
     }
     try {
       const hold = watchCostFor(row);
       const diag = await M.intradaySessionDiagnose(row.secid, row.code, hold);
       if (gen !== stockSessionGen || !state.stock || state.stock.secid !== row.secid) return;
       renderStockSession(diag);
+      renderStockHorizon(diag);
     } catch (err) {
       if (gen !== stockSessionGen) return;
       if (!quiet) {
-        renderStockSession({ ok: false, reason: (err && err.message) || "盤中診斷失敗" });
+        const fail = { ok: false, reason: (err && err.message) || "盤中診斷失敗" };
+        renderStockSession(fail);
+        renderStockHorizon(fail);
       }
     } finally {
       stockSessionBusy = false;
@@ -1464,9 +1472,9 @@
       if (!series || !series.length) throw new Error("個股行情暫時讀不到");
       const candle = state.stockStyle === "candle";
       let statusNote = "";
-      if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 下方酒田。";
-      else if (candle) statusNote = "K 線 · 下方酒田。";
-      else statusNote = "線圖 · 右側持股占比。";
+      if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 下方明日／5 日操作。";
+      else if (candle) statusNote = "K 線 · 下方明日／5 日操作。";
+      else statusNote = "線圖 · 右側持股占比 · 下方明日／5 日操作。";
       const items = [{ name: row.name, color: "#e0a100", bars: series }];
       state.stockPlot = buildPlot(items, "price", align);
       state.stockPlot.style = candle ? "candle" : "line";
@@ -2058,40 +2066,59 @@
   }
 
   function renderStockKPatterns(item) {
-    const box = $("stock-k-patterns");
     const hint = $("stock-k-select-hint");
     const kCard = $("stock-k-card");
     const showK = !!(item && state.stockStyle === "candle");
     if (hint) hint.hidden = !showK;
     if (kCard && !showK) kCard.hidden = true;
+    if (!showK) {
+      if ($("stock-k-pick")) { $("stock-k-pick").hidden = true; $("stock-k-pick").innerHTML = ""; }
+      if (kCard) kCard.hidden = true;
+    }
+    // 酒田列表已改為「明日／5 日操作」，內容由盤中診斷寫入
+  }
+
+  function renderStockHorizon(diag) {
+    const box = $("stock-k-patterns");
     if (!box) return;
-    if (!showK || !item || !item.bars || !item.bars.length || !M.kPatterns) {
+    if (!diag) {
       box.hidden = true;
       box.innerHTML = "";
-      if ($("stock-k-pick")) { $("stock-k-pick").hidden = true; $("stock-k-pick").innerHTML = ""; }
-      if (!showK && kCard) kCard.hidden = true;
-      return;
-    }
-    const rows = M.kPatterns(item.bars).slice(0, 24);
-    const catN = M.sakataCatalog ? M.sakataCatalog().length : 78;
-    const ref = '<p class="fine">依<strong>酒田戰法 ' + catN +
-      ' 式</strong>辨識。圖上可拖曳紅框解讀；點下列型態反白對應K。</p>';
-    if (!rows.length) {
-      box.hidden = false;
-      box.innerHTML = "<h3>酒田K線分析</h3>" + ref + '<p class="fine">這段區間沒抓到明顯戰法型態。</p>';
       return;
     }
     box.hidden = false;
-    box.innerHTML = "<h3>酒田K線分析 · " + esc(item.name) + "</h3>" + ref + "<ul>" +
-      rows.map(function (row) {
-        const cls = row.bias === "多" ? "up" : row.bias === "空" ? "down" : "";
-        const span = /三兵|三星|夜星|晨星|三法|懷抱|覆蓋|舍子|烏雲|曙光/.test(row.name) ? 2 : 0;
-        const idTag = row.id != null ? "#" + row.id + " " : "";
-        return '<li data-stock-k-focus="' + row.i + '" data-k-span="' + span + '">' +
-          '<span class="k-date">' + esc(row.date.slice(5)) + "</span>" +
-          '<span class="k-name ' + cls + '">' + esc(idTag + row.name) + "</span>" +
-          '<span class="k-detail">' + esc(row.detail) + "</span></li>";
-      }).join("") + "</ul>";
+    if (!diag.ok) {
+      box.innerHTML = '<h3>明日／5 日操作建議</h3><p class="fine">' +
+        esc(diag.reason || "暫無建議") + "</p>";
+      return;
+    }
+    const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
+    const tm = diag.tomorrow || { label: "—", steps: [] };
+    const d5 = diag.days5 || { label: "—", steps: [] };
+    const tmLis = (tm.steps || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const d5Lis = (d5.steps || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const levels = '<ul class="stat-list">' +
+      "<li><span>盤中防守</span><strong>" + (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li>" +
+      "<li><span>日 K 支撐</span><strong class=\"down\">" +
+      esc((diag.support && (diag.support.focusText || diag.support.text)) || "—") + "</strong></li>" +
+      "<li><span>日 K 壓力</span><strong class=\"up\">" +
+      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
+      (diag.cost != null
+        ? "<li><span>自選成本</span><strong>" + fmt(diag.cost) + "</strong></li>"
+        : "") +
+      "</ul>";
+    box.innerHTML = "<h3>明日／5 日操作建議 <span class=\"tag " + tone + "\">" +
+      esc(diag.stateLabel || "") + "</span></h3>" +
+      '<p class="stock-session-meta">現價 ' + (diag.price != null ? fmt(diag.price) : "—") +
+      (diag.asOf ? " · " + esc(diag.asOf) : "") + "</p>" +
+      "<h4>明日 · " + esc(tm.label || "") + "</h4><ul class=\"session-list\">" + tmLis + "</ul>" +
+      "<h4>近 5 日 · " + esc(d5.label || "") + "</h4><ul class=\"session-list\">" + d5Lis + "</ul>" +
+      levels +
+      '<p class="fine">' + esc(diag.tip || "規則試算，非投資建議。") + "</p>";
   }
 
   function renderStockLegend(items) {
