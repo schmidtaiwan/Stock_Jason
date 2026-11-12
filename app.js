@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 134;
+  const PAGE_BUILD = 135;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -283,6 +283,33 @@
     paintTwii(true).then(function () {
       if (state.view === "chart") loadChart();
     });
+    loadHeaderBias();
+  }
+
+  function paintHeaderBias(brief) {
+    const box = $("header-bias");
+    const text = $("header-bias-text");
+    if (!box || !text) return;
+    if (!brief || !brief.bias) {
+      box.hidden = true;
+      text.textContent = "—";
+      text.className = "";
+      return;
+    }
+    const cls = /多|開高|短多/.test(brief.bias) ? "up"
+      : /空|開低/.test(brief.bias) ? "down" : "";
+    box.hidden = false;
+    text.className = cls;
+    text.textContent = brief.bias;
+    box.title = (brief.summary || brief.bias) + "（點擊看動向節奏解讀）";
+  }
+
+  async function loadHeaderBias() {
+    if (!C || !C.usBoard) return;
+    try {
+      const pack = await C.usBoard();
+      paintHeaderBias(pack && pack.brief);
+    } catch (err) { /* 頁首預判失敗就略過 */ }
   }
 
   function paintChrome(skipTwii) {
@@ -4927,6 +4954,7 @@
     }
     try {
       const pack = await C.usBoard();
+      paintHeaderBias(pack && pack.brief);
       if (state.view !== "pulse") return;
       renderUsBrief(pack.brief);
       paintUsBoardRows(pack);
@@ -5232,6 +5260,9 @@
   }
 
   if ($("us-board-refresh")) $("us-board-refresh").addEventListener("click", loadUsBoard);
+  if ($("header-bias")) $("header-bias").addEventListener("click", function () {
+    setView("pulse");
+  });
   if ($("pulse-refresh")) $("pulse-refresh").addEventListener("click", function () {
     loadPulse();
     loadUsBoard();

@@ -107,8 +107,41 @@ a.gate-ext[hidden] { display: none !important; }
 .tools { flex: 0 0 auto; }
 .brand .mark { width: 36px; height: 36px; flex: 0 0 auto; }
 .brand h1 { font-size: 16px; margin: 0; line-height: 1.25; }
+.header-bias {
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  margin: 0 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #151c24;
+  color: var(--ink);
+  text-align: left;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.header-bias-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.header-bias strong {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.header-bias strong.up { color: var(--up); }
+.header-bias strong.down { color: var(--down); }
 .twii-box {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
