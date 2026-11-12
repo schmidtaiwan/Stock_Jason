@@ -4278,6 +4278,77 @@
     return { open: open, weekday: weekday, hh: hh, mm: mm, label: (map.hour || "") + ":" + (map.minute || "") };
   }
 
+  // 自選列輕量診斷：即時報價＋日 K 支撐壓力（不另拉 1 分 K）
+  function watchSessionDiagnose(quote, levels, opts) {
+    opts = opts || {};
+    quote = quote || {};
+    levels = levels || {};
+    const price = num(quote.price);
+    if (!(price > 0)) return { ok: false, reason: "無現價" };
+    const dayOpen = num(quote.open);
+    let dayHigh = num(quote.high);
+    let dayLow = num(quote.low);
+    if (!(dayHigh > 0)) dayHigh = price;
+    if (!(dayLow > 0)) dayLow = price;
+    const atrNow = price * 0.015;
+    const support = levels.support || null;
+    const breakout = levels.breakout || null;
+    const supFocus = support && support.focus != null ? support.focus : dayLow;
+    const brkFocus = breakout && breakout.focus != null ? breakout.focus : dayHigh;
+    const cost = opts.cost != null && isFinite(Number(opts.cost)) && Number(opts.cost) > 0
+      ? Number(opts.cost) : null;
+    const pct = num(quote.pct);
+    const amp = dayHigh > dayLow && price > 0 ? ((dayHigh - dayLow) / price) * 100 : null;
+    // 無分 K 量能時，用振幅／漲跌幅粗估縮量／放量
+    const shrink = (amp != null && amp < 1.2 && Math.abs(pct || 0) < 1.2) ||
+      (amp == null && Math.abs(pct || 0) < 0.8);
+    const surge = Math.abs(pct || 0) >= 2.2 || (amp != null && amp >= 3);
+    const nearSup = Math.abs(price - supFocus) <= Math.max(atrNow * 0.55, tickSize(price) * 3);
+    const belowSup = price < (support && support.low != null ? support.low : supFocus) - tickSize(price);
+    const brokeDayLow = price <= dayLow + tickSize(price) && (pct != null && pct < -1);
+    const pokedHigh = dayHigh >= brkFocus - tickSize(price);
+    const failedBreak = pokedHigh && price < brkFocus - Math.max(atrNow * 0.25, tickSize(price) * 2);
+    const reclaiming = dayOpen > 0 && price > dayOpen && price > (dayLow + (dayHigh - dayLow) * 0.55);
+    const holdAboveSup = price > supFocus + tickSize(price);
+
+    let stateId = "range";
+    let stateLabel = "區間震盪";
+    let stateTone = "";
+    if (belowSup || (brokeDayLow && price < (dayOpen || price))) {
+      stateId = "weak_break";
+      stateLabel = "弱勢破底";
+      stateTone = "down";
+    } else if (failedBreak) {
+      stateId = "fake_break";
+      stateLabel = "假突破誘多";
+      stateTone = "down";
+    } else if (nearSup && shrink && holdAboveSup) {
+      stateId = "dry_base";
+      stateLabel = "量縮打底";
+      stateTone = "";
+    } else if (surge && reclaiming && holdAboveSup && !failedBreak) {
+      stateId = "vol_turn";
+      stateLabel = "帶量轉強";
+      stateTone = "up";
+    }
+
+    const defense = roundPx(Math.min(
+      belowSup ? (support && support.low != null ? support.low : supFocus) : supFocus,
+      dayLow + tickSize(price)
+    ));
+    return {
+      ok: true,
+      stateId: stateId,
+      stateLabel: stateLabel,
+      stateTone: stateTone,
+      price: roundPx(price),
+      cost: cost != null ? roundPx(cost) : null,
+      defense: defense,
+      support: support,
+      breakout: breakout
+    };
+  }
+
   // 盤中 1 分 K＋日 K 支撐壓力＋自選成本 → 狀態診斷與操作建議
   async function intradaySessionDiagnose(secid, code, opts) {
     opts = opts || {};
@@ -5616,6 +5687,7 @@
     watchChips: watchChips,
     stockAdvice: stockAdvice,
     intradaySessionDiagnose: intradaySessionDiagnose,
+    watchSessionDiagnose: watchSessionDiagnose,
     yahooOneMinBars: yahooOneMinBars,
     twPulse: twPulse,
     yahooSymbolQuote: yahooSymbolQuote,

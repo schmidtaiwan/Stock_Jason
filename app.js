@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 124;
+  const PAGE_BUILD = 125;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -16,6 +16,8 @@
   let stockSessionTimer = 0;
   let stockSessionBusy = false;
   let stockSessionGen = 0;
+  let watchLastQuotes = [];
+  let watchLastLevels = [];
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -2488,7 +2490,49 @@
       ? M.preferTwName(item.name, "", item.code)
       : twName(item.name || "");
     const title = name || String(item.code || "");
-    return '<span class="watch-mini-title">' + esc(title) + "</span>";
+    return '<span class="watch-mini-title">' + esc(title) + "</span>" +
+      '<span class="watch-diag" data-watch-diag-slot hidden></span>';
+  }
+
+  function paintWatchSessionTags(box, quotes, levels) {
+    if (!box || !M.watchSessionDiagnose) return;
+    const qRows = quotes || watchLastQuotes || [];
+    const lvRows = levels || watchLastLevels || [];
+    book.watch.forEach(function (item, idx) {
+      const row = box.querySelector('[data-watch-row="' + idx + '"]');
+      if (!row) return;
+      let el = row.querySelector("[data-watch-diag]");
+      if (!el) {
+        const slot = row.querySelector("[data-watch-diag-slot]");
+        if (slot) {
+          slot.setAttribute("data-watch-diag", String(idx));
+          slot.removeAttribute("data-watch-diag-slot");
+          el = slot;
+        }
+      }
+      if (!el) return;
+      const cost = item.cost != null && item.cost !== "" ? Number(item.cost) : null;
+      const diag = M.watchSessionDiagnose(qRows[idx], lvRows[idx], {
+        cost: cost != null && isFinite(cost) && cost > 0 ? cost : null
+      });
+      if (!diag || !diag.ok) {
+        el.hidden = true;
+        el.textContent = "";
+        el.className = "watch-diag";
+        el.removeAttribute("title");
+        return;
+      }
+      const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
+      el.hidden = false;
+      el.className = "watch-diag" + (tone ? " " + tone : "");
+      el.textContent = diag.stateLabel;
+      const tip = [
+        diag.stateLabel,
+        diag.defense != null ? ("防守 " + fmt(diag.defense)) : "",
+        diag.cost != null ? ("成本 " + fmt(diag.cost)) : ""
+      ].filter(Boolean).join(" · ");
+      el.title = tip;
+    });
   }
 
   function applyWatchQuoteRow(box, m, idx) {
@@ -2596,19 +2640,23 @@
         paintWatchTotal();
         return;
       }
+      watchLastQuotes = rows;
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
+      paintWatchSessionTags(box, rows, watchLastLevels);
+      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve(null), 20000, null)
+        .then(function (levels) {
+          if (gen !== paintWatchQuotes.gen || !levels) return;
+          watchLastLevels = levels;
+          if (!mini) paintWatchLevelRows(box, levels);
+          paintWatchSessionTags(box, watchLastQuotes, levels);
+        });
       if (mini) return;
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve(null), 15000, null)
         .then(function (chips) {
           if (gen !== paintWatchQuotes.gen || !chips) return;
           paintWatchChipRows(box, chips);
-        });
-      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve(null), 20000, null)
-        .then(function (levels) {
-          if (gen !== paintWatchQuotes.gen || !levels) return;
-          paintWatchLevelRows(box, levels);
         });
     } catch (err) {
       if (gen !== paintWatchQuotes.gen) return;
@@ -2652,7 +2700,8 @@
           '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
           '" title="' + esc(label) + '">' +
-          '<span data-watch-name="' + idx + '">' + esc(nameOnly) + '</span></button></td>' +
+          '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
+          '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button></td>' +
           '<td class="watch-col-price watch-pin watch-pin-2">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
@@ -2701,6 +2750,8 @@
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
+    watchLastQuotes = [];
+    watchLastLevels = [];
     if (mini) renderWatchMini(box);
     else renderWatchFull(box);
     withWatchTimeout(M.watchBoard(book.watch), 20000, null).then(function (rows) {
@@ -2714,19 +2765,23 @@
         paintWatchTotal();
         return;
       }
+      watchLastQuotes = rows;
       rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
       checkWatchAlertsFromRows(book.watch, rows);
+      paintWatchSessionTags(box, rows, watchLastLevels);
+      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve([]), 20000, [])
+        .then(function (levels) {
+          if (gen !== renderWatch.gen) return;
+          watchLastLevels = levels || [];
+          if (!mini) paintWatchLevelRows(box, levels || []);
+          paintWatchSessionTags(box, watchLastQuotes, watchLastLevels);
+        });
       if (mini) return;
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve({ date: "", byCode: {} }), 15000, { date: "", byCode: {} })
         .then(function (chips) {
           if (gen !== renderWatch.gen) return;
           paintWatchChipRows(box, chips || { date: "", byCode: {} });
-        });
-      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve([]), 20000, [])
-        .then(function (levels) {
-          if (gen !== renderWatch.gen) return;
-          paintWatchLevelRows(box, levels || []);
         });
     });
   }

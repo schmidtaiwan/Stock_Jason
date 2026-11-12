@@ -1116,15 +1116,16 @@ textarea { min-height: 120px; resize: vertical; }
   min-width: 86px;
   max-width: 86px;
   text-align: left !important;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  vertical-align: top;
 }
 .watch-link {
   display: inline-flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-start;
   flex-wrap: nowrap;
-  gap: 0;
+  gap: 2px;
   width: auto;
   max-width: 100%;
   background: transparent;
@@ -1136,6 +1137,31 @@ textarea { min-height: 120px; resize: vertical; }
   text-align: left;
   min-height: 0;
   line-height: 1.15;
+}
+.watch-link [data-watch-name] {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watch-diag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.watch-diag.up { color: var(--up); }
+.watch-diag.down { color: var(--down); }
+.watch-mini-card .watch-diag {
+  font-size: 10px;
+  margin-top: 2px;
 }
 .watch-lamp-chip {
   display: inline;
