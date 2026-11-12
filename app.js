@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 100;
+  const PAGE_BUILD = 101;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2155,21 +2155,17 @@
     const priceCell = row.querySelector("[data-watch-price]");
     if (priceCell) {
       const miniPx = isWatchMini() ? " watch-mini-px" : "";
-      const oldLamp = !isWatchMini() ? priceCell.querySelector("[data-watch-lamp]") : null;
-      const lampHtml = oldLamp ? oldLamp.outerHTML
-        : (!isWatchMini() ? '<small class="watch-lamp-under" data-watch-lamp="' + idx + '"></small>' : "");
       if (m && m.price != null && isFinite(m.price)) {
         const cls = pctClass((m.pct || 0) / 100);
         const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
           (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
         priceCell.className = "watch-px watch-num" + miniPx + " " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
-          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "") +
-          lampHtml;
+          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
         row.setAttribute("data-price", String(m.price));
       } else {
         priceCell.className = "watch-px watch-num" + miniPx;
-        priceCell.innerHTML = "—" + lampHtml;
+        priceCell.textContent = "—";
         row.setAttribute("data-price", "");
       }
     }
@@ -2276,15 +2272,15 @@
           '" title="' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + '</span></button></td>' +
           '<td class="watch-col-price">' +
-          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span>' +
-          '<small class="watch-lamp-under" data-watch-lamp="' + idx + '"></small></div></td>' +
+          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
           '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
           '<td class="watch-col-chips"><div class="watch-chips" data-watch-chips="' + idx +
-          '"><span class="note">…</span></div></td>' +
+          '"><span class="watch-lamp-chip" data-watch-lamp="' + idx + '"></span>' +
+          '<span class="note">…</span></div></td>' +
           '<td class="watch-col-lv"><span class="watch-lv watch-lv-brk" data-watch-brk="' + idx +
           '"></span></td>' +
           '<td class="watch-col-lv"><span class="watch-lv watch-lv-sup" data-watch-sup="' + idx +
@@ -2365,16 +2361,11 @@
     const dateLabel = date.length === 8 ? date.slice(4, 6) + "/" + date.slice(6, 8) : "";
     book.watch.forEach(function (item, idx) {
       const el = box.querySelector('[data-watch-chips="' + idx + '"]');
-      const lampEl = box.querySelector('[data-watch-lamp="' + idx + '"]');
+      if (!el) return;
       const code = String(item && item.code || "").toUpperCase();
       const row = code && byCode[code];
       if (!row) {
-        if (el) el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
-        if (lampEl) {
-          lampEl.className = "watch-lamp-under";
-          lampEl.textContent = "";
-          lampEl.removeAttribute("title");
-        }
+        el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
         return;
       }
       const parts = [
@@ -2384,23 +2375,16 @@
       ].filter(Boolean);
       const net = row.instNet != null ? row.instNet : ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0));
       const lamp = C && C.chipTone ? C.chipTone(net, Math.max(Math.abs(net) * 8, 1)) : null;
-      if (lampEl) {
-        if (lamp && lamp.label) {
-          lampEl.className = "watch-lamp-under" + (lamp.cls ? " " + lamp.cls : "");
-          lampEl.textContent = "(" + lamp.label + ")";
-          lampEl.title = "盤後法人燈號（非逐筆大單）";
-        } else {
-          lampEl.className = "watch-lamp-under";
-          lampEl.textContent = "";
-          lampEl.removeAttribute("title");
-        }
-      }
-      if (!el) return;
+      const lampHtml = lamp && lamp.label
+        ? '<span class="watch-lamp-chip' + (lamp.cls ? " " + lamp.cls : "") +
+          '" data-watch-lamp="' + idx + '" title="盤後法人燈號（非逐筆大單）">(' +
+          esc(lamp.label) + ")</span>"
+        : "";
       let chips = parts.length ? parts.join(" ") : '<span class="note">—</span>';
       if (dateLabel && parts.length) {
         chips += ' <span class="watch-chip-date">' + esc(dateLabel) + "</span>";
       }
-      el.innerHTML = chips;
+      el.innerHTML = lampHtml + chips;
     });
   }
 

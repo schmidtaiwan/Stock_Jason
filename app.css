@@ -842,7 +842,7 @@ textarea { min-height: 120px; resize: vertical; }
   width: 100%;
   min-width: 760px;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 10px;
 }
 .watch-table th {
   color: var(--muted);
@@ -850,13 +850,13 @@ textarea { min-height: 120px; resize: vertical; }
   white-space: nowrap;
   background: #182028;
   border-bottom: 1px solid var(--line);
-  padding: 2px 4px;
+  padding: 1px 4px;
   text-align: left;
   line-height: 1;
 }
 .watch-table td {
   border-bottom: 1px solid var(--line);
-  padding: 1px 4px;
+  padding: 0 4px;
   vertical-align: middle;
   line-height: 1;
 }
@@ -893,25 +893,21 @@ textarea { min-height: 120px; resize: vertical; }
   border: 0;
   padding: 0;
   color: var(--ink);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   text-align: left;
   min-height: 0;
   line-height: 1;
 }
-.watch-lamp-under {
-  display: block;
+.watch-lamp-chip {
+  display: inline;
   font-size: 9px;
-  font-weight: 500;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
-.watch-lamp-under.up { color: var(--up); }
-.watch-lamp-under.down { color: var(--down); }
-.watch-table .watch-px .watch-lamp-under {
-  font-size: 9px;
-  line-height: 1;
-}
+.watch-lamp-chip.up { color: var(--up); }
+.watch-lamp-chip.down { color: var(--down); }
 .watch-col-price {
   text-align: right;
   white-space: nowrap;
@@ -919,7 +915,7 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-col-lv {
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -944,12 +940,12 @@ textarea { min-height: 120px; resize: vertical; }
   flex-direction: column;
   align-items: flex-end;
   gap: 0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
 }
 .watch-table .watch-px small {
   display: block;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1;
 }
 .watch-col-chips {
@@ -963,7 +959,7 @@ textarea { min-height: 120px; resize: vertical; }
   gap: 2px 4px;
   align-items: baseline;
   margin: 0;
-  font-size: 9px;
+  font-size: 8px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   font-weight: 600;
@@ -982,10 +978,10 @@ textarea { min-height: 120px; resize: vertical; }
   font-variant-numeric: tabular-nums;
 }
 .watch-input {
-  width: 56px;
+  width: 52px;
   min-width: 0;
-  min-height: 13px;
-  height: 13px;
+  min-height: 10px;
+  height: 10px;
   padding: 0;
   text-align: right;
   border: 0;
@@ -993,7 +989,7 @@ textarea { min-height: 120px; resize: vertical; }
   background: transparent;
   box-shadow: none;
   color: var(--ink);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   appearance: none;
@@ -1009,15 +1005,15 @@ textarea { min-height: 120px; resize: vertical; }
   background: transparent;
   color: #ff8a8a;
   border: 0;
-  min-height: 13px;
-  height: 13px;
+  min-height: 10px;
+  height: 10px;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1;
   white-space: nowrap;
 }
 .watch-alert-cell {
-  min-width: 132px;
+  min-width: 120px;
   text-align: right;
   vertical-align: middle;
 }
@@ -1026,9 +1022,9 @@ textarea { min-height: 120px; resize: vertical; }
   flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 1px 3px;
+  gap: 1px 2px;
   margin: 0;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
 }
 .watch-alert-toggle,
@@ -1041,29 +1037,29 @@ textarea { min-height: 120px; resize: vertical; }
   font-weight: 400;
 }
 .watch-alert input[type="checkbox"] {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   accent-color: var(--accent);
 }
 .watch-alert-mode {
   width: auto;
-  min-width: 4.2em;
-  max-width: 5.8em;
-  min-height: 13px;
-  height: 13px;
+  min-width: 3.8em;
+  max-width: 5.2em;
+  min-height: 10px;
+  height: 10px;
   padding: 0 2px;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: 3px;
+  font-size: 9px;
   line-height: 1;
 }
 .watch-alert-val input {
-  width: 36px;
-  min-height: 13px;
-  height: 13px;
+  width: 32px;
+  min-height: 10px;
+  height: 10px;
   padding: 0 2px;
   text-align: center;
-  border-radius: 4px;
-  font-size: 10px;
+  border-radius: 3px;
+  font-size: 9px;
   line-height: 1;
 }
 @media (max-width: 720px) {
