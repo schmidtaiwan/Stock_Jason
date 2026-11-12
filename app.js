@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 112;
+  const PAGE_BUILD = 113;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1868,11 +1868,11 @@
     if (hint) hint.hidden = !showK;
     if (kCard && !showK) kCard.hidden = true;
     if (!box) return;
-    if (!item || !item.bars || !item.bars.length || !M.kPatterns) {
+    if (!showK || !item || !item.bars || !item.bars.length || !M.kPatterns) {
       box.hidden = true;
       box.innerHTML = "";
       if ($("stock-k-pick")) { $("stock-k-pick").hidden = true; $("stock-k-pick").innerHTML = ""; }
-      if (kCard) kCard.hidden = true;
+      if (!showK && kCard) kCard.hidden = true;
       return;
     }
     const rows = M.kPatterns(item.bars).slice(0, 24);
