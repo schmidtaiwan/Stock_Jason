@@ -4341,7 +4341,7 @@
     const shares = opts.shares != null && isFinite(Number(opts.shares)) ? Number(opts.shares) : null;
     const vsCost = cost != null ? price - cost : null;
     const underWater = vsCost != null && vsCost < 0;
-    const nearSup = Math.abs(price - supFocus) <= Math.max(atrNow * 0.55, priceSize(price) * 3);
+    const nearSup = Math.abs(price - supFocus) <= Math.max(atrNow * 0.55, tickSize(price) * 3);
     const belowSup = price < (support && support.low != null ? support.low : supFocus) - tickSize(price);
     const brokeDayLow = intra.length > 30 && price <= dayLow + tickSize(price) &&
       dayLow < (lastDaily ? num(lastDaily.l) : dayLow) + atrNow * 0.15;
