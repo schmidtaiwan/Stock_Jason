@@ -1002,6 +1002,10 @@ textarea { min-height: 120px; resize: vertical; }
   border-spacing: 0;
   font-size: 14px;
 }
+.watch-table th,
+.watch-table td {
+  box-sizing: border-box;
+}
 .watch-table th {
   color: var(--muted);
   font-weight: 500;
@@ -1034,23 +1038,30 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-pin {
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 5;
   background: #12181f !important;
-  box-shadow: 1px 0 0 var(--line);
+  overflow: hidden;
 }
 .watch-table thead .watch-pin {
   background: #182028 !important;
-  z-index: 4;
+  z-index: 6;
 }
 .watch-pin-2 {
-  left: 5.5em;
+  left: 108px;
+  z-index: 5;
+  box-shadow: 2px 0 0 var(--line);
+}
+.watch-table thead .watch-pin-2 {
+  z-index: 6;
 }
 .watch-name {
-  min-width: 5.5em;
-  max-width: 7em;
-  width: 5.5em;
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
   text-align: left !important;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .watch-link {
   display: inline-flex;
@@ -1079,10 +1090,13 @@ textarea { min-height: 120px; resize: vertical; }
 .watch-lamp-chip.up { color: var(--up); }
 .watch-lamp-chip.down { color: var(--down); }
 .watch-col-price {
-  min-width: 4.8em;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
   text-align: right;
   white-space: nowrap;
   vertical-align: middle;
+  overflow: hidden;
 }
 /* 成交與右側數值同大字（與成交價 22px 一致） */
 .watch-table td:nth-child(n+2) {
@@ -1090,18 +1104,30 @@ textarea { min-height: 120px; resize: vertical; }
   font-weight: 800;
   line-height: 1.1;
 }
+.watch-col-chg {
+  width: 108px;
+  min-width: 108px;
+}
+.watch-col-pct {
+  width: 96px;
+  min-width: 96px;
+}
 .watch-col-chg,
 .watch-col-pct,
 .watch-col-pnl,
 .watch-col-chip,
 .watch-col-lv,
 .watch-col-lamp {
-  min-width: 4.2em;
   font-size: 22px;
   font-weight: 800;
   line-height: 1.1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.watch-col-pnl,
+.watch-col-chip,
+.watch-col-lv {
+  min-width: 5.5em;
 }
 .watch-col-lamp {
   min-width: 3.6em;
