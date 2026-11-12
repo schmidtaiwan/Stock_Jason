@@ -4480,6 +4480,9 @@
 
     let action = "續抱觀察";
     let actionSteps = [];
+    let buyPoints = [];
+    let sellPoints = [];
+    const stopPoint = defense;
     if (stateId === "weak_break") {
       action = underWater ? "反彈減碼／設停損" : "反彈減碼優先";
       actionSteps = [
@@ -4487,12 +4490,22 @@
         "盤中若有效跌破防守價 " + formatLevelPx(defense) + " 且站不回，執行停損／清倉紀律",
         "若僅長下影後迅速站回 " + formatLevelPx(supFocus) + "，改為續抱觀察，但加碼暫緩"
       ];
+      buyPoints = ["破底中不買、不攤平；僅長下影後迅速站回 " + formatLevelPx(supFocus) + " 才可極小試單"];
+      sellPoints = [
+        "反彈靠近 " + formatLevelPx(bounceSell) + (cost != null ? "／成本 " + formatLevelPx(cost) : "") + " 分批減碼",
+        "帶量跌破防守 " + formatLevelPx(defense) + " 且站不回 → 停損出場"
+      ];
     } else if (stateId === "fake_break") {
       action = "反彈減碼、不追高";
       actionSteps = [
         "假突破後不追壓力 " + formatLevelPx(brkFocus) + " 之上",
         "反彈至 " + formatLevelPx(roundPx((price + dayHigh) / 2)) + "～" + formatLevelPx(dayHigh) + " 分批減碼",
         "若跌破防守 " + formatLevelPx(defense) + "，轉為停損／減碼到底"
+      ];
+      buyPoints = ["假突破後暫不低接；等回測 " + formatLevelPx(supFocus) + " 且量縮止跌再小試"];
+      sellPoints = [
+        "反彈 " + formatLevelPx(roundPx((price + dayHigh) / 2)) + "～" + formatLevelPx(dayHigh) + "／壓力 " + formatLevelPx(brkFocus) + " 分批減",
+        "破防守 " + formatLevelPx(defense) + " → 停損／減到底"
       ];
     } else if (stateId === "dry_base") {
       action = underWater ? "續抱觀察，低接僅小試" : "續抱觀察／支撐試單";
@@ -4503,6 +4516,15 @@
           ? "成本 " + formatLevelPx(cost) + " 上方反彈先減虧，勿一次攤平"
           : "帶量站上 " + formatLevelPx(roundPx((supFocus + brkFocus) / 2)) + " 再考慮加碼"
       ];
+      buyPoints = [
+        "買點約 " + formatLevelPx(trialBuy) + "：須量縮不破低／下影止跌後才試單，正在下跌勿接"
+      ];
+      sellPoints = [
+        cost != null && underWater
+          ? "反彈近成本 " + formatLevelPx(cost) + " 先減虧"
+          : "反彈近壓力 " + formatLevelPx(brkFocus) + " 分批減，不貪突破",
+        "破防守 " + formatLevelPx(defense) + " → 立刻停損試單部位"
+      ];
     } else if (stateId === "vol_turn") {
       action = "續抱，回檔可試單";
       actionSteps = [
@@ -4510,13 +4532,30 @@
         "盯緊防守 " + formatLevelPx(defense) + "，跌破且量縮轉弱則先減碼保利",
         "接近壓力 " + formatLevelPx(brkFocus) + " 先別追高，等站穩再加"
       ];
-    } else {
-      action = "觀望／續抱";
-      actionSteps = [
-        "區間內以 " + formatLevelPx(supFocus) + " 為防守、" + formatLevelPx(brkFocus) + " 為壓力",
-        "破防守 " + formatLevelPx(defense) + " → 減碼；帶量突破壓力 → 再轉偏多",
-        cost != null ? ("對照成本 " + formatLevelPx(cost) + " 規劃減碼或留倉比例") : "無成本資料時以支撐壓力紀律為主"
+      buyPoints = ["回檔不破 " + formatLevelPx(supFocus) + "～" + formatLevelPx(trialBuy) + " 可試單／加碼"];
+      sellPoints = [
+        "接近壓力 " + formatLevelPx(brkFocus) + " 先別追；量縮遇壓可先減部分保利",
+        "跌破防守 " + formatLevelPx(defense) + " → 減碼保利／停損加碼單"
       ];
+    } else {
+      action = "區間操作（低買高賣）";
+      actionSteps = [
+        "買在下緣止跌：回測 " + formatLevelPx(trialBuy) + " 須見量縮不破低／下影／站回均價才試單，正在下跌勿接",
+        "賣在上緣遇壓：反彈近 " + formatLevelPx(brkFocus) + " 且量能無法放大就分批了結，不貪一次突破",
+        "破底即停損：帶量跌破下緣／防守 " + formatLevelPx(defense) + " 立刻停損，禁止向下攤平"
+      ];
+      buyPoints = [
+        "區間下緣約 " + formatLevelPx(trialBuy) + "（支撐 " + formatLevelPx(supFocus) + "）：止跌訊號出現後小量試單"
+      ];
+      sellPoints = [
+        "區間上緣約 " + formatLevelPx(brkFocus) + "：遇壓量縮即分批賣出／減碼",
+        cost != null
+          ? ("對照成本 " + formatLevelPx(cost) + "：浮盈可規畫減碼比例，浮虧勿急攤")
+          : "無成本時嚴格依上緣減碼、下緣停損"
+      ];
+      if (why.indexOf("區間操作前提：下緣未破、上緣不過；帶量破下緣立刻停止低接並停損") < 0) {
+        why.push("區間操作前提：下緣未破、上緣不過；帶量破下緣立刻停止低接並停損");
+      }
     }
 
     const mid = roundPx((supFocus + brkFocus) / 2);
@@ -4598,21 +4637,19 @@
       };
     } else {
       tomorrow = {
-        label: "觀望／區間操作",
+        label: "區間低買高賣",
         steps: [
-          "開盤先看落在支撐 " + formatLevelPx(supFocus) + " 與壓力 " + formatLevelPx(brkFocus) + " 哪一側",
-          "破 " + formatLevelPx(defense) + " 減碼；帶量過壓力再偏多",
-          cost != null
-            ? "對照成本 " + formatLevelPx(cost) + "：浮盈可規畫減碼比例，浮虧勿急攤"
-            : "無成本時以支撐壓力紀律進出"
+          "開盤先對照下緣 " + formatLevelPx(supFocus) + "／上緣 " + formatLevelPx(brkFocus),
+          "回測下緣須止跌才接；靠近上緣量縮就減，不追突破",
+          "破 " + formatLevelPx(defense) + " 立刻停損，禁止攤平"
         ]
       };
       days5 = {
-        label: "區間高賣低買",
+        label: "箱型高賣低買",
         steps: [
-          "5 日以 " + formatLevelPx(supFocus) + "～" + formatLevelPx(brkFocus) + " 高賣低買",
-          "有效跌破 " + formatLevelPx(weekLow) + " 改偏空；站穩 " + formatLevelPx(weekHigh) + " 改偏多",
-          "方向未明前部位不宜過重，設好防守再等訊號"
+          "5 日以 " + formatLevelPx(supFocus) + "～" + formatLevelPx(brkFocus) + " 做區間，部位不宜過重",
+          "有效跌破 " + formatLevelPx(weekLow) + " 改偏空停低接；站穩 " + formatLevelPx(weekHigh) + " 才改追多",
+          "大盤劇烈震盪日：只做有止跌訊號的下緣試單，其餘空手等"
         ]
       };
     }
@@ -4633,6 +4670,11 @@
       support: support,
       breakout: breakout,
       defense: defense,
+      buyPoints: buyPoints,
+      sellPoints: sellPoints,
+      stopPoint: stopPoint,
+      buyLevel: trialBuy,
+      sellLevel: brkFocus,
       stateId: stateId,
       stateLabel: stateLabel,
       stateTone: stateTone,

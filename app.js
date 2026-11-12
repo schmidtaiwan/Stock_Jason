@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 127;
+  const PAGE_BUILD = 128;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1187,13 +1187,24 @@
     const steps = (diag.actionSteps || []).map(function (line) {
       return "<li>" + esc(line) + "</li>";
     }).join("");
+    const buyLis = (diag.buyPoints || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const sellLis = (diag.sellPoints || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
     const levels = '<ul class="stat-list">' +
+      "<li><span>買點參考</span><strong class=\"down\">" +
+      (diag.buyLevel != null ? fmt(diag.buyLevel) : "—") + "</strong></li>" +
+      "<li><span>賣點參考</span><strong class=\"up\">" +
+      (diag.sellLevel != null ? fmt(diag.sellLevel) : "—") + "</strong></li>" +
+      "<li><span>停損／防守</span><strong>" +
+      (diag.stopPoint != null ? fmt(diag.stopPoint) : (diag.defense != null ? fmt(diag.defense) : "—")) +
+      "</strong></li>" +
       "<li><span>日 K 支撐</span><strong class=\"down\">" +
       esc((diag.support && (diag.support.focusText || diag.support.text)) || "—") + "</strong></li>" +
       "<li><span>日 K 壓力</span><strong class=\"up\">" +
-      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
-      "<li><span>盤中防守價</span><strong>" +
-      (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li></ul>";
+      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li></ul>";
     return '<article class="card stock-session-card">' +
       '<details class="session-fold">' +
       "<summary><span class=\"session-fold-title\">" + esc(title) + "</span>" +
@@ -1202,6 +1213,8 @@
       '<p class="stock-session-meta">' + meta + "</p>" +
       "<h4>多空判斷</h4><ul class=\"session-list\">" + why + "</ul>" +
       "<h4>建議操作 · " + esc(diag.action) + "</h4><ul class=\"session-list\">" + steps + "</ul>" +
+      (buyLis ? "<h4>買點</h4><ul class=\"session-list\">" + buyLis + "</ul>" : "") +
+      (sellLis ? "<h4>賣點／停損</h4><ul class=\"session-list\">" + sellLis + "</ul>" : "") +
       levels +
       '<p class="fine">' + esc(diag.tip || "") + "</p>" +
       "</div></details></article>";
