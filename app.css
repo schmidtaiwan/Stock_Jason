@@ -333,11 +333,34 @@ main {
   background: #1a1214;
 }
 .k-pick h3 { margin: 0 0 6px; font-size: 14px; }
+.k-pick h4 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
 .k-pick .k-pick-tone {
   font-weight: 700;
   margin-right: 6px;
 }
+.k-pick .k-pick-warn {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(224, 161, 0, 0.12);
+  color: #e0a100;
+  font-size: 13px;
+  line-height: 1.4;
+}
 .k-pick ul { margin: 6px 0 0; padding-left: 1.1em; }
+.k-pick .session-list {
+  margin: 0;
+  padding-left: 1.15em;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+}
 .k-patterns {
   margin-top: 10px;
   padding-top: 8px;
