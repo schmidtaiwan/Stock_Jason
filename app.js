@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 117;
+  const PAGE_BUILD = 118;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2403,7 +2403,7 @@
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
       '<th>漲跌</th><th>幅度</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
-      '<th>燈</th><th>外</th><th>投</th><th>自</th><th>突</th><th>支</th><th></th><th>通知</th>' +
+      '<th>燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
