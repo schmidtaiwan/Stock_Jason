@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 94;
-  const PAGE_DATE = "2026-11-11";
+  const PAGE_BUILD = 95;
+  const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
   let usBoardOpen = true;
@@ -2120,6 +2120,19 @@
     return name + (item.code || "");
   }
 
+  function watchMiniNameHtml(item) {
+    const name = M.preferTwName
+      ? M.preferTwName(item.name, "", item.code)
+      : twName(item.name || "");
+    const title = name || String(item.code || "");
+    const code = String(item.code || "");
+    if (!code || title === code) {
+      return '<span class="watch-mini-title">' + esc(title) + "</span>";
+    }
+    return '<span class="watch-mini-title">' + esc(title) +
+      '</span><span class="watch-mini-code">' + esc(code) + "</span>";
+  }
+
   function applyWatchQuoteRow(box, m, idx) {
     const item = book.watch[idx];
     const row = box.querySelector('[data-watch-row="' + idx + '"]');
@@ -2134,7 +2147,10 @@
       const nameEl = row.querySelector("[data-watch-name]");
       const label = nextName + (item.code || "");
       if (btn && !nameEl) btn.textContent = label;
-      if (nameEl) nameEl.textContent = label;
+      if (nameEl) {
+        if (isWatchMini()) nameEl.innerHTML = watchMiniNameHtml(item);
+        else nameEl.textContent = label;
+      }
     }
     const priceCell = row.querySelector("[data-watch-price]");
     if (priceCell) {
@@ -2223,10 +2239,9 @@
   function renderWatchMini(box) {
     box.innerHTML = '<div class="watch-mini-grid">' + book.watch.map(function (item, idx) {
       if (item.market) item.market = twName(item.market);
-      const label = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
         '" data-open-watch="' + idx + '" data-price="">' +
-        '<span class="watch-mini-name" data-watch-name="' + idx + '">' + esc(label) + "</span>" +
+        '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
         '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
         "</button>";
     }).join("") + "</div>";

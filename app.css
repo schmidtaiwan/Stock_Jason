@@ -756,6 +756,10 @@ textarea { min-height: 120px; resize: vertical; }
   text-align: left;
 }
 .watch-mini-name {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0;
   width: 100%;
   min-width: 0;
   font-size: 12px;
@@ -764,7 +768,18 @@ textarea { min-height: 120px; resize: vertical; }
   color: #fff;
   word-break: break-word;
 }
+.watch-mini-name .watch-mini-title,
+.watch-mini-name .watch-mini-code {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: inherit;
+}
 .watch-mini-px {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
   width: 100%;
   text-align: left;
   font-size: 15px;
@@ -772,7 +787,7 @@ textarea { min-height: 120px; resize: vertical; }
   line-height: 1.25;
 }
 .watch-mini-px small {
-  display: block;
+  display: inline;
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
