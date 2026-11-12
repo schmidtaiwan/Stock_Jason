@@ -736,13 +736,9 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-mini-grid {
   display: grid;
-  grid-template-rows: repeat(3, auto);
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(140px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   margin-top: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 .watch-mini-card {
   display: flex;
@@ -798,10 +794,9 @@ textarea { min-height: 120px; resize: vertical; }
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-@media (max-width: 480px) {
+@media (max-width: 360px) {
   .watch-mini-grid {
-    grid-template-rows: repeat(3, auto);
-    grid-auto-columns: minmax(120px, 70vw);
+    grid-template-columns: 1fr;
   }
 }
 #watch-compose-back { margin: 0 0 10px; }
