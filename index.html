@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=115">
+  <link rel="stylesheet" href="app.css?v=116">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -238,15 +238,10 @@
             </div>
             <div class="row">
               <button id="watch-add" class="primary" type="button">加入</button>
-              <button id="watch-photo-btn" class="secondary" type="button">上傳庫存圖</button>
               <button id="watch-json-btn" class="secondary" type="button">匯入富邦 JSON</button>
             </div>
-            <input id="watch-photo" class="sr" type="file" accept="image/*">
             <input id="watch-json" class="sr" type="file" accept="application/json,.json">
-            <label for="watch-paste">貼上持股明細文字</label>
-            <textarea id="watch-paste" rows="5" placeholder="商品名稱（代號）　股數　成本價　現價…&#10;國泰永續高股息 (00878)	3000	6.04	33.50	…"></textarea>
-            <button id="watch-paste-btn" class="secondary" type="button">辨識貼上文字</button>
-            <p class="fine">可貼上正確明細（含代號最準）、上傳庫存／未實現損益截圖，或匯入富邦 JSON。成本有值就當買價；確認後才寫入。</p>
+            <p class="fine">可用代號／名稱加入，或匯入富邦 JSON。成本有值就當買價；確認後才寫入。</p>
             <p id="watch-status" class="status" role="status"></p>
             <div id="import-box"></div>
           </div>
@@ -583,11 +578,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=115"></script>
-  <script src="drive.js?v=115"></script>
-  <script src="sakata.js?v=115"></script>
-  <script src="market.js?v=115"></script>
-  <script src="chips.js?v=115"></script>
-  <script src="app.js?v=115"></script>
+  <script src="google_config.js?v=116"></script>
+  <script src="drive.js?v=116"></script>
+  <script src="sakata.js?v=116"></script>
+  <script src="market.js?v=116"></script>
+  <script src="chips.js?v=116"></script>
+  <script src="app.js?v=116"></script>
 </body>
 </html>

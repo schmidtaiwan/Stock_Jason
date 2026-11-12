@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 115;
+  const PAGE_BUILD = 116;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -16,8 +16,6 @@
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
-  let ocrWorker = null;
-  let ocrWorkerPromise = null;
   const $ = function (id) { return document.getElementById(id); };
   const M = window.SJMarket;
   const D = window.SJDrive;
@@ -2462,7 +2460,7 @@
     const box = $("watch-list");
     paintWatchGroups();
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">這個群組還是空的。按群組列「加入股票」用代號或庫存圖新增。</p>';
+      box.innerHTML = '<p class="note">這個群組還是空的。按群組列「加入股票」用代號新增，或匯入富邦 JSON。</p>';
       paintWatchTotal();
       return;
     }
@@ -3134,82 +3132,6 @@
     if (n) setWatchCompose(false);
   }
 
-  function loadTesseract() {
-    if (window.Tesseract) return Promise.resolve();
-    return new Promise(function (resolve, reject) {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
-      script.onload = function () { resolve(); };
-      script.onerror = function () { reject(new Error("辨識程式載入失敗")); };
-      document.head.appendChild(script);
-    });
-  }
-
-  function setOcrStatus(msg) {
-    if ($("watch-status")) $("watch-status").textContent = msg;
-  }
-
-  async function getOcrWorker() {
-    if (ocrWorker) return ocrWorker;
-    if (ocrWorkerPromise) return ocrWorkerPromise;
-    ocrWorkerPromise = (async function () {
-      await loadTesseract();
-      setOcrStatus("辨識準備中（第一次會下載字庫）…");
-      const worker = await window.Tesseract.createWorker("chi_tra+eng", 1, {
-        logger: function (msg) {
-          if (!msg) return;
-          if (msg.status === "recognizing text") {
-            setOcrStatus("辨識中 " + Math.round((msg.progress || 0) * 100) + "%");
-          } else if (msg.status === "loading language traineddata") {
-            setOcrStatus("下載字庫 " + Math.round((msg.progress || 0) * 100) + "%");
-          } else if (msg.status) {
-            setOcrStatus("辨識準備中…");
-          }
-        }
-      });
-      await worker.setParameters({
-        tessedit_pageseg_mode: "6",
-        preserve_interword_spaces: "1"
-      });
-      ocrWorker = worker;
-      ocrWorkerPromise = null;
-      return worker;
-    })();
-    try {
-      return await ocrWorkerPromise;
-    } catch (err) {
-      ocrWorkerPromise = null;
-      throw err;
-    }
-  }
-
-  function prepImage(file) {
-    return new Promise(function (resolve, reject) {
-      const img = new Image();
-      img.onload = function () {
-        // 券商截圖：略過頂部標題與底部備註／導覽，保留表格
-        const top = Math.round(img.height * 0.14);
-        const bottom = Math.round(img.height * 0.90);
-        const cropH = Math.max(1, bottom - top);
-        // 不放大圖（放大只拖慢 OCR）；最寬 1200 足夠讀表格
-        const scale = Math.min(1, 1200 / Math.max(1, img.width));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(img.width * scale));
-        canvas.height = Math.max(1, Math.round(cropH * scale));
-        const ctx = canvas.getContext("2d", { alpha: false });
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.filter = "grayscale(1) contrast(1.28) brightness(1.04)";
-        ctx.drawImage(img, 0, top, img.width, cropH, 0, 0, canvas.width, canvas.height);
-        ctx.filter = "none";
-        URL.revokeObjectURL(img.src);
-        resolve(canvas);
-      };
-      img.onerror = function () { reject(new Error("這張圖讀不起來")); };
-      img.src = URL.createObjectURL(file);
-    });
-  }
-
   function usefulWatchName(name) {
     let n = String(name || "").replace(/現股/g, "").replace(/[時人之]+$/g, "").trim();
     n = n.replace(/^(主動)/, "$1");
@@ -3275,7 +3197,7 @@
       const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
-        item.note = row.note || "圖上成本均價";
+        item.note = row.note || "匯入成本";
       } else if (item.secid && (row.pct != null || row.pnl != null)) {
         try {
           const map = await M.quoteMap([item.secid]);
@@ -3297,37 +3219,10 @@
           }
         } catch (err) { /* 沒報價就讓使用者自己填買價 */ }
       }
-      if (!item.note && row.pnl != null) item.note = "圖上損益 " + row.pnl + "，請補買價";
+      if (!item.note && row.pnl != null) item.note = "損益 " + row.pnl + "，請補買價";
       return item;
     });
     return Promise.all(tasks);
-  }
-
-  async function readHoldingsPaste(text) {
-    setOcrStatus("正在解析貼上文字…");
-    try {
-      const raw = String(text || "").trim();
-      if (!raw) {
-        setOcrStatus("請先貼上持股明細文字。");
-        return;
-      }
-      let parsed = M.parseHoldingsTable ? M.parseHoldingsTable(raw) : [];
-      if (!parsed.length && M.parseInventory) parsed = M.parseInventory(raw);
-      if (!parsed.length) {
-        setOcrStatus("文字裡沒讀到商品與股數。請確認有代號或常見股名，以及股數、成本價。");
-        importRows = [];
-        renderImport();
-        return;
-      }
-      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
-      setOcrStatus("讀到 " + parsed.length + " 檔" +
-        (priced ? "，其中 " + priced + " 檔有成本價。" : "。"));
-      importRows = await resolveParsed(parsed);
-      renderImport();
-      setOcrStatus("確認股數與買價後按匯入。");
-    } catch (err) {
-      setOcrStatus(err.message || "文字解析失敗");
-    }
   }
 
   async function readFubonHoldingsJson(file) {
@@ -3357,45 +3252,6 @@
     }
   }
 
-  async function readInventoryPhoto(file) {
-    $("watch-photo-btn").disabled = true;
-    setOcrStatus("正在讀圖…");
-    try {
-      const worker = await getOcrWorker();
-      const canvas = await prepImage(file);
-      setOcrStatus("辨識中…");
-      await worker.setParameters({ tessedit_pageseg_mode: "6" });
-      const first = await worker.recognize(canvas);
-      const texts = [];
-      if (first && first.data && first.data.text) texts.push(first.data.text);
-      let parsed = M.parseInventory(texts.join("\n"));
-      // 只在第一次讀太少時再補掃一次，避免固定跑 3 次
-      if (parsed.length < 2) {
-        setOcrStatus("辨識中（補強）…");
-        await worker.setParameters({ tessedit_pageseg_mode: "4" });
-        const second = await worker.recognize(canvas);
-        if (second && second.data && second.data.text) texts.push("---PSM---\n" + second.data.text);
-        parsed = M.parseInventory(texts.join("\n"));
-      }
-      if (!parsed.length) {
-        setOcrStatus("沒讀到商品與股數。請上傳較清晰的庫存／未實現損益截圖，或改用上方搜尋。");
-        importRows = [];
-        renderImport();
-        return;
-      }
-      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
-      setOcrStatus(priced
-        ? "讀到 " + parsed.length + " 檔，其中 " + priced + " 檔用圖上的成本均價當買價。"
-        : "讀到 " + parsed.length + " 檔，正在查現價回推買價…");
-      importRows = await resolveParsed(parsed);
-      renderImport();
-      setOcrStatus("確認股數與買價後按匯入。圖只在這台手機辨識，不會另存。");
-    } catch (err) {
-      setOcrStatus(err.message || "讀圖失敗");
-    } finally {
-      $("watch-photo-btn").disabled = false;
-    }
-  }
 
   function moneyFrom(which) {
     if (which === "news") {
@@ -4035,9 +3891,7 @@
     else if (t.id === "watch-open-add") setWatchCompose(true);
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
-    else if (t.id === "watch-photo-btn") $("watch-photo").click();
     else if (t.id === "watch-json-btn") $("watch-json").click();
-    else if (t.id === "watch-paste-btn") readHoldingsPaste($("watch-paste") && $("watch-paste").value);
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
@@ -4367,11 +4221,6 @@
     if (idx < 0 || !importRows[idx]) return;
     if (shares != null) importRows[idx].shares = ev.target.value;
     if (cost != null) importRows[idx].cost = ev.target.value;
-  });
-  $("watch-photo").addEventListener("change", function () {
-    const file = $("watch-photo").files && $("watch-photo").files[0];
-    $("watch-photo").value = "";
-    if (file) readInventoryPhoto(file);
   });
   $("watch-json").addEventListener("change", function () {
     const file = $("watch-json").files && $("watch-json").files[0];
