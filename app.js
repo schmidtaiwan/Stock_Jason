@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 103;
+  const PAGE_BUILD = 104;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2151,12 +2151,16 @@
     if (priceCell) {
       const miniPx = isWatchMini() ? " watch-mini-px" : "";
       if (m && m.price != null && isFinite(m.price)) {
-        const cls = pctClass((m.pct || 0) / 100);
-        const pctTxt = m.pct == null || !isFinite(m.pct) ? "" :
-          (m.pct > 0 ? "+" : "") + Number(m.pct).toFixed(2) + "%";
+        let chg = m.change;
+        if ((chg == null || !isFinite(chg)) && m.pct != null && isFinite(m.pct) && m.pct !== -100) {
+          chg = m.price - m.price / (1 + m.pct / 100);
+        }
+        const tone = chg != null && isFinite(chg) ? chg : (m.pct || 0);
+        const cls = pctClass(tone);
+        const chgTxt = chg != null && isFinite(chg) ? signedPx(chg) : "";
         priceCell.className = "watch-px watch-num" + miniPx + " " + cls;
         priceCell.innerHTML = fmtPx(m.price) +
-          (pctTxt ? '<small class="' + cls + '">' + pctTxt + "</small>" : "");
+          (chgTxt ? '<small class="' + cls + '">' + chgTxt + "</small>" : "");
         row.setAttribute("data-price", String(m.price));
       } else {
         priceCell.className = "watch-px watch-num" + miniPx;
