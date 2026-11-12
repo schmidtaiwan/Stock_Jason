@@ -50,6 +50,7 @@
     picks: {},
     plot: null,
     stockPlot: null,
+    stockHoldLines: null,
     chartGen: 0,
     stockChartGen: 0,
     foreignGen: 0,
@@ -1364,12 +1365,31 @@
       let statusNote = "";
       if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 下方酒田。";
       else if (candle) statusNote = "K 線 · 下方酒田。";
-      else statusNote = "線圖。";
+      else statusNote = "線圖 · 右側持股占比。";
       const items = [{ name: row.name, color: "#e0a100", bars: series }];
       state.stockPlot = buildPlot(items, "price", align);
       state.stockPlot.style = candle ? "candle" : "line";
-      if (!candle) clearStockKSelection();
-      else {
+      state.stockHoldLines = null;
+      if (!candle) {
+        clearStockKSelection();
+        try {
+          const startDay = String(series[0].t || "").slice(0, 10);
+          const pack = M.stockHoldLines
+            ? await M.stockHoldLines(row.secid, row.code, startDay)
+            : null;
+          if (gen !== state.stockChartGen) return;
+          state.stockHoldLines = pack && pack.ok && M.alignHoldLines
+            ? M.alignHoldLines(pack, state.stockPlot.axis)
+            : null;
+          if (!state.stockHoldLines || !state.stockHoldLines.series.length) {
+            statusNote = "線圖（持股占比暫無資料）。";
+          }
+        } catch (holdErr) {
+          if (gen !== state.stockChartGen) return;
+          state.stockHoldLines = null;
+          statusNote = "線圖（持股占比讀取失敗）。";
+        }
+      } else {
         state.stockKSel = null;
         state.stockKDrag = null;
         renderStockKPick(null);
@@ -1624,6 +1644,7 @@
     if (!canvas || !plot) return;
     const cost = opts.costLines || null;
     const sel = opts.sel || null;
+    const hold = opts.holdLines || null;
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth || 320;
     const height = canvas.clientHeight || 260;
@@ -1633,7 +1654,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const left = 52;
-    const right = 22;
+    const showHold = !!(hold && hold.series && hold.series.length && plot.style !== "candle");
+    const right = showHold ? 44 : 22;
     const top = 16;
     const bottom = 28;
     const iw = width - left - right;
@@ -1775,6 +1797,50 @@
       drawCost(cost.cost20, "rgba(224, 161, 0, 0.85)", "主力20");
       drawCost(cost.cost60, "rgba(120, 170, 255, 0.85)", "主力60");
     }
+    if (showHold) {
+      let hMin = Infinity;
+      let hMax = -Infinity;
+      hold.series.forEach(function (s) {
+        (s.values || []).forEach(function (v) {
+          if (v == null || !isFinite(v)) return;
+          hMin = Math.min(hMin, v);
+          hMax = Math.max(hMax, v);
+        });
+      });
+      if (!isFinite(hMin) || !isFinite(hMax)) {
+        hMin = 0;
+        hMax = 100;
+      }
+      hMin = Math.min(0, hMin);
+      hMax = Math.max(hMax, hMin + 1);
+      const hPad = (hMax - hMin) * 0.08 || 1;
+      hMin -= hPad * 0.2;
+      hMax += hPad;
+      const yHold = function (v) { return top + (hMax - v) / (hMax - hMin) * ih; };
+      ctx.strokeStyle = "#2c3846";
+      ctx.fillStyle = "#93a0b0";
+      ctx.font = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+      ctx.lineWidth = 1;
+      for (let g = 0; g <= 4; g++) {
+        const v = hMin + (hMax - hMin) * (g / 4);
+        const y = yHold(v);
+        ctx.fillText(v.toFixed(0) + "%", width - right + 4, y + 4);
+      }
+      hold.series.forEach(function (s) {
+        ctx.beginPath();
+        ctx.strokeStyle = s.color || "#94a3b8";
+        ctx.lineWidth = 1.35;
+        let open = false;
+        (s.values || []).forEach(function (v, i) {
+          if (v == null || !isFinite(v)) { open = false; return; }
+          const x = xOf(i);
+          const y = yHold(v);
+          if (!open) { ctx.moveTo(x, y); open = true; }
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+    }
     ctx.fillStyle = "#93a0b0";
     ctx.font = axisFont;
     const marks = [0, Math.floor((plot.axis.length - 1) / 2), plot.axis.length - 1];
@@ -1792,7 +1858,8 @@
       axis: plot.axis,
       series: plot.series,
       mode: plot.mode,
-      style: plot.style || "line"
+      style: plot.style || "line",
+      holdLines: showHold ? hold : null
     };
   }
 
@@ -1825,13 +1892,15 @@
     if (!showK && lineCanvas) {
       drawOn(lineCanvas, Object.assign({}, plot, { style: "line" }), {
         costLines: stockChipCostLines,
-        sel: null
+        sel: null,
+        holdLines: state.stockHoldLines
       });
     }
     if (showK && kCanvas) {
       drawOn(kCanvas, Object.assign({}, plot, { style: "candle" }), {
         costLines: stockChipCostLines,
-        sel: state.stockKDrag || state.stockKSel
+        sel: state.stockKDrag || state.stockKSel,
+        holdLines: null
       });
     }
   }
@@ -1909,13 +1978,27 @@
   function renderStockLegend(items) {
     const box = $("stock-legend");
     if (!box) return;
-    box.innerHTML = items.map(function (item) {
+    let html = items.map(function (item) {
       const first = item.bars[0].c;
       const last = item.bars[item.bars.length - 1].c;
       const change = first ? last / first - 1 : 0;
       return '<div><span class="swatch" style="background:' + item.color + '"></span>' + esc(item.name) +
         " " + fmt(last) + ' <span class="' + pctClass(change) + '">' + pct(change) + "</span></div>";
     }).join("");
+    if (state.stockStyle === "line" && state.stockHoldLines && state.stockHoldLines.series) {
+      html += state.stockHoldLines.series.map(function (s) {
+        let last = null;
+        for (let i = s.values.length - 1; i >= 0; i--) {
+          if (s.values[i] != null && isFinite(s.values[i])) { last = s.values[i]; break; }
+        }
+        return '<div><span class="swatch" style="background:' + s.color + '"></span>' + esc(s.name) +
+          (last != null ? (" " + last.toFixed(1) + "%") : "") + "</div>";
+      }).join("");
+      if (state.stockHoldLines.note) {
+        html += '<p class="fine">' + esc(state.stockHoldLines.note) + "</p>";
+      }
+    }
+    box.innerHTML = html;
   }
 
   function chartIndexAt(clientX, canvasId) {
@@ -3023,6 +3106,7 @@
     state.stockCustom = false;
     state.stockStyle = "line";
     state.stockPlot = null;
+    state.stockHoldLines = null;
     stockChipCostLines = null;
     stockLivePv = null;
     stockLiveTape = [];

@@ -5022,11 +5022,197 @@
     };
   }
 
+  let directorHoldCache = null;
+  let directorHoldAt = 0;
+
+  async function fetchOpenTwseJson(dataset) {
+    const abs = "https://openapi.twse.com.tw/v1/opendata/" + dataset;
+    const urls = [
+      abs,
+      "https://corsproxy.io/?" + encodeURIComponent(abs),
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(abs),
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(abs)
+    ];
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : 0;
+        const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
+        if (timer) clearTimeout(timer);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const start = text.indexOf("[");
+        const end = text.lastIndexOf("]");
+        if (start < 0 || end <= start) continue;
+        const data = JSON.parse(text.slice(start, end + 1));
+        if (Array.isArray(data)) return data;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error("證交所開放資料讀取失敗");
+  }
+
+  async function directorHoldSharesMap() {
+    const now = Date.now();
+    if (directorHoldCache && now - directorHoldAt < 6 * 60 * 60 * 1000) return directorHoldCache;
+    const rows = await fetchOpenTwseJson("t187ap11_L");
+    const map = {};
+    (rows || []).forEach(function (row) {
+      const code = String(row["公司代號"] || "").trim();
+      const title = String(row["職稱"] || "");
+      if (!code || !/董事|監察/.test(title) || /代表人/.test(title)) return;
+      const shares = num(row["目前持股"]);
+      if (!(shares > 0)) return;
+      map[code] = (map[code] || 0) + shares;
+    });
+    directorHoldCache = map;
+    directorHoldAt = now;
+    return map;
+  }
+
+  // 線圖持股占比：外資／董監官方；ETF(投信)／自營／券商(避險)以買賣超÷發行股累計粗估；散戶＝其餘
+  async function stockHoldLines(secid, code, startDate) {
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前僅台股有持股占比線。" };
+    const start = startDate && String(startDate).length >= 10
+      ? String(startDate).slice(0, 10)
+      : isoDaysAgo(400);
+    const lookback = isoDaysAgo(Math.max(420, Math.ceil((Date.now() - Date.parse(start)) / 86400000) + 80));
+    const got = await Promise.all([
+      finMind("TaiwanStockShareholding", stockId, lookback).catch(function () { return []; }),
+      finMind("TaiwanStockInstitutionalInvestorsBuySell", stockId, lookback).catch(function () { return []; }),
+      directorHoldSharesMap().catch(function () { return {}; })
+    ]);
+    const shares = (got[0] || []).slice().sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    const chips = got[1] || [];
+    const dirMap = got[2] || {};
+    if (!shares.length && !chips.length) {
+      return { ok: false, reason: "持股／法人資料暫讀不到。" };
+    }
+
+    const foreignByDate = {};
+    const issuedByDate = {};
+    shares.forEach(function (row) {
+      const d = String(row.date || "").slice(0, 10);
+      if (!d) return;
+      const pct = num(row.ForeignInvestmentSharesRatio);
+      const issued = num(row.NumberOfSharesIssued);
+      if (pct != null && isFinite(pct)) foreignByDate[d] = pct;
+      if (issued > 0) issuedByDate[d] = issued;
+    });
+    const issuedDates = Object.keys(issuedByDate).sort();
+    let lastIssued = issuedDates.length ? issuedByDate[issuedDates[issuedDates.length - 1]] : null;
+
+    const dayFlow = {};
+    chips.forEach(function (row) {
+      const d = String(row.date || "").slice(0, 10);
+      if (!d) return;
+      if (!dayFlow[d]) dayFlow[d] = { etf: 0, dealer: 0, broker: 0 };
+      const net = (num(row.buy) || 0) - (num(row.sell) || 0);
+      const name = String(row.name || "");
+      if (name === "Investment_Trust") dayFlow[d].etf += net;
+      else if (name === "Dealer_self" || name === "Dealer") dayFlow[d].dealer += net;
+      else if (name === "Dealer_Hedging") dayFlow[d].broker += net;
+    });
+
+    const allDates = Array.from(new Set(
+      Object.keys(foreignByDate).concat(Object.keys(dayFlow)).concat(Object.keys(issuedByDate))
+    )).sort();
+    let etfCum = 0;
+    let dealerCum = 0;
+    let brokerCum = 0;
+    let lastForeign = null;
+    const byDate = {};
+    const directorShares = num(dirMap[stockId]);
+    allDates.forEach(function (d) {
+      if (issuedByDate[d] > 0) lastIssued = issuedByDate[d];
+      const flow = dayFlow[d];
+      if (flow) {
+        etfCum += flow.etf;
+        dealerCum += flow.dealer;
+        brokerCum += flow.broker;
+      }
+      if (foreignByDate[d] != null) lastForeign = foreignByDate[d];
+      if (d < start) return;
+      if (!(lastIssued > 0) && lastForeign == null && !flow) return;
+      const issued = lastIssued > 0 ? lastIssued : null;
+      const etf = issued ? Math.max(0, etfCum / issued * 100) : null;
+      const dealer = issued ? Math.max(0, dealerCum / issued * 100) : null;
+      const broker = issued ? Math.max(0, brokerCum / issued * 100) : null;
+      const director = (issued && directorShares > 0) ? Math.max(0, directorShares / issued * 100) : null;
+      const foreign = lastForeign;
+      let retail = null;
+      if (foreign != null || etf != null || dealer != null || broker != null || director != null) {
+        retail = 100
+          - (foreign != null ? foreign : 0)
+          - (etf != null ? etf : 0)
+          - (dealer != null ? dealer : 0)
+          - (broker != null ? broker : 0)
+          - (director != null ? director : 0);
+        if (retail < 0) retail = 0;
+        if (retail > 100) retail = 100;
+      }
+      byDate[d] = {
+        foreign: foreign,
+        etf: etf,
+        dealer: dealer,
+        broker: broker,
+        director: director,
+        retail: retail
+      };
+    });
+
+    return {
+      ok: true,
+      stockId: stockId,
+      byDate: byDate,
+      keys: [
+        { id: "foreign", name: "外資", color: "#60a5fa" },
+        { id: "etf", name: "ETF/投信", color: "#c084fc" },
+        { id: "dealer", name: "自營", color: "#fbbf24" },
+        { id: "broker", name: "券商", color: "#34d399" },
+        { id: "director", name: "董監", color: "#f472b6" },
+        { id: "retail", name: "散戶", color: "#94a3b8" }
+      ],
+      note: "外資為官方持股占比；董監為證交所最新餘額÷發行股；ETF(投信)／自營／券商(避險)為買賣超÷發行股累計粗估；散戶＝其餘。"
+    };
+  }
+
+  function alignHoldLines(pack, axis) {
+    if (!pack || !pack.ok || !pack.byDate || !axis || !axis.length) return null;
+    const keys = pack.keys || [];
+    const series = keys.map(function (k) {
+      return { id: k.id, name: k.name, color: k.color, values: axis.map(function () { return null; }) };
+    });
+    let last = null;
+    axis.forEach(function (label, i) {
+      const day = String(label || "").slice(0, 10);
+      if (pack.byDate[day]) last = pack.byDate[day];
+      if (!last) return;
+      series.forEach(function (s) {
+        const v = last[s.id];
+        s.values[i] = v != null && isFinite(v) ? v : null;
+      });
+    });
+    return {
+      note: pack.note || "",
+      series: series.filter(function (s) {
+        return s.values.some(function (v) { return v != null && isFinite(v); });
+      })
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
     bars: bars,
     search: search,
+    stockHoldLines: stockHoldLines,
+    alignHoldLines: alignHoldLines,
     quoteMap: quoteMap,
     parseInventory: parseInventory,
     parseHoldingsTable: parseHoldingsTable,
