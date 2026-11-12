@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 107;
+  const PAGE_BUILD = 108;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1446,6 +1446,63 @@
     return { axis: axis, series: series, mode: mode };
   }
 
+  function drawHiLoMarks(ctx, plot, xOf, yOf, left, right, top, width, ih, candle) {
+    let hi = -Infinity;
+    let lo = Infinity;
+    let hiI = -1;
+    let loI = -1;
+    plot.series.forEach(function (s) {
+      if (candle && s.ohlc) {
+        s.ohlc.forEach(function (bar, i) {
+          if (!bar) return;
+          if (bar.h != null && isFinite(bar.h) && bar.h >= hi) {
+            hi = bar.h;
+            hiI = i;
+          }
+          if (bar.l != null && isFinite(bar.l) && bar.l <= lo) {
+            lo = bar.l;
+            loI = i;
+          }
+        });
+        return;
+      }
+      (s.values || []).forEach(function (v, i) {
+        if (v == null || !isFinite(v)) return;
+        if (v >= hi) {
+          hi = v;
+          hiI = i;
+        }
+        if (v <= lo) {
+          lo = v;
+          loI = i;
+        }
+      });
+    });
+    if (!(hiI >= 0) || !(loI >= 0) || !isFinite(hi) || !isFinite(lo)) return;
+    const markFont = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+    function mark(i, val, label, up) {
+      const x = xOf(i);
+      const y = yOf(val);
+      const txt = label + " " + fmt(val);
+      ctx.font = markFont;
+      const tw = ctx.measureText(txt).width;
+      let tx = x - tw / 2;
+      tx = Math.max(left + 2, Math.min(width - right - tw - 2, tx));
+      let ty = up ? y - 8 : y + 14;
+      if (ty < top + 10) ty = y + 14;
+      if (ty > top + ih - 4) ty = y - 8;
+      ctx.fillStyle = up ? "rgba(255, 90, 90, 0.95)" : "rgba(80, 200, 140, 0.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = up ? "#ff8a8a" : "#6eae8e";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(txt, tx, ty);
+    }
+    mark(hiI, hi, "最高", true);
+    mark(loI, lo, "最低", false);
+  }
+
   function drawCandles(ctx, s, xOf, yOf, n) {
     const slot = n <= 1 ? 10 : Math.abs(xOf(Math.min(1, n - 1)) - xOf(0));
     const w = Math.max(3, Math.min(14, slot * 0.72));
@@ -1666,6 +1723,9 @@
           ctx.textBaseline = "alphabetic";
         }
       });
+    }
+    if (plot.mode === "price" && opts.hiLo !== false) {
+      drawHiLoMarks(ctx, plot, xOf, yOf, left, right, top, width, ih, candle);
     }
     if (candle && plot.mode === "price" && cost) {
       function drawCost(val, color, tag) {

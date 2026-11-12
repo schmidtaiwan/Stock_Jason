@@ -343,6 +343,15 @@ main {
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+.stock-k-patterns-foot {
+  margin-top: 14px;
+  margin-bottom: 8px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #12181f;
+  border-top: 0;
+}
 .k-patterns li[data-k-focus] {
   cursor: pointer;
   border-radius: 8px;
