@@ -578,38 +578,62 @@
     const checks = [];
     // 1 direction
     let dir = "中性";
-    let dirDetail = "費半／ADR 資料不足";
+    let dirDetail = "費半／台積電 ADR 資料暫時讀不到，方向先當未知。";
     if (sox.pct != null || tsm.pct != null) {
       const soxPct = sox.pct != null ? sox.pct : 0;
       const tsmPct = tsm.pct != null ? tsm.pct : soxPct;
-      if (soxPct >= 2) { dir = "偏多跳空"; dirDetail = "費半大漲 ≥2%，台股早盤易開高"; }
-      else if (soxPct <= -2) { dir = "偏空提款"; dirDetail = "費半大跌 ≤-2%，慎防開盤接刀"; }
-      else if (tsmPct >= 1.5 && soxPct < 0) { dir = "ADR撐盤"; dirDetail = "費半弱但台積電 ADR 強，權值仍可能撐盤"; }
-      else if (tsmPct <= -1.5) { dir = "ADR承壓"; dirDetail = "台積電 ADR 弱，加權易承壓"; }
-      else if ((soxPct + tsmPct) / 2 > 0.3) { dir = "偏多"; dirDetail = "費半／ADR 小幅偏多"; }
-      else if ((soxPct + tsmPct) / 2 < -0.3) { dir = "偏空"; dirDetail = "費半／ADR 小幅偏空"; }
-      else { dir = "中性"; dirDetail = "費半／ADR 震盪不大"; }
+      if (soxPct >= 2) {
+        dir = "偏多跳空";
+        dirDetail = "昨晚費半大漲超過 2%，科技股偏強，台股早盤 09:00 容易直接開高（跳空開高機率升）。";
+      } else if (soxPct <= -2) {
+        dir = "偏空提款";
+        dirDetail = "昨晚費半大跌超過 2%，賣壓偏重，台股早盤要小心開低被提款、別急著接刀。";
+      } else if (tsmPct >= 1.5 && soxPct < 0) {
+        dir = "ADR撐盤";
+        dirDetail = "費半偏弱，但台積電 ADR 相對強，權值股可能撐住加權，全面崩跌機率較低。";
+      } else if (tsmPct <= -1.5) {
+        dir = "ADR承壓";
+        dirDetail = "台積電 ADR 偏弱，加權指數容易被權值股拖累，早盤宜保守。";
+      } else if ((soxPct + tsmPct) / 2 > 0.3) {
+        dir = "偏多";
+        dirDetail = "費半／ADR 小幅偏多，台股偏向開平高或小開高，還不到大跳空等級。";
+      } else if ((soxPct + tsmPct) / 2 < -0.3) {
+        dir = "偏空";
+        dirDetail = "費半／ADR 小幅偏空，台股偏向開平低或小開低，先看能否守住昨收。";
+      } else {
+        dir = "中性";
+        dirDetail = "費半／ADR 震盪不大，開盤方向不明顯，等前 30 分鐘再決定。";
+      }
     }
     checks.push({ q: "看方向（費半／ADR）", a: dir, detail: dirDetail, cls: /多|撐/.test(dir) ? "up" : /空|壓|提款/.test(dir) ? "down" : "" });
 
     // 2 force VIX
     let force = "中性";
-    let forceDetail = "VIX 資料不足";
+    let forceDetail = "VIX 資料暫時讀不到，力道先當未知。";
     if (vix.price != null) {
-      if (vix.price >= 30) { force = "極度恐慌"; forceDetail = "VIX≥30，波動劇烈、外資提款風險高"; }
-      else if (vix.price >= 20) { force = "避險升溫"; forceDetail = "VIX≥20，今天易劇烈洗盤"; }
-      else if (vix.price <= 15) { force = "平靜樂觀"; forceDetail = "VIX≤15，風險偏好偏佳"; }
-      else { force = "溫和"; forceDetail = "VIX 在 15～20，波動一般"; }
+      if (vix.price >= 30) {
+        force = "極度恐慌";
+        forceDetail = "恐慌指數很高：市場情緒亂、容易大殺大砍，外資提款風險高，部位宜輕。";
+      } else if (vix.price >= 20) {
+        force = "避險升溫";
+        forceDetail = "恐慌偏高：今天比較容易劇烈洗盤，開高也可能被洗下來。";
+      } else if (vix.price <= 15) {
+        force = "平靜樂觀";
+        forceDetail = "恐慌偏低：市場比較敢買風險資產，短線氣氛偏穩。";
+      } else {
+        force = "溫和";
+        forceDetail = "恐慌在正常區間，力道普通，沒有特別大漲大跌的情緒。";
+      }
       if (vix.pct != null && vix.pct <= -8 && vix.price < 25) {
         force = "高檔回落";
-        forceDetail = "VIX 快速回落，恐慌緩解偏多";
+        forceDetail = "恐慌情緒明顯降溫：亂砍股的壓力減輕，短線較容易出現跌深反彈氣氛。";
       }
     }
     checks.push({ q: "看力道（VIX）", a: force, detail: forceDetail, cls: /樂觀|回落|平靜/.test(force) ? "up" : /恐慌|避險/.test(force) ? "down" : "" });
 
     // 3 money TNX + DXY
     let money = "中性";
-    let moneyDetail = "美債／美元資料不足";
+    let moneyDetail = "美債／美元資料暫時讀不到，資金面先當未知。";
     const tnxPx = tnx.price;
     // Yahoo ^TNX often already in percent units (e.g. 4.25)
     if (tnxPx != null || dxy.price != null) {
@@ -619,33 +643,68 @@
       const dxySoft = dxy.price != null && dxy.price <= 102 && (dxy.pct == null || dxy.pct <= 0);
       if (tnxHot || dxyHot) {
         money = "資金偏緊";
-        moneyDetail = tnxHot && dxyHot ? "美債急升＋美元強，科技估值與匯出壓力同現"
-          : (tnxHot ? "美債殖利率偏高／急升，壓縮高本益比科技股" : "美元偏強，資金易回流美、外資偏撤");
+        moneyDetail = tnxHot && dxyHot
+          ? "美債急升又碰上美元偏強：大資金偏保守，高本益比電子／科技股上方容易被壓。"
+          : (tnxHot
+            ? "美債殖利率偏高或急升：錢變貴，高本益比科技股（電子、PCB、網通）上方空間易被壓抑。"
+            : "美元偏強：資金較易回流美國，外資對台股偏保守，反彈別追太兇。");
       } else if (tnxCalm || dxySoft) {
         money = "資金偏寬";
-        moneyDetail = "美債／美元偏弱或穩定，利好風險資產與台股";
+        moneyDetail = "美債／美元偏弱或穩定：大資金壓力較輕，風險資產與台股相對有利。";
       } else {
         money = "中性";
-        moneyDetail = "美債與美元尚無明顯極端訊號";
+        moneyDetail = "美債與美元沒有特別極端，資金面中性，進出仍看個股支撐壓力。";
       }
     }
     checks.push({ q: "看資金（美債／美元）", a: money, detail: moneyDetail, cls: /寬/.test(money) ? "up" : /緊/.test(money) ? "down" : "" });
 
     const lines = [];
-    if (sox.pct != null) {
-      if (sox.pct >= 2) lines.push("費半大漲 ≥2%：強勢多頭，台股易跳空開高");
-      else if (sox.pct <= -2) lines.push("費半大跌 ≤-2%：轉弱，早盤提款賣壓加重");
+    const actions = [];
+    const gapUp = dir === "偏多跳空";
+    const gapDown = dir === "偏空提款";
+    const tight = money === "資金偏緊";
+    const underQ = soxMa.above60 === false;
+
+    if (gapUp && (tight || underQ)) {
+      lines.push("白話總結：短線開盤偏多（易開高），但中線資金仍偏緊" +
+        (underQ ? "，且費半還在季線下——比較像空頭架構下的強勢反彈，不是長多確認。" : "。"));
+      lines.push("實戰最常見：開高走低。早盤跳空開高後，套牢賣壓容易倒貨，10:00 前後要分真假轉強。");
+    } else if (gapUp) {
+      lines.push("白話總結：費半大漲帶動，台股早盤偏多、容易開高；仍要看開高後能不能站穩均價。");
+    } else if (gapDown) {
+      lines.push("白話總結：費半大跌，台股早盤偏空、容易開低；別急著開盤接刀，等止跌再談。");
+    } else if (sox.pct != null) {
+      if (sox.pct >= 2) lines.push("費半大漲：台股易跳空開高，但要防開高遇解套賣壓。");
+      else if (sox.pct <= -2) lines.push("費半大跌：早盤提款賣壓加重，空手勿急接。");
     }
     if (soxMa.above20 != null || soxMa.above60 != null) {
-      if (soxMa.above20 && soxMa.above60) lines.push("費半站上月線／季線：科技上升趨勢，拉回可偏多");
-      else if (soxMa.above60 === false) lines.push("費半在季線下：半導體波段修正風險");
+      if (soxMa.above20 && soxMa.above60) {
+        lines.push("費半站上月線／季線：半導體中期偏多，拉回可偏多看待。");
+      } else if (underQ) {
+        lines.push("費半在季線下：即使大漲，也多半是「空頭裡的反彈」，還沒正式走回長多。");
+      }
     }
     if (soxMa.wick && soxMa.intradayLowPct != null && soxMa.intradayLowPct <= -2) {
-      lines.push("費半長下影（盤中深跌後收回）：留意台股開低走高／利空出盡");
+      lines.push("費半出現長下影（盤中深跌又收回）：留意台股開低走高、利空出盡的機會。");
     }
     if (tsm.pct != null && nvda.pct != null && Math.abs(tsm.pct - (sox.pct || 0)) >= 1.5) {
-      lines.push("龍頭分化：請同時對照台積電 ADR " + (tsm.pct > 0 ? "+" : "") + tsm.pct.toFixed(2) +
-        "%、輝達 " + (nvda.pct > 0 ? "+" : "") + nvda.pct.toFixed(2) + "%");
+      lines.push("龍頭分化：台積電 ADR " + (tsm.pct > 0 ? "+" : "") + tsm.pct.toFixed(2) +
+        "%、輝達 " + (nvda.pct > 0 ? "+" : "") + nvda.pct.toFixed(2) + "%，權值與題材可能不同步。");
+    }
+
+    if (gapUp && (tight || underQ)) {
+      actions.push("絕不在早盤跳空開高的前 30 分鐘追買，避免買在當日最高。");
+      actions.push("弱勢持股：開高反彈若 10:00 後站不穩均價／壓力，優先減碼逃命，不要幻想一次漲回成本。");
+      actions.push("相對強勢股：開高後守穩開盤低點與均價可續抱；若跌破昨收回補缺口，當假突破先減碼。");
+      actions.push("速查：費半大漲＋資金緊／季線下 → 不追高、弱勢股趁開高減；10:00 站穩均價才續抱強勢股。");
+    } else if (gapUp) {
+      actions.push("可偏多看待，但仍不追第一盤跳空；等回測站穩再考慮加碼。");
+      actions.push("持股：開高後守均價續抱；破昨收則先減碼控風險。");
+    } else if (gapDown) {
+      actions.push("早盤不急著低接；等量縮止跌或長下影再談試單。");
+      actions.push("持股：反彈先減碼，破關鍵防守執行停損，禁止攤平。");
+    } else {
+      actions.push("方向不明時不追價：用個股支撐壓力做區間，破防守停損。");
     }
 
     let bias = "中性觀望";
@@ -654,15 +713,20 @@
     if (/空|壓|提款|恐慌|避險|緊/.test(dir + force + money)) score -= 1;
     if (/多|撐/.test(dir)) score += 1;
     if (/空|壓|提款/.test(dir)) score -= 1;
-    if (score >= 2) bias = "偏多開高";
+    if (gapUp && (tight || underQ)) bias = "短多中緊／易開高走低";
+    else if (score >= 2) bias = "偏多開高";
     else if (score <= -2) bias = "偏空開低";
     else if (score > 0) bias = "偏多震盪";
     else if (score < 0) bias = "偏空震盪";
 
     return {
       bias: bias,
+      summary: gapUp && (tight || underQ)
+        ? "短線開盤偏多（易開高），但中線資金仍偏緊——常見開高走低。"
+        : "",
       checks: checks,
       lines: lines,
+      actions: actions,
       soxMa: soxMa,
       tip: "口訣：方向看費半＋ADR → 力道看 VIX → 資金看美債／美元。規則試算，非投資建議。"
     };

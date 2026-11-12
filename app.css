@@ -1801,6 +1801,23 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   font-size: 14px;
 }
 .us-bias strong { font-size: 16px; }
+.us-brief-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d7dee8;
+}
+.us-brief-h {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.us-brief-lines {
+  color: #c5ced8 !important;
+  font-size: 13px !important;
+  line-height: 1.45;
+}
 .us-checks {
   display: grid;
   gap: 6px;

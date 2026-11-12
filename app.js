@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 133;
+  const PAGE_BUILD = 134;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -4870,7 +4870,7 @@
       box.innerHTML = "";
       return;
     }
-    const biasCls = /多|開高/.test(brief.bias || "") ? "up"
+    const biasCls = /多|開高|短多/.test(brief.bias || "") ? "up"
       : /空|開低/.test(brief.bias || "") ? "down" : "";
     const checks = (brief.checks || []).map(function (c) {
       return '<div class="us-check"><span class="us-check-q">' + esc(c.q) +
@@ -4878,13 +4878,19 @@
         "</strong><small>" + esc(c.detail || "") + "</small></div>";
     }).join("");
     const lines = (brief.lines || []).length
-      ? "<ul>" + brief.lines.map(function (line) {
+      ? "<ul class=\"us-brief-lines\">" + brief.lines.map(function (line) {
         return "<li>" + esc(line) + "</li>";
       }).join("") + "</ul>"
       : "";
+    const acts = (brief.actions || []).length
+      ? "<h4 class=\"us-brief-h\">怎麼操作</h4><ul class=\"us-brief-lines\">" +
+        brief.actions.map(function (line) { return "<li>" + esc(line) + "</li>"; }).join("") +
+        "</ul>"
+      : "";
     box.innerHTML = '<div class="us-bias">今日台股節奏預判 <strong class="' + biasCls + '">' +
       esc(brief.bias || "—") + "</strong></div>" +
-      '<div class="us-checks">' + checks + "</div>" + lines +
+      (brief.summary ? '<p class="us-brief-summary">' + esc(brief.summary) + "</p>" : "") +
+      '<div class="us-checks">' + checks + "</div>" + lines + acts +
       '<p class="fine">' + esc(brief.tip || "") + "</p>";
   }
 
