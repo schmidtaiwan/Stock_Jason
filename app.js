@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 109;
+  const PAGE_BUILD = 110;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -8,6 +8,11 @@
   let usRowsOpen = true;
   let usBoardTimer = 0;
   let usBoardBusy = false;
+  let stockLiveTimer = 0;
+  let stockLiveBusy = false;
+  let stockLiveTape = [];
+  let stockLivePv = null;
+  let stockLiveLastKey = "";
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -415,7 +420,13 @@
       paintStockHeader();
       syncStockDetailsUi();
       loadStockChart();
-      if (state.stock) loadStockDetail(state.stock);
+      if (state.stock) {
+        loadStockLive(state.stock);
+        loadStockDetail(state.stock);
+      }
+      startStockLiveClock();
+    } else {
+      stopStockLiveClock();
     }
     if (name === "pulse") {
       syncUsBoardFoldUi();
@@ -1079,12 +1090,26 @@
       if (!document.hidden) paintTwii();
       if (!document.hidden && state.view === "chart") await loadChart();
       else if (!document.hidden && state.view === "watch") paintWatchQuotes();
+      else if (!document.hidden && state.view === "stock" && state.stock) await loadStockLive(state.stock, true);
       else if (alertOn) await pollWatchAlerts();
     } catch (err) {
       /* 下一輪再試 */
     } finally {
       liveBusy = false;
     }
+  }
+
+  function stopStockLiveClock() {
+    if (stockLiveTimer) clearInterval(stockLiveTimer);
+    stockLiveTimer = 0;
+  }
+
+  function startStockLiveClock() {
+    stopStockLiveClock();
+    stockLiveTimer = setInterval(function () {
+      if (document.hidden || state.view !== "stock" || !state.stock) return;
+      loadStockLive(state.stock, true);
+    }, 6000);
   }
 
   function stopUsBoardClock() {
@@ -2623,6 +2648,171 @@
     return n.toFixed(1) + "%";
   }
 
+  function mergePriceVolume(base, tape) {
+    const map = Object.create(null);
+    (base && base.rows || []).forEach(function (r) {
+      if (!(r.price > 0) || !(r.lots > 0)) return;
+      const key = String(Math.round(r.price * 100) / 100);
+      map[key] = (map[key] || 0) + r.lots;
+    });
+    (tape || []).forEach(function (t) {
+      if (!(t.price > 0) || !(t.lots > 0)) return;
+      const key = String(Math.round(t.price * 100) / 100);
+      map[key] = (map[key] || 0) + t.lots;
+    });
+    return Object.keys(map).map(function (k) {
+      return { price: Number(k), lots: Math.round(map[k] * 10) / 10 };
+    }).sort(function (a, b) { return b.price - a.price; });
+  }
+
+  function renderStockLive(bookQ, pvRows) {
+    const box = $("stock-live");
+    if (!box) return;
+    if (!bookQ && !(pvRows && pvRows.length)) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    const q = bookQ || {};
+    const cls = pctClass(q.change != null ? q.change : (q.pct || 0));
+    const chgTxt = q.change != null && isFinite(q.change)
+      ? ((q.change > 0 ? "+" : "") + fmtPx(q.change) +
+        (q.pct != null ? " (" + Math.abs(q.pct).toFixed(2) + "%)" : ""))
+      : "—";
+    const head = '<div class="stock-live-head">' +
+      '<span>時: ' + esc(q.tradeTime || "—") + "</span>" +
+      '<span>價: <strong class="' + cls + '">' + (q.price != null ? fmtPx(q.price) : "—") + "</strong></span>" +
+      '<span class="' + cls + '">' + chgTxt + "</span></div>";
+
+    const tape = (stockLiveTape || []).slice(-8).reverse();
+    const tapeHtml = tape.length
+      ? '<div class="stock-tape"><table><thead><tr><th>時間</th><th>成交</th><th>量</th><th>漲跌</th></tr></thead><tbody>' +
+        tape.map(function (t) {
+          const tCls = pctClass(t.change != null ? t.change : 0);
+          return "<tr><td>" + esc(t.time || "—") + '</td><td class="' + tCls + '">' + fmtPx(t.price) +
+            '</td><td class="up">' + (t.lots != null ? t.lots : "—") +
+            '</td><td class="' + tCls + '">' +
+            (t.change != null ? Math.abs(t.change).toFixed(2) : "—") + "</td></tr>";
+        }).join("") + "</tbody></table></div>"
+      : '<p class="fine">成交明細會在盤中刷新時累積顯示。</p>';
+
+    const bids = q.bids || [];
+    const asks = q.asks || [];
+    const bidSum = bids.reduce(function (s, r) { return s + (r.size || 0); }, 0);
+    const askSum = asks.reduce(function (s, r) { return s + (r.size || 0); }, 0);
+    const tot = bidSum + askSum;
+    const bidPct = tot > 0 ? (bidSum / tot * 100) : 50;
+    const bookHtml = '<div class="stock-book">' +
+      '<div class="stock-book-col buy"><div class="stock-book-h">委買</div>' +
+      bids.map(function (r, i) {
+        return '<div class="stock-book-row"><span class="sz">' + (r.size != null ? r.size : "—") +
+          '</span><span class="px down">' + fmtPx(r.price) + "</span>" +
+          (i === 0 ? '<span class="mark">L</span>' : "") + "</div>";
+      }).join("") + "</div>" +
+      '<div class="stock-book-col sell"><div class="stock-book-h">委賣</div>' +
+      asks.map(function (r, i) {
+        const near = q.price != null && Math.abs(r.price - q.price) < 0.0001;
+        return '<div class="stock-book-row' + (near ? " near" : "") + '"><span class="px up">' +
+          fmtPx(r.price) + '</span><span class="sz">' + (r.size != null ? r.size : "—") +
+          "</span></div>";
+      }).join("") + "</div></div>" +
+      '<div class="stock-book-bar"><i style="width:' + bidPct.toFixed(1) + '%"></i></div>' +
+      '<div class="stock-book-sum"><span>(' + Math.round(bidSum) + ")</span><span>(" +
+      Math.round(askSum) + ")</span></div>";
+
+    const rows = pvRows || [];
+    const maxLots = rows.reduce(function (m, r) { return Math.max(m, r.lots || 0); }, 0) || 1;
+    const openPx = q.open != null ? q.open : (stockLivePv && stockLivePv.open);
+    const highPx = q.high != null ? q.high : (stockLivePv && stockLivePv.high);
+    const pvHtml = '<div class="stock-pv">' +
+      '<div class="stock-pv-title">分價量表 <span class="fine">（分鐘量價近似＋盤中成交累積）</span></div>' +
+      (rows.length ? rows.slice(0, 40).map(function (r) {
+        const tags = [];
+        if (highPx != null && Math.abs(r.price - highPx) < 0.0001) tags.push('<em class="up">高</em>');
+        if (openPx != null && Math.abs(r.price - openPx) < 0.0001) tags.push("<em>開</em>");
+        const w = Math.max(4, Math.round((r.lots / maxLots) * 100));
+        return '<div class="stock-pv-row"><span class="px down">' + fmtPx(r.price) +
+          "</span>" + tags.join("") +
+          '<span class="bar"><i style="width:' + w + '%"></i></span>' +
+          '<span class="lots">' + (Math.round(r.lots) || r.lots) + "</span></div>";
+      }).join("") : '<p class="fine">尚無分價資料。</p>') + "</div>";
+
+    box.innerHTML = '<article class="card stock-live-card">' + head + tapeHtml + bookHtml +
+      "</article><article class=\"card stock-live-card\">" + pvHtml + "</article>";
+  }
+
+  async function loadStockLive(row, quiet) {
+    const box = $("stock-live");
+    if (!box || !row || !M) return;
+    if (stockLiveBusy) return;
+    stockLiveBusy = true;
+    const code = String(row.code || (M.twStockId && M.twStockId(row.secid, "")) || "").toUpperCase();
+    if (!quiet) {
+      box.hidden = false;
+      box.innerHTML = '<article class="card"><p class="status">讀取五檔／分價…</p></article>';
+    }
+    try {
+      if (!stockLivePv || stockLivePv.code !== code) {
+        stockLivePv = { code: code, rows: [], open: null, high: null, low: null };
+        stockLiveTape = [];
+        stockLiveLastKey = "";
+        if (M.stockPriceVolume) {
+          try {
+            const pv = await M.stockPriceVolume(code);
+            if (state.stock && String(state.stock.code || "").toUpperCase() === code) {
+              stockLivePv = {
+                code: code,
+                rows: (pv && pv.rows) || [],
+                open: pv && pv.open,
+                high: pv && pv.high,
+                low: pv && pv.low
+              };
+            }
+          } catch (err) { /* ignore */ }
+        }
+      }
+      let bookQ = null;
+      if (M.misBook) {
+        try { bookQ = await M.misBook(code); } catch (err) { bookQ = null; }
+      }
+      if (!state.stock || String(state.stock.code || "").toUpperCase() !== code) return;
+      if (bookQ && bookQ.price > 0) {
+        const key = String(bookQ.tradeTime || "") + "|" + bookQ.price + "|" + (bookQ.lastLot || "") + "|" +
+          (bookQ.volumeLots || "");
+        if (key !== stockLiveLastKey) {
+          const prev = stockLiveTape.length ? stockLiveTape[stockLiveTape.length - 1] : null;
+          const lot = bookQ.lastLot != null && bookQ.lastLot > 0
+            ? bookQ.lastLot
+            : (prev && bookQ.volumeLots != null && prev.cum != null
+              ? Math.max(0, bookQ.volumeLots - prev.cum) : null);
+          stockLiveTape.push({
+            time: bookQ.tradeTime || "",
+            price: bookQ.price,
+            lots: lot,
+            change: bookQ.change,
+            cum: bookQ.volumeLots
+          });
+          if (stockLiveTape.length > 120) stockLiveTape = stockLiveTape.slice(-100);
+          stockLiveLastKey = key;
+        }
+        if (bookQ.open != null) stockLivePv.open = bookQ.open;
+        if (bookQ.high != null) stockLivePv.high = bookQ.high;
+        if (bookQ.low != null) stockLivePv.low = bookQ.low;
+      }
+      const rows = mergePriceVolume(stockLivePv, stockLiveTape);
+      renderStockLive(bookQ, rows);
+    } catch (err) {
+      if (!quiet) {
+        box.hidden = false;
+        box.innerHTML = '<article class="card"><p class="note">' +
+          esc((err && err.message) || "五檔／分價讀取失敗") + "</p></article>";
+      }
+    } finally {
+      stockLiveBusy = false;
+    }
+  }
+
   function renderStockDetail(detail, chipx) {
     const box = $("stock-detail");
     if (!box) return;
@@ -2775,6 +2965,9 @@
     state.stockStyle = "candle";
     state.stockPlot = null;
     stockChipCostLines = null;
+    stockLivePv = null;
+    stockLiveTape = [];
+    stockLiveLastKey = "";
     setView("stock");
   }
 

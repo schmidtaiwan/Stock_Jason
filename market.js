@@ -2729,6 +2729,23 @@
     return misNum(row && row.y);
   }
 
+  function misSplitNums(raw) {
+    return String(raw == null ? "" : raw).split("_").map(misNum).filter(function (v) {
+      return v != null && isFinite(v);
+    });
+  }
+
+  function misBookLevels(prices, sizes, n) {
+    const out = [];
+    const lim = n || 5;
+    for (let i = 0; i < lim; i++) {
+      const p = prices[i];
+      if (!(p > 0)) break;
+      out.push({ price: p, size: sizes[i] != null ? sizes[i] : null });
+    }
+    return out;
+  }
+
   function parseMisRow(row) {
     if (!row) return null;
     const code = String(row.c || "").toUpperCase();
@@ -2745,6 +2762,10 @@
     const amplitude = (high != null && low != null && ref > 0) ? (high - low) / ref * 100 : null;
     const ex = String(row.ex || "").toLowerCase();
     if (ex === "tse" || ex === "otc") misExHint[code] = ex;
+    const askPx = misSplitNums(row.a);
+    const askSz = misSplitNums(row.f);
+    const bidPx = misSplitNums(row.b);
+    const bidSz = misSplitNums(row.g);
     return {
       secid: code === "T00" ? "100.TWII" : ("tw." + code),
       code: code,
@@ -2759,6 +2780,10 @@
       limitUp: misNum(row.u),
       limitDown: misNum(row.w),
       volumeLots: misNum(row.v),
+      lastLot: misNum(row.tv),
+      tradeTime: String(row.t || "").trim() || null,
+      asks: misBookLevels(askPx, askSz, 5),
+      bids: misBookLevels(bidPx, bidSz, 5),
       amount: null,
       avg: null,
       amplitude: amplitude,
@@ -2769,6 +2794,57 @@
       delayMin: 0,
       source: "mis",
       ex: ex || null
+    };
+  }
+
+  async function misBook(code) {
+    const id = String(code || "").trim().toUpperCase();
+    if (!id) return null;
+    const board = await misQuotes([id]);
+    return board[id] || null;
+  }
+
+  // 分價量：用當日 1 分 K 量價近似（非逐筆撮合）；盤中可再疊 MIS 成交累積
+  async function stockPriceVolume(code) {
+    const id = String(code || "").trim().toUpperCase();
+    if (!id) return { ok: false, rows: [], open: null, high: null, low: null, price: null };
+    const symbols = [id + ".TW", id + ".TWO"];
+    let bars = [];
+    let meta = null;
+    for (let i = 0; i < symbols.length; i++) {
+      try {
+        const json = await yahooChart(symbols[i], "interval=1m&range=1d");
+        const result = json && json.chart && json.chart.result && json.chart.result[0];
+        if (!result) continue;
+        meta = result.meta || {};
+        const q = ((result.indicators || {}).quote || [])[0] || {};
+        const closes = q.close || [];
+        const vols = q.volume || [];
+        for (let j = 0; j < closes.length; j++) {
+          const px = num(closes[j]);
+          const vol = num(vols[j]);
+          if (!(px > 0) || !(vol > 0)) continue;
+          bars.push({ price: px, lots: vol / 1000 });
+        }
+        if (bars.length) break;
+      } catch (err) { /* next symbol */ }
+    }
+    const map = Object.create(null);
+    bars.forEach(function (b) {
+      const key = String(Math.round(b.price * 100) / 100);
+      map[key] = (map[key] || 0) + b.lots;
+    });
+    const rows = Object.keys(map).map(function (k) {
+      return { price: Number(k), lots: Math.round(map[k] * 10) / 10 };
+    }).sort(function (a, b) { return b.price - a.price; });
+    return {
+      ok: !!rows.length,
+      rows: rows,
+      open: meta ? num(meta.regularMarketOpen || meta.chartPreviousClose) : null,
+      high: meta ? num(meta.regularMarketDayHigh) : null,
+      low: meta ? num(meta.regularMarketDayLow) : null,
+      price: meta ? num(meta.regularMarketPrice) : null,
+      source: "yahoo1m"
     };
   }
 
@@ -4978,6 +5054,8 @@
     hasCjk: hasCjk,
     cnyesQuotes: cnyesQuotes,
     misQuotes: misQuotes,
+    misBook: misBook,
+    stockPriceVolume: stockPriceVolume,
     misTwiiQuote: misTwiiQuote,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,

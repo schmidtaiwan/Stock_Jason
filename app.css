@@ -473,6 +473,127 @@ canvas {
 .foreign { margin-top: 10px; }
 .stock-detail { margin-top: 12px; display: grid; gap: 10px; }
 .stock-detail .card h3 { margin: 0 0 8px; font-size: 16px; }
+.stock-live {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+.stock-live-card { padding: 10px; }
+.stock-live-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.stock-live-head strong { font-size: 16px; }
+.stock-tape {
+  overflow-x: auto;
+  margin-bottom: 8px;
+}
+.stock-tape table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stock-tape th,
+.stock-tape td {
+  padding: 2px 4px;
+  text-align: right;
+  white-space: nowrap;
+}
+.stock-tape th:first-child,
+.stock-tape td:first-child { text-align: left; }
+.stock-book {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stock-book-h {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 0;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.stock-book-col.buy .stock-book-h { background: #5a1e1e; color: #ffb4b4; }
+.stock-book-col.sell .stock-book-h { background: #1a3a55; color: #9ec9ff; }
+.stock-book-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  padding: 1px 2px;
+}
+.stock-book-row.near {
+  outline: 1px solid var(--accent);
+  border-radius: 4px;
+}
+.stock-book-row .sz { color: #e8b84a; min-width: 2.5em; }
+.stock-book-row .mark {
+  color: #6eae8e;
+  font-size: 11px;
+  font-weight: 700;
+}
+.stock-book-col.buy .stock-book-row { flex-direction: row; }
+.stock-book-col.sell .stock-book-row { flex-direction: row; }
+.stock-book-bar {
+  margin-top: 6px;
+  height: 8px;
+  border-radius: 999px;
+  background: #1a3a55;
+  overflow: hidden;
+}
+.stock-book-bar i {
+  display: block;
+  height: 100%;
+  background: #8b2e2e;
+}
+.stock-book-sum {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.stock-pv-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.stock-pv-row {
+  display: grid;
+  grid-template-columns: 4.2em auto 1fr 3em;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  margin-bottom: 2px;
+}
+.stock-pv-row .bar {
+  height: 10px;
+  background: #182028;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.stock-pv-row .bar i {
+  display: block;
+  height: 100%;
+  background: #3a7ebd;
+}
+.stock-pv-row .lots { color: #e8b84a; text-align: right; }
+.stock-pv-row em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+}
 .chip-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
