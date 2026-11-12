@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 98;
+  const PAGE_BUILD = 99;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2149,7 +2149,7 @@
       if (btn && !nameEl) btn.textContent = label;
       if (nameEl) {
         if (isWatchMini()) nameEl.innerHTML = watchMiniNameHtml(item);
-        else nameEl.textContent = label;
+        else nameEl.textContent = nextName || item.code || "";
       }
     }
     const priceCell = row.querySelector("[data-watch-price]");
@@ -2261,14 +2261,16 @@
         const valText = val == null ? "" : String(val);
         if (item.market) item.market = twName(item.market);
         const label = watchLabel(item);
+        const nameOnly = (item.name || item.code || "").trim() || label;
         const modeOpts = Object.keys(NOTIFY_MODES).map(function (key) {
           return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
             NOTIFY_MODES[key].label + "</option>";
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name">' +
-          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' +
-          '<span data-watch-name="' + idx + '">' + esc(label) + "</span>" +
+          '<button type="button" class="watch-link" data-open-watch="' + idx +
+          '" title="' + esc(label) + '">' +
+          '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
           '<span class="watch-lamp-inline" data-watch-lamp="' + idx + '"></span></button></td>' +
           '<td class="watch-col-price">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +

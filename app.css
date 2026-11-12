@@ -893,14 +893,14 @@ textarea { min-height: 120px; resize: vertical; }
   border: 0;
   padding: 0;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
   text-align: left;
   min-height: 0;
   line-height: 1;
 }
 .watch-lamp-inline {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   margin-left: 1px;
   white-space: nowrap;
