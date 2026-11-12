@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 119;
+  const PAGE_BUILD = 120;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1829,7 +1829,9 @@
       hold.series.forEach(function (s) {
         ctx.beginPath();
         ctx.strokeStyle = s.color || "#94a3b8";
-        ctx.lineWidth = 1.35;
+        ctx.lineWidth = s.id === "director" ? 2.4 : 1.35;
+        if (s.dash && s.dash.length) ctx.setLineDash(s.dash);
+        else ctx.setLineDash([]);
         let open = false;
         (s.values || []).forEach(function (v, i) {
           if (v == null || !isFinite(v)) { open = false; return; }
@@ -1839,6 +1841,22 @@
           else ctx.lineTo(x, y);
         });
         ctx.stroke();
+        ctx.setLineDash([]);
+        // 董監水平線末端標百分比，避免被其它線蓋住
+        if (s.id === "director") {
+          let lastV = null;
+          let lastI = -1;
+          for (let i = s.values.length - 1; i >= 0; i--) {
+            if (s.values[i] != null && isFinite(s.values[i])) { lastV = s.values[i]; lastI = i; break; }
+          }
+          if (lastV != null && lastI >= 0) {
+            ctx.fillStyle = s.color || "#ff4fd8";
+            ctx.font = '11px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+            ctx.textBaseline = "bottom";
+            ctx.fillText("董監 " + lastV.toFixed(1) + "%", xOf(lastI) - 72, yHold(lastV) - 2);
+            ctx.textBaseline = "alphabetic";
+          }
+        }
       });
     }
     ctx.fillStyle = "#93a0b0";

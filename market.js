@@ -5025,6 +5025,20 @@
   let directorHoldCache = null;
   let directorHoldAt = 0;
 
+  function buildDirectorHoldMap(rows) {
+    const map = {};
+    (rows || []).forEach(function (row) {
+      const code = String(row["公司代號"] || row.code || "").trim();
+      const title = String(row["職稱"] || row.title || "");
+      if (!code) return;
+      if (title && (!/董事|監察/.test(title) || /代表人/.test(title))) return;
+      const shares = num(row["目前持股"] != null ? row["目前持股"] : row.shares);
+      if (!(shares > 0)) return;
+      map[code] = (map[code] || 0) + shares;
+    });
+    return map;
+  }
+
   async function fetchOpenTwseJson(dataset) {
     const abs = "https://openapi.twse.com.tw/v1/opendata/" + dataset;
     const urls = [
@@ -5037,7 +5051,7 @@
     for (let i = 0; i < urls.length; i++) {
       try {
         const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : 0;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 20000) : 0;
         const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
         if (timer) clearTimeout(timer);
         if (!res.ok) continue;
@@ -5056,17 +5070,29 @@
 
   async function directorHoldSharesMap() {
     const now = Date.now();
-    if (directorHoldCache && now - directorHoldAt < 6 * 60 * 60 * 1000) return directorHoldCache;
+    if (directorHoldCache && now - directorHoldAt < 24 * 60 * 60 * 1000) return directorHoldCache;
+    // 優先讀站內精簡檔（GitHub Pages 同源，避免 9MB OpenAPI CORS／逾時）
+    try {
+      const local = await fetch("data/director-holds.json?v=120", { cache: "force-cache" });
+      if (local.ok) {
+        const json = await local.json();
+        const holds = json && json.holds ? json.holds : null;
+        if (holds && typeof holds === "object") {
+          const map = {};
+          Object.keys(holds).forEach(function (code) {
+            const n = num(holds[code]);
+            if (n > 0) map[code] = n;
+          });
+          if (Object.keys(map).length) {
+            directorHoldCache = map;
+            directorHoldAt = now;
+            return map;
+          }
+        }
+      }
+    } catch (err) { /* fall through */ }
     const rows = await fetchOpenTwseJson("t187ap11_L");
-    const map = {};
-    (rows || []).forEach(function (row) {
-      const code = String(row["公司代號"] || "").trim();
-      const title = String(row["職稱"] || "");
-      if (!code || !/董事|監察/.test(title) || /代表人/.test(title)) return;
-      const shares = num(row["目前持股"]);
-      if (!(shares > 0)) return;
-      map[code] = (map[code] || 0) + shares;
-    });
+    const map = buildDirectorHoldMap(rows);
     directorHoldCache = map;
     directorHoldAt = now;
     return map;
@@ -5175,10 +5201,15 @@
         { id: "etf", name: "ETF/投信", color: "#c084fc" },
         { id: "dealer", name: "自營", color: "#fbbf24" },
         { id: "broker", name: "券商", color: "#34d399" },
-        { id: "director", name: "董監", color: "#f472b6" },
+        { id: "director", name: "董監", color: "#ff4fd8", dash: [6, 4] },
         { id: "retail", name: "散戶", color: "#94a3b8" }
       ],
-      note: "外資為官方持股占比；董監為證交所最新餘額÷發行股；ETF(投信)／自營／券商(避險)為買賣超÷發行股累計粗估；散戶＝其餘。"
+      directorShares: directorShares > 0 ? directorShares : null,
+      note: directorShares > 0
+        ? ("外資為官方持股占比；董監為證交所最新餘額÷發行股（約 " +
+          (lastIssued > 0 ? (directorShares / lastIssued * 100).toFixed(1) + "%" : "—") +
+          "）；ETF(投信)／自營／券商(避險)為買賣超÷發行股累計粗估；散戶＝其餘。")
+        : "外資為官方持股占比；董監資料暫無（上櫃／未列名可能缺）；ETF(投信)／自營／券商為粗估；散戶＝其餘。"
     };
   }
 
@@ -5186,7 +5217,13 @@
     if (!pack || !pack.ok || !pack.byDate || !axis || !axis.length) return null;
     const keys = pack.keys || [];
     const series = keys.map(function (k) {
-      return { id: k.id, name: k.name, color: k.color, values: axis.map(function () { return null; }) };
+      return {
+        id: k.id,
+        name: k.name,
+        color: k.color,
+        dash: k.dash || null,
+        values: axis.map(function () { return null; })
+      };
     });
     let last = null;
     axis.forEach(function (label, i) {
