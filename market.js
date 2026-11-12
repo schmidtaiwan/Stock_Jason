@@ -4850,8 +4850,48 @@
     return (global.SJSakata && global.SJSakata.CATALOG) || [];
   }
 
-  // 解讀使用者框選的一段 K 線（代表意思＋型態）
-  function explainKRange(bars, name) {
+  // 酒田術語 → 白話一句
+  function plainSakataLine(name, detail, bias) {
+    const n = String(name || "");
+    const d = String(detail || "");
+    if (/晨星|探底|三川|曙光|鍋底|U字/.test(n)) {
+      return "看起來像「跌不下去、想反攻」：先殺低再快速拉回，表面止跌。";
+    }
+    if (/夜星|烏雲|覆蓋|黑三兵|吊首|三山|半圓天井|下降三法/.test(n)) {
+      return "高檔轉弱訊號：漲完開始吐、空方接手，不宜再追高。";
+    }
+    if (/懷抱|吞沒/.test(n) || /吞沒|懷抱/.test(d)) {
+      return bias === "空" || /黑吞|空/.test(d + n)
+        ? "大黑K把前面紅K整個吃掉，常是「拉高出貨」：追高容易套在山頂。"
+        : "大紅K吃掉前面黑K，短線偏多，但仍要看後面有沒有續攻量。";
+    }
+    if (/大陰|捉腰帶|迫切|切入/.test(n) || /禿頭禿腳|一路殺/.test(d)) {
+      return "開高或反彈後一路殺到底、幾乎不回頭，賣方主導、買盤擋不住。";
+    }
+    if (/大陽|紅三兵|升勢/.test(n)) {
+      return "連續紅K推升，買方較積極；若後面量縮遇壓，先別追太深。";
+    }
+    if (/跳空/.test(n) || /跳空/.test(d)) {
+      return /下|空|賣/.test(d + n)
+        ? "向下跳空：賣壓突然變大，短線偏弱。"
+        : "向上跳空：買盤突然湧入，短線偏強但要防假突破。";
+    }
+    if (/極短|連續線|交錯/.test(n)) {
+      return "震幅很小或多空收盤差不多，方向未明，先觀望等突破。";
+    }
+    if (/錘|吊人|十字/.test(n)) {
+      return bias === "空"
+        ? "高檔猶豫／反轉警訊，反彈宜減碼。"
+        : "低檔試探止跌，需下一根確認才算數。";
+    }
+    // 後備：把原文縮成白話口吻
+    if (d) return "（" + n + "）" + d.replace(/酒田|戰法/g, "").trim();
+    return n + (bias ? "（偏" + bias + "）" : "");
+  }
+
+  // 解讀使用者框選的一段 K 線（白話狀態＋操作）
+  function explainKRange(bars, name, opts) {
+    opts = opts || {};
     const rows = (bars || []).filter(function (b) {
       return b && isFinite(b.o) && isFinite(b.h) && isFinite(b.l) && isFinite(b.c);
     });
@@ -4878,31 +4918,116 @@
       if (!seen[p.name]) { seen[p.name] = true; topNames.push(p.name); }
     });
 
-    let tone = "整理";
+    let tone = "整理觀望";
     let meaning = "";
+    let actions = [];
     const names = topNames.join(",");
-    if (chg >= 0.08 && downN > upN && /夜星|烏雲|覆蓋|黑三兵|吊首|三山|半圓天井/.test(names)) {
+    const hasBull = /晨星|探底|曙光|紅三兵|三川|鍋底|U字/.test(names);
+    const hasBear = /夜星|烏雲|覆蓋|黑三兵|吊首|三山|半圓天井|下降三法|懷抱/.test(names) &&
+      pats.some(function (p) { return p.bias === "空" || /黑吞|空|轉賣|出貨/.test(String(p.detail || "") + p.name); });
+    const midHiThenWeak = hi > 0 && last.c < hi * 0.985 && (hasBear || downN >= upN);
+
+    if (chg >= 0.04 && midHiThenWeak) {
+      tone = "拉高後轉弱";
+      meaning = "這段先衝高再吐回去，裡面常混著「看起來很強、其實有人趁高出貨」。框選若剛好停在反彈段，容易誤判成止跌。";
+      actions = [
+        "不要追框選內的最高價；反彈靠近高點先減碼",
+        "破這段低點 " + formatLevelPx(lo) + " 且站不回，當轉弱／停損看待",
+        "未重新站穩這段高點前，不做攤平低接"
+      ];
+    } else if (chg >= 0.08 && downN > upN && /夜星|烏雲|覆蓋|黑三兵|吊首|三山|半圓天井/.test(names)) {
       tone = "衝高轉弱";
-      meaning = "酒田語境偏「轉賣」：這段先漲後出現夜星／覆蓋／黑三兵等，高檔不宜追。";
+      meaning = "這段先漲後出現轉弱型態，白話就是「漲完開始賣」。高檔不宜再追。";
+      actions = [
+        "反彈靠近高點 " + formatLevelPx(hi) + " 分批減碼",
+        "破低點 " + formatLevelPx(lo) + " 執行停損／減倉",
+        "不在高檔加碼"
+      ];
     } else if (chg <= -0.06 || (downN >= upN + 2 && span >= 0.05)) {
       tone = "賣壓主導";
-      meaning = "這段黑K／跳空偏多，空方力道較強；若見下降三法或三空下跳，短線偏續跌。";
-    } else if (chg >= 0.06 && upN > downN) {
+      meaning = "這段黑K／下殺偏多，賣方力氣比較大，短線偏續弱。";
+      actions = [
+        "反彈先減碼，不抄底攤平",
+        "守不住低點 " + formatLevelPx(lo) + " 就停損",
+        "等量縮止跌再談低接試單"
+      ];
+    } else if (chg >= 0.06 && upN > downN && !midHiThenWeak) {
       tone = "買盤推升";
-      meaning = "紅K與紅三兵／跳空偏多，買方較積極；末端若夜星或前阻，改保守。";
+      meaning = "這段紅K偏多、買方較積極；但只要後面開始量縮遇壓，就要改保守。";
+      actions = [
+        "回檔不破低點 " + formatLevelPx(lo) + " 可續抱／小試",
+        "靠近高點 " + formatLevelPx(hi) + " 先別追，等站穩再加",
+        "跌破低點改減碼"
+      ];
     } else if (span < 0.03) {
       tone = "窄幅盤整";
-      meaning = "高低震幅不大（極短／連續線常見），多空膠著，等突破。";
-    } else if (/晨星|探底|曙光|懷抱線|紅三兵|三川|鍋底|U字/.test(names)) {
+      meaning = "上下震不大，多空膠著，方向還沒出來。";
+      actions = [
+        "等有效突破高點或跌破低點再動手",
+        "區間內高賣低買、部位宜輕",
+        "破低點 " + formatLevelPx(lo) + " 停損試單"
+      ];
+    } else if (hasBull && hasBear) {
+      tone = "假反彈風險";
+      meaning = "同時看到止跌／探底，也看到吞沒、大陰等轉弱訊號：白話是「有人想拉，但拉完可能出貨」。只看偏多那幾句會誤判。";
+      actions = [
+        "把這段當反彈觀察，不當進場追高理由",
+        "反彈減碼優先；破低點 " + formatLevelPx(lo) + " 停損",
+        "未站回高點前不做攤平"
+      ];
+    } else if (hasBull) {
       tone = "止跌試探";
-      meaning = "出現晨星／探底／三川等偏多酒田型，可視為止跌或反彈試探。";
+      meaning = "出現探底／晨星一類訊號，表面像跌不下去想反攻；仍要下一根確認，且別只看框選、忽略後面走勢。";
+      actions = [
+        "僅小量試單，破低點 " + formatLevelPx(lo) + " 立刻停",
+        "沒帶量站穩前，不加碼攤平",
+        "反彈到前高附近先減部分"
+      ];
     } else {
       tone = chg >= 0 ? "偏多整理" : "偏空整理";
-      meaning = "這段無單一極端戰法，下列酒田型態供對照前後勢。";
+      meaning = "這段沒有單一極端訊號，先當整理：用高低點紀律進出。";
+      actions = [
+        "上緣 " + formatLevelPx(hi) + " 附近減碼，下緣 " + formatLevelPx(lo) + " 附近才考慮試單",
+        "破低點停損，不向下攤平",
+        "方向不明時部位不宜過重"
+      ];
     }
 
-    const from = String(first.t || "").slice(0, 10);
-    const to = String(last.t || "").slice(0, 10);
+    // 框選只是當日一段、後面其實更弱 → 標盲點
+    const all = (opts.allBars || []).filter(function (b) {
+      return b && isFinite(b.c);
+    });
+    let warning = "";
+    if (all.length > rows.length + 3) {
+      const dayLast = all[all.length - 1];
+      const dayClose = num(dayLast.c);
+      if (dayClose > 0 && hi > 0 && dayClose < hi * 0.97 && dayClose < last.c * 0.985) {
+        warning = "注意：你框的是其中一段。後面實際走到 " + formatLevelPx(dayClose) +
+          "，比框選收盤更弱——框選若顯示「止跌／偏多」，可能只是早盤假反彈，要以完整走勢與防守價為準。";
+        if (tone === "止跌試探" || tone === "買盤推升" || tone === "偏多整理") {
+          tone = "假反彈後轉弱";
+          meaning = "框選那段看起來像止跌反攻，但後面又明顯轉弱／破底。白話：拉高誘多後賣壓出手，不能只信框選內的偏多酒田。";
+          actions = [
+            "防守優先：破當日低點或框選低點 " + formatLevelPx(Math.min(lo, dayClose)) + " 執行停損",
+            "反彈到框選中段～高點先減碼，不要等回成本才賣",
+            "未打底站穩前，禁止低接攤平"
+          ];
+        }
+      }
+    }
+
+    const plainPats = pats.slice(0, 10).map(function (p) {
+      return {
+        name: p.name,
+        date: p.date,
+        bias: p.bias,
+        detail: p.detail,
+        plain: plainSakataLine(p.name, p.detail, p.bias)
+      };
+    });
+
+    const from = String(first.t || "").slice(0, 16);
+    const to = String(last.t || "").slice(0, 16);
     return {
       name: name || "",
       from: from,
@@ -4915,7 +5040,9 @@
       change: chg,
       tone: tone,
       meaning: meaning,
-      patterns: pats.slice(0, 10),
+      actions: actions,
+      warning: warning,
+      patterns: plainPats,
       upN: upN,
       downN: downN
     };

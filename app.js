@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 130;
+  const PAGE_BUILD = 131;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2305,6 +2305,40 @@
     return selectedBarsFrom(state.plot, from, to);
   }
 
+  function kPickToneClass(tone) {
+    const t = String(tone || "");
+    if (/弱|賣|空|轉弱|出貨|假反彈|主導/.test(t)) return "down";
+    if (/多|買|升|止跌|推升/.test(t)) return "up";
+    return "";
+  }
+
+  function renderKPickHtml(report, clearId) {
+    const cls = kPickToneClass(report.tone);
+    const from = String(report.from || "");
+    const to = String(report.to || "");
+    const pats = (report.patterns || []).map(function (p) {
+      const pc = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
+      const plain = p.plain || p.detail || "";
+      return "<li><strong class=\"" + pc + "\">" + esc(p.name) + "</strong> " +
+        esc(plain) + "</li>";
+    }).join("");
+    const acts = (report.actions || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    return "<h3>框選解讀 · " + esc(report.name || "") + "</h3>" +
+      "<p><span class=\"k-pick-tone " + cls + "\">" + esc(report.tone) + "</span>" +
+      esc(from.length > 10 ? from.slice(5) : from) + "～" +
+      esc(to.length > 10 ? to.slice(5) : to) +
+      " · " + report.bars + " 根 · 開 " + fmt(report.open) + " → 收 " + fmt(report.close) +
+      ' <span class="' + pctClass(report.change) + '">' + pct(report.change) + "</span>" +
+      " · 高 " + fmt(report.high) + "／低 " + fmt(report.low) + "</p>" +
+      (report.warning ? '<p class="k-pick-warn">' + esc(report.warning) + "</p>" : "") +
+      "<h4>狀態（白話）</h4><p>" + esc(report.meaning) + "</p>" +
+      (acts ? "<h4>怎麼操作</h4><ul class=\"session-list\">" + acts + "</ul>" : "") +
+      (pats ? "<h4>型態白話</h4><ul>" + pats + "</ul>" : "") +
+      '<p class="fine"><button type="button" class="ghost" id="' + clearId + '">清除框選</button></p>';
+  }
+
   function renderKPick(report) {
     const box = $("k-pick");
     if (!box) return;
@@ -2313,22 +2347,8 @@
       box.innerHTML = "";
       return;
     }
-    const cls = /弱|賣|空/.test(report.tone) ? "down" : /多|買|升|止跌/.test(report.tone) ? "up" : "";
-    const pats = (report.patterns || []).map(function (p) {
-      const pc = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
-      return "<li><span class=\"" + pc + "\">" + esc(p.name) + "</span> " +
-        esc((p.date || "").slice(5)) + " · " + esc(p.detail) + "</li>";
-    }).join("");
     box.hidden = false;
-    box.innerHTML = "<h3>框選解讀 · " + esc(report.name || "") + "</h3>" +
-      "<p><span class=\"k-pick-tone " + cls + "\">" + esc(report.tone) + "</span>" +
-      esc(report.from.slice(5)) + "～" + esc(report.to.slice(5)) +
-      " · " + report.bars + " 根 · 開 " + fmt(report.open) + " → 收 " + fmt(report.close) +
-      ' <span class="' + pctClass(report.change) + '">' + pct(report.change) + "</span>" +
-      " · 高 " + fmt(report.high) + "／低 " + fmt(report.low) + "</p>" +
-      "<p>" + esc(report.meaning) + "</p>" +
-      (pats ? "<ul>" + pats + "</ul>" : "") +
-      '<p class="fine"><button type="button" class="ghost" id="k-pick-clear">清除框選</button></p>';
+    box.innerHTML = renderKPickHtml(report, "k-pick-clear");
   }
 
   function renderStockKPick(report) {
@@ -2339,22 +2359,8 @@
       box.innerHTML = "";
       return;
     }
-    const cls = /弱|賣|空/.test(report.tone) ? "down" : /多|買|升|止跌/.test(report.tone) ? "up" : "";
-    const pats = (report.patterns || []).map(function (p) {
-      const pc = p.bias === "多" ? "up" : p.bias === "空" ? "down" : "";
-      return "<li><span class=\"" + pc + "\">" + esc(p.name) + "</span> " +
-        esc((p.date || "").slice(5)) + " · " + esc(p.detail) + "</li>";
-    }).join("");
     box.hidden = false;
-    box.innerHTML = "<h3>框選解讀 · " + esc(report.name || "") + "</h3>" +
-      "<p><span class=\"k-pick-tone " + cls + "\">" + esc(report.tone) + "</span>" +
-      esc(report.from.slice(5)) + "～" + esc(report.to.slice(5)) +
-      " · " + report.bars + " 根 · 開 " + fmt(report.open) + " → 收 " + fmt(report.close) +
-      ' <span class="' + pctClass(report.change) + '">' + pct(report.change) + "</span>" +
-      " · 高 " + fmt(report.high) + "／低 " + fmt(report.low) + "</p>" +
-      "<p>" + esc(report.meaning) + "</p>" +
-      (pats ? "<ul>" + pats + "</ul>" : "") +
-      '<p class="fine"><button type="button" class="ghost" id="stock-k-pick-clear">清除框選</button></p>';
+    box.innerHTML = renderKPickHtml(report, "stock-k-pick-clear");
   }
 
   function applyKSelection(from, to, opts) {
@@ -2372,7 +2378,8 @@
     draw();
     const bars = selectedBars(a, b);
     const name = plot.series[0] && plot.series[0].name;
-    const report = M.explainKRange ? M.explainKRange(bars, name) : null;
+    const allBars = plot.series[0] && plot.series[0].bars;
+    const report = M.explainKRange ? M.explainKRange(bars, name, { allBars: allBars }) : null;
     renderKPick(report);
     const list = $("k-patterns");
     if (list) {
@@ -2400,7 +2407,8 @@
     drawStock();
     const bars = selectedBarsFrom(plot, a, b);
     const name = plot.series[0] && plot.series[0].name;
-    const report = M.explainKRange ? M.explainKRange(bars, name) : null;
+    const allBars = plot.series[0] && plot.series[0].bars;
+    const report = M.explainKRange ? M.explainKRange(bars, name, { allBars: allBars }) : null;
     renderStockKPick(report);
     const list = $("stock-k-patterns");
     if (list) {
