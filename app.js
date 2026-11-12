@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 95;
+  const PAGE_BUILD = 96;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2249,7 +2249,8 @@
 
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      '<th>標的</th><th>目前</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th><th></th><th>通知</th>' +
+      '<th>標的</th><th>目前</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
+      '<th>籌碼</th><th>突</th><th>支</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -2266,17 +2267,22 @@
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name">' +
-          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' + esc(label) + "</button>" +
-          '<div class="watch-chips" data-watch-chips="' + idx + '"><span class="note">籌碼…</span></div></td>' +
+          '<button type="button" class="watch-link" data-open-watch="' + idx + '">' +
+          '<span data-watch-name="' + idx + '">' + esc(label) + "</span>" +
+          '<span class="watch-lamp-inline" data-watch-lamp="' + idx + '"></span></button></td>' +
           '<td class="watch-col-price">' +
-          '<span class="watch-lv watch-lv-brk" data-watch-brk="' + idx + '"></span>' +
-          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div>' +
-          '<span class="watch-lv watch-lv-sup" data-watch-sup="' + idx + '"></span></td>' +
+          '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
           '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
+          '<td class="watch-col-chips"><div class="watch-chips" data-watch-chips="' + idx +
+          '"><span class="note">…</span></div></td>' +
+          '<td class="watch-col-lv"><span class="watch-lv watch-lv-brk" data-watch-brk="' + idx +
+          '"></span></td>' +
+          '<td class="watch-col-lv"><span class="watch-lv watch-lv-sup" data-watch-sup="' + idx +
+          '"></span></td>' +
           '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
           '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
@@ -2353,11 +2359,16 @@
     const dateLabel = date.length === 8 ? date.slice(4, 6) + "/" + date.slice(6, 8) : "";
     book.watch.forEach(function (item, idx) {
       const el = box.querySelector('[data-watch-chips="' + idx + '"]');
-      if (!el) return;
+      const lampEl = box.querySelector('[data-watch-lamp="' + idx + '"]');
       const code = String(item && item.code || "").toUpperCase();
       const row = code && byCode[code];
       if (!row) {
-        el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
+        if (el) el.innerHTML = '<span class="note">' + (dateLabel ? dateLabel + " 無" : "—") + "</span>";
+        if (lampEl) {
+          lampEl.className = "watch-lamp-inline";
+          lampEl.textContent = "";
+          lampEl.removeAttribute("title");
+        }
         return;
       }
       const parts = [
@@ -2367,14 +2378,23 @@
       ].filter(Boolean);
       const net = row.instNet != null ? row.instNet : ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0));
       const lamp = C && C.chipTone ? C.chipTone(net, Math.max(Math.abs(net) * 8, 1)) : null;
-      const lampHtml = lamp
-        ? '<span class="force-lamp ' + lamp.cls + '" title="盤後法人燈號（非逐筆大單）">' + esc(lamp.label) + "</span>"
-        : "";
-      const chips = parts.length ? parts.join("") : '<span class="note">—</span>';
-      const dated = dateLabel
-        ? chips.replace(/<\/span>$/, " " + esc(dateLabel) + "</span>")
-        : chips;
-      el.innerHTML = lampHtml + dated;
+      if (lampEl) {
+        if (lamp && lamp.label) {
+          lampEl.className = "watch-lamp-inline" + (lamp.cls ? " " + lamp.cls : "");
+          lampEl.textContent = "(" + lamp.label + ")";
+          lampEl.title = "盤後法人燈號（非逐筆大單）";
+        } else {
+          lampEl.className = "watch-lamp-inline";
+          lampEl.textContent = "";
+          lampEl.removeAttribute("title");
+        }
+      }
+      if (!el) return;
+      let chips = parts.length ? parts.join(" ") : '<span class="note">—</span>';
+      if (dateLabel && parts.length) {
+        chips += ' <span class="watch-chip-date">' + esc(dateLabel) + "</span>";
+      }
+      el.innerHTML = chips;
     });
   }
 
