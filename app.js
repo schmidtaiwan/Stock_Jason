@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 137;
+  const PAGE_BUILD = 138;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -323,6 +323,24 @@
         ? (account.email + "（點擊登出）")
         : "";
       acctBtn.setAttribute("aria-label", acctBtn.title || "Gmail 帳號");
+      const avatar = $("account-avatar");
+      const fallback = $("account-avatar-fallback");
+      const pic = account && account.picture ? String(account.picture) : "";
+      if (avatar) {
+        if (pic) {
+          avatar.hidden = false;
+          if (avatar.getAttribute("src") !== pic) avatar.src = pic;
+        } else {
+          avatar.hidden = true;
+          avatar.removeAttribute("src");
+        }
+      }
+      if (fallback) {
+        fallback.hidden = !!pic;
+        fallback.textContent = account && account.name
+          ? String(account.name).charAt(0).toUpperCase()
+          : (account && account.email ? String(account.email).charAt(0).toUpperCase() : "G");
+      }
     }
     if ($("who")) {
       $("who").hidden = true;
@@ -5368,6 +5386,9 @@
   }
   loadBook();
   paintChrome(true);
+  if (D.account() && !D.account().picture && D.fetchAccount) {
+    D.fetchAccount().then(function () { paintChrome(true); }).catch(function () { /* 頭像可略過 */ });
+  }
   paintTwii(true);
   startLiveClock();
   syncUsBoardFoldUi();

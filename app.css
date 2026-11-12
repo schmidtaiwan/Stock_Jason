@@ -268,12 +268,34 @@ a.gate-ext[hidden] { display: none !important; }
   justify-content: center;
   width: 100%;
   min-height: 36px;
-  padding: 6px;
+  padding: 4px;
   border-radius: 999px;
+  overflow: hidden;
 }
-.tools .account-btn .gmail-icon {
+.tools .account-btn .account-avatar {
   display: block;
-  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #333;
+}
+.tools .account-btn .account-avatar[hidden],
+.tools .account-btn .account-avatar-fallback[hidden] {
+  display: none !important;
+}
+.tools .account-btn .account-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #4285f4;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 main {

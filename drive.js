@@ -1,7 +1,7 @@
 /* Google 登入與雲端硬碟。自選股與日誌不進 Git。 */
 (function (global) {
   const cfg = global.GOOGLE_CONFIG || {};
-  const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
+  const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
   const TOKEN_KEY = "sj-g-token";
 
   let tokenClient = null;
@@ -96,7 +96,8 @@
         token: token,
         exp: exp,
         email: account.email,
-        name: account.name || ""
+        name: account.name || "",
+        picture: account.picture || ""
       }));
     } catch (e) { /* 無痕／額度滿就略過 */ }
   }
@@ -116,7 +117,11 @@
       }
       token = data.token;
       exp = Number(data.exp);
-      account = { email: data.email || "", name: data.name || "" };
+      account = {
+        email: data.email || "",
+        name: data.name || "",
+        picture: data.picture || ""
+      };
       if (!account.email || !isAllowed(account.email)) {
         token = "";
         exp = 0;
@@ -376,7 +381,11 @@
     if (!info.ok) await readErr(info, "無法讀取 Google 帳號");
     const u = await info.json();
     if (!u.email) throw new Error("無法讀取 Google 帳號信箱");
-    account = { email: u.email, name: u.name || "" };
+    account = {
+      email: u.email,
+      name: u.name || "",
+      picture: u.picture || ""
+    };
     saveSession();
     return account;
   }
@@ -444,6 +453,7 @@
     login: login,
     logout: logout,
     account: function () { return account; },
+    fetchAccount: fetchAccount,
     allowedEmails: allowedEmails,
     isAllowed: isAllowed,
     preferredEmail: preferredEmail,
