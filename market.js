@@ -222,8 +222,7 @@
     return out;
   }
 
-  async function yahooFiveMinBars(secid, day) {
-    const dayStr = String(day || "").slice(0, 10);
+  function yahooTwSymbols(secid) {
     const list = [];
     function addSyms(id) {
       yahooCandidates(id).forEach(function (s) {
@@ -237,12 +236,20 @@
       if (list.indexOf(code + ".TW") < 0) list.push(code + ".TW");
       if (list.indexOf(code + ".TWO") < 0) list.push(code + ".TWO");
     }
-    let periodQuery = "interval=5m&range=1d";
+    return list;
+  }
+
+  async function yahooIntradayBars(secid, interval, day) {
+    const dayStr = String(day || "").slice(0, 10);
+    const iv = interval === "1m" ? "1m" : "5m";
+    const list = yahooTwSymbols(secid);
+    let periodQuery = "interval=" + iv + "&range=1d";
     if (dayStr && /^\d{4}-\d{2}-\d{2}$/.test(dayStr)) {
       const start = Date.parse(dayStr + "T00:00:00+08:00");
       const end = Date.parse(dayStr + "T23:59:59+08:00");
       if (isFinite(start) && isFinite(end)) {
-        periodQuery = "interval=5m&period1=" + Math.floor(start / 1000) + "&period2=" + Math.floor(end / 1000);
+        periodQuery = "interval=" + iv + "&period1=" + Math.floor(start / 1000) +
+          "&period2=" + Math.floor(end / 1000);
       }
     }
     let lastErr = null;
@@ -261,6 +268,14 @@
     }
     if (lastErr) throw lastErr;
     return [];
+  }
+
+  async function yahooFiveMinBars(secid, day) {
+    return yahooIntradayBars(secid, "5m", day);
+  }
+
+  async function yahooOneMinBars(secid, day) {
+    return yahooIntradayBars(secid, "1m", day);
   }
 
   function flatOhlcRatio(bars) {
@@ -4244,6 +4259,217 @@
   }
 
   // 個股綜合研判：基本面＋籌碼＋技術／K線買賣點（規則試算，非投資建議）
+  function twSessionClock() {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Taipei",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date());
+    const map = {};
+    parts.forEach(function (p) { map[p.type] = p.value; });
+    const wd = map.weekday || "";
+    const hh = Number(map.hour);
+    const mm = Number(map.minute);
+    const mins = hh * 60 + mm;
+    const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].indexOf(wd) >= 0;
+    const open = weekday && mins >= 9 * 60 && mins <= 13 * 60 + 30;
+    return { open: open, weekday: weekday, hh: hh, mm: mm, label: (map.hour || "") + ":" + (map.minute || "") };
+  }
+
+  // 盤中 1 分 K＋日 K 支撐壓力＋自選成本 → 狀態診斷與操作建議
+  async function intradaySessionDiagnose(secid, code, opts) {
+    opts = opts || {};
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前僅支援台股盤中診斷。" };
+    const clock = twSessionClock();
+    let intra = [];
+    try { intra = await yahooOneMinBars(secid); } catch (err) { intra = []; }
+    if (!intra.length) {
+      try { intra = await fiveMinBars(secid); } catch (err2) { intra = []; }
+    }
+    let daily = [];
+    try { daily = await bars(secid, "180d"); } catch (err) {
+      try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+    }
+    if (!intra.length && !daily.length) {
+      return { ok: false, reason: "盤中 K／日 K 暫讀不到。" };
+    }
+    const levels = findLevels(daily.length ? daily : intra);
+    const atrArr = daily.length ? atr(daily, 14) : [];
+    let atrNow = null;
+    for (let i = atrArr.length - 1; i >= 0; i--) {
+      if (atrArr[i] != null && isFinite(atrArr[i])) { atrNow = atrArr[i]; break; }
+    }
+    const lastIntra = intra.length ? intra[intra.length - 1] : null;
+    const lastDaily = daily.length ? daily[daily.length - 1] : null;
+    let price = lastIntra ? num(lastIntra.c) : null;
+    if (!(price > 0) && lastDaily) price = num(lastDaily.c);
+    if (!(price > 0)) return { ok: false, reason: "沒有可用現價。" };
+    if (!(atrNow > 0)) atrNow = price * 0.015;
+
+    let dayOpen = intra.length ? num(intra[0].o || intra[0].c) : null;
+    let dayHigh = -Infinity;
+    let dayLow = Infinity;
+    let volSum = 0;
+    const vols = [];
+    intra.forEach(function (b) {
+      const h = num(b.h); const l = num(b.l); const v = num(b.v) || 0;
+      if (h > dayHigh) dayHigh = h;
+      if (l < dayLow) dayLow = l;
+      volSum += v;
+      vols.push(v);
+    });
+    if (!isFinite(dayHigh)) dayHigh = price;
+    if (!isFinite(dayLow)) dayLow = price;
+    const avgVol = vols.length ? volSum / vols.length : 0;
+    const recentN = Math.min(20, Math.max(5, Math.floor(vols.length / 4) || 5));
+    const recentVol = vols.length
+      ? vols.slice(-recentN).reduce(function (a, b) { return a + b; }, 0) / recentN
+      : 0;
+    const volRatio = avgVol > 0 ? recentVol / avgVol : 1;
+    const shrink = volRatio < 0.72;
+    const surge = volRatio > 1.25;
+
+    const support = levels.support;
+    const breakout = levels.breakout;
+    const supFocus = support && support.focus != null ? support.focus : dayLow;
+    const brkFocus = breakout && breakout.focus != null ? breakout.focus : dayHigh;
+    const cost = opts.cost != null && isFinite(Number(opts.cost)) && Number(opts.cost) > 0
+      ? Number(opts.cost) : null;
+    const shares = opts.shares != null && isFinite(Number(opts.shares)) ? Number(opts.shares) : null;
+    const vsCost = cost != null ? price - cost : null;
+    const underWater = vsCost != null && vsCost < 0;
+    const nearSup = Math.abs(price - supFocus) <= Math.max(atrNow * 0.55, priceSize(price) * 3);
+    const belowSup = price < (support && support.low != null ? support.low : supFocus) - tickSize(price);
+    const brokeDayLow = intra.length > 30 && price <= dayLow + tickSize(price) &&
+      dayLow < (lastDaily ? num(lastDaily.l) : dayLow) + atrNow * 0.15;
+    const pokedHigh = dayHigh >= brkFocus - tickSize(price);
+    const failedBreak = pokedHigh && price < brkFocus - Math.max(atrNow * 0.25, tickSize(price) * 2);
+    const reclaiming = dayOpen > 0 && price > dayOpen && price > (dayLow + (dayHigh - dayLow) * 0.55);
+    const holdAboveSup = price > supFocus + tickSize(price);
+
+    let stateId = "range";
+    let stateLabel = "區間震盪";
+    let stateTone = "";
+    const why = [];
+
+    if (belowSup || (brokeDayLow && price < (dayOpen || price))) {
+      stateId = "weak_break";
+      stateLabel = "弱勢破底";
+      stateTone = "down";
+      why.push(belowSup
+        ? ("現價跌破日 K 支撐約 " + formatLevelPx(supFocus) + (support && support.why ? "（" + support.why + "）" : ""))
+        : "盤中接近／刷新當日低點，偏弱");
+      if (surge) why.push("破底過程量能偏熱，追價風險高");
+      else if (shrink) why.push("量能未明顯放大，但仍失守關鍵價");
+    } else if (failedBreak) {
+      stateId = "fake_break";
+      stateLabel = "假突破誘多";
+      stateTone = "down";
+      why.push("盤中曾觸及壓力約 " + formatLevelPx(brkFocus) + " 後拉回");
+      if (!surge) why.push("突破段量能不足，誘多機率較高");
+      else why.push("衝高後轉弱，宜防假突破");
+    } else if (nearSup && shrink && holdAboveSup) {
+      stateId = "dry_base";
+      stateLabel = "量縮打底";
+      stateTone = "";
+      why.push("貼近支撐約 " + formatLevelPx(supFocus) + " 且近段量縮");
+      why.push("尚未轉強，先當整理／打底看待");
+    } else if (surge && reclaiming && holdAboveSup && !failedBreak) {
+      stateId = "vol_turn";
+      stateLabel = "帶量轉強";
+      stateTone = "up";
+      why.push("近段量能放大，價格守在開盤與支撐之上");
+      if (price >= brkFocus - atrNow * 0.3) why.push("接近壓力 " + formatLevelPx(brkFocus) + "，留意能否站穩");
+    } else {
+      stateId = "range";
+      stateLabel = "區間震盪";
+      stateTone = "";
+      why.push("位於支撐 " + formatLevelPx(supFocus) + " 與壓力 " + formatLevelPx(brkFocus) + " 之間");
+      if (shrink) why.push("量能偏縮，方向未明");
+    }
+
+    if (cost != null) {
+      why.push("自選成本 " + formatLevelPx(cost) +
+        (vsCost >= 0 ? "（目前浮盈約 " + formatLevelPx(vsCost) + "）" : "（目前浮虧約 " + formatLevelPx(Math.abs(vsCost)) + "）"));
+    }
+
+    const defense = roundPx(Math.min(
+      belowSup ? (support && support.low != null ? support.low : supFocus) : supFocus,
+      dayLow + tickSize(price)
+    ));
+    const bounceSell = roundPx(Math.min(brkFocus, Math.max(price, dayOpen || price) + atrNow * 0.8));
+    const trialBuy = roundPx(Math.max(supFocus, dayLow));
+
+    let action = "續抱觀察";
+    let actionSteps = [];
+    if (stateId === "weak_break") {
+      action = underWater ? "反彈減碼／設停損" : "反彈減碼優先";
+      actionSteps = [
+        "反彈靠近 " + formatLevelPx(bounceSell) + " 或成本附近優先減碼，不抄底攤平",
+        "盤中若有效跌破防守價 " + formatLevelPx(defense) + " 且站不回，執行停損／清倉紀律",
+        "若僅長下影後迅速站回 " + formatLevelPx(supFocus) + "，改為續抱觀察，但加碼暫緩"
+      ];
+    } else if (stateId === "fake_break") {
+      action = "反彈減碼、不追高";
+      actionSteps = [
+        "假突破後不追壓力 " + formatLevelPx(brkFocus) + " 之上",
+        "反彈至 " + formatLevelPx(roundPx((price + dayHigh) / 2)) + "～" + formatLevelPx(dayHigh) + " 分批減碼",
+        "若跌破防守 " + formatLevelPx(defense) + "，轉為停損／減碼到底"
+      ];
+    } else if (stateId === "dry_base") {
+      action = underWater ? "續抱觀察，低接僅小試" : "續抱觀察／支撐試單";
+      actionSteps = [
+        "守住 " + formatLevelPx(supFocus) + " 可續抱；量縮打底不宜追價",
+        "僅在 " + formatLevelPx(trialBuy) + " 附近小量低接試單，破 " + formatLevelPx(defense) + " 立刻停損試單部位",
+        cost != null && underWater
+          ? "成本 " + formatLevelPx(cost) + " 上方反彈先減虧，勿一次攤平"
+          : "帶量站上 " + formatLevelPx(roundPx((supFocus + brkFocus) / 2)) + " 再考慮加碼"
+      ];
+    } else if (stateId === "vol_turn") {
+      action = "續抱，回檔可試單";
+      actionSteps = [
+        "帶量轉強中，先續抱；回檔不破 " + formatLevelPx(supFocus) + " 可加碼／試單",
+        "盯緊防守 " + formatLevelPx(defense) + "，跌破且量縮轉弱則先減碼保利",
+        "接近壓力 " + formatLevelPx(brkFocus) + " 先別追高，等站穩再加"
+      ];
+    } else {
+      action = "觀望／續抱";
+      actionSteps = [
+        "區間內以 " + formatLevelPx(supFocus) + " 為防守、" + formatLevelPx(brkFocus) + " 為壓力",
+        "破防守 " + formatLevelPx(defense) + " → 減碼；帶量突破壓力 → 再轉偏多",
+        cost != null ? ("對照成本 " + formatLevelPx(cost) + " 規劃減碼或留倉比例") : "無成本資料時以支撐壓力紀律為主"
+      ];
+    }
+
+    return {
+      ok: true,
+      code: stockId,
+      sessionOpen: clock.open,
+      asOf: clock.label,
+      source: intra.length && String(intra[0].t || "").indexOf(":") >= 0 ? "1m/5m" : "daily",
+      price: roundPx(price),
+      dayOpen: dayOpen != null ? roundPx(dayOpen) : null,
+      dayHigh: roundPx(dayHigh),
+      dayLow: roundPx(dayLow),
+      volRatio: Math.round(volRatio * 100) / 100,
+      cost: cost != null ? roundPx(cost) : null,
+      shares: shares,
+      support: support,
+      breakout: breakout,
+      defense: defense,
+      stateId: stateId,
+      stateLabel: stateLabel,
+      stateTone: stateTone,
+      why: why,
+      action: action,
+      actionSteps: actionSteps,
+      tip: "規則依盤中分 K＋日 K 支撐壓力試算，非投資建議；盤中籌碼可能尚未公告。"
+    };
+  }
+
   async function stockAdvice(secid, code) {
     const stockId = twStockId(secid, code);
     if (!stockId) return { ok: false, reason: "目前僅支援台股綜合研判。" };
@@ -5289,6 +5515,8 @@
     explainKRange: explainKRange,
     watchChips: watchChips,
     stockAdvice: stockAdvice,
+    intradaySessionDiagnose: intradaySessionDiagnose,
+    yahooOneMinBars: yahooOneMinBars,
     twPulse: twPulse,
     yahooSymbolQuote: yahooSymbolQuote,
     latestTwseT86: latestTwseT86,

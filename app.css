@@ -492,6 +492,45 @@ canvas {
   display: grid;
   gap: 10px;
 }
+.stock-session {
+  margin-top: 12px;
+}
+.stock-session-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.stock-session-card h4 {
+  margin: 12px 0 6px;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.stock-session-meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.session-list {
+  margin: 0;
+  padding-left: 1.15em;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.stock-session-card .tag.up {
+  background: rgba(255, 80, 80, 0.18);
+  color: var(--up);
+}
+.stock-session-card .tag.down {
+  background: rgba(60, 180, 120, 0.18);
+  color: var(--down);
+}
 .stock-live-card { padding: 10px; }
 .stock-live-head {
   display: flex;

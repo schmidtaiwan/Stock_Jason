@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 120;
+  const PAGE_BUILD = 121;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -13,6 +13,9 @@
   let stockLiveTape = [];
   let stockLivePv = null;
   let stockLiveLastKey = "";
+  let stockSessionTimer = 0;
+  let stockSessionBusy = false;
+  let stockSessionGen = 0;
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -421,11 +424,14 @@
       loadStockChart();
       if (state.stock) {
         loadStockLive(state.stock);
+        loadStockSession(state.stock);
         loadStockDetail(state.stock);
       }
       startStockLiveClock();
+      startStockSessionClock();
     } else {
       stopStockLiveClock();
+      stopStockSessionClock();
     }
     if (name === "pulse") {
       syncUsBoardFoldUi();
@@ -1115,6 +1121,101 @@
       if (document.hidden || state.view !== "stock" || !state.stock) return;
       loadStockLive(state.stock, true);
     }, 6000);
+  }
+
+  function stopStockSessionClock() {
+    if (stockSessionTimer) clearInterval(stockSessionTimer);
+    stockSessionTimer = 0;
+  }
+
+  function startStockSessionClock() {
+    stopStockSessionClock();
+    stockSessionTimer = setInterval(function () {
+      if (document.hidden || state.view !== "stock" || !state.stock) return;
+      loadStockSession(state.stock, true);
+    }, 60000);
+  }
+
+  function watchCostFor(row) {
+    if (!row || !book || !book.watch) return { cost: null, shares: null };
+    const hit = book.watch.find(function (w) {
+      return w && (
+        (row.secid && w.secid === row.secid) ||
+        (row.code && String(w.code || "").toUpperCase() === String(row.code).toUpperCase())
+      );
+    });
+    if (!hit) return { cost: null, shares: null };
+    const cost = hit.cost != null && hit.cost !== "" ? Number(hit.cost) : null;
+    const shares = hit.shares != null && hit.shares !== "" ? Number(hit.shares) : null;
+    return {
+      cost: cost != null && isFinite(cost) && cost > 0 ? cost : null,
+      shares: shares != null && isFinite(shares) && shares > 0 ? shares : null
+    };
+  }
+
+  function renderStockSession(diag) {
+    const box = $("stock-session");
+    if (!box) return;
+    if (!diag) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    if (!diag.ok) {
+      box.innerHTML = '<article class="card stock-session-card"><h3>盤中狀態診斷</h3><p class="note">' +
+        esc(diag.reason || "暫無診斷") + "</p></article>";
+      return;
+    }
+    const tone = diag.stateTone === "up" ? "up" : diag.stateTone === "down" ? "down" : "";
+    const sessionTag = diag.sessionOpen ? "盤中" : "非開盤時段";
+    const meta = "現價 " + (diag.price != null ? fmt(diag.price) : "—") +
+      " · 今高 " + (diag.dayHigh != null ? fmt(diag.dayHigh) : "—") +
+      " · 今低 " + (diag.dayLow != null ? fmt(diag.dayLow) : "—") +
+      (diag.cost != null ? " · 成本 " + fmt(diag.cost) : "") +
+      " · 量能比 " + (diag.volRatio != null ? diag.volRatio.toFixed(2) : "—") +
+      " · " + sessionTag + " " + esc(diag.asOf || "");
+    const why = (diag.why || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const steps = (diag.actionSteps || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const levels = '<ul class="stat-list">' +
+      "<li><span>日 K 支撐</span><strong class=\"down\">" +
+      esc((diag.support && (diag.support.focusText || diag.support.text)) || "—") + "</strong></li>" +
+      "<li><span>日 K 壓力</span><strong class=\"up\">" +
+      esc((diag.breakout && diag.breakout.text) || "—") + "</strong></li>" +
+      "<li><span>盤中防守價</span><strong>" +
+      (diag.defense != null ? fmt(diag.defense) : "—") + "</strong></li></ul>";
+    box.innerHTML = '<article class="card stock-session-card">' +
+      "<h3>盤中狀態診斷 <span class=\"tag " + tone + "\">" + esc(diag.stateLabel) + "</span></h3>" +
+      '<p class="stock-session-meta">' + meta + "</p>" +
+      "<h4>多空判斷</h4><ul class=\"session-list\">" + why + "</ul>" +
+      "<h4>建議操作 · " + esc(diag.action) + "</h4><ul class=\"session-list\">" + steps + "</ul>" +
+      levels +
+      '<p class="fine">' + esc(diag.tip || "") + "</p></article>";
+  }
+
+  async function loadStockSession(row, quiet) {
+    const box = $("stock-session");
+    if (!box || !row || !M || !M.intradaySessionDiagnose) return;
+    if (stockSessionBusy) return;
+    stockSessionBusy = true;
+    const gen = ++stockSessionGen;
+    if (!quiet) {
+      box.hidden = false;
+      box.innerHTML = '<article class="card"><p class="status">讀取盤中 1 分 K 與支撐壓力…</p></article>';
+    }
+    try {
+      const hold = watchCostFor(row);
+      const diag = await M.intradaySessionDiagnose(row.secid, row.code, hold);
+      if (gen !== stockSessionGen || !state.stock || state.stock.secid !== row.secid) return;
+      renderStockSession(diag);
+    } catch (err) {
+      if (gen !== stockSessionGen) return;
+      if (!quiet) {
+        renderStockSession({ ok: false, reason: (err && err.message) || "盤中診斷失敗" });
+      }
+    } finally {
+      stockSessionBusy = false;
+    }
   }
 
   function stopUsBoardClock() {
@@ -3129,6 +3230,7 @@
     stockLivePv = null;
     stockLiveTape = [];
     stockLiveLastKey = "";
+    stockSessionGen += 1;
     setView("stock");
   }
 
