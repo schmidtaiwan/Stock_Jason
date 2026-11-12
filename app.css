@@ -560,6 +560,22 @@ canvas {
 .session-fold-title {
   font-weight: 700;
 }
+.session-ops {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.session-op.buy { color: var(--down); }
+.session-op.sell { color: var(--up); }
+.session-op.stop { color: #e0a100; }
+.session-op.mute { color: var(--muted); font-weight: 500; }
 .session-fold-body {
   margin-top: 8px;
 }

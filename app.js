@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 128;
+  const PAGE_BUILD = 129;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1166,6 +1166,43 @@
     return tone === "up" ? "up" : tone === "down" ? "down" : "";
   }
 
+  function sessionOpsSummaryHtml(diag) {
+    if (!diag || !diag.ok) return "";
+    const buy = diag.buyLevel != null ? fmt(diag.buyLevel) : null;
+    const sell = diag.sellLevel != null ? fmt(diag.sellLevel) : null;
+    const stop = diag.stopPoint != null
+      ? fmt(diag.stopPoint)
+      : (diag.defense != null ? fmt(diag.defense) : null);
+    const id = diag.stateId || "";
+    let parts = [];
+    if (id === "weak_break") {
+      if (sell) parts.push('<span class="session-op sell">反彈減(' + esc(sell) + ")</span>");
+      if (stop) parts.push('<span class="session-op stop">破底停損(' + esc(stop) + ")</span>");
+      parts.push('<span class="session-op mute">不低接</span>');
+    } else if (id === "fake_break") {
+      if (sell) parts.push('<span class="session-op sell">上緣減碼(' + esc(sell) + ")</span>");
+      if (stop) parts.push('<span class="session-op stop">破底停損(' + esc(stop) + ")</span>");
+      if (buy) parts.push('<span class="session-op buy">回測試買(' + esc(buy) + ")</span>");
+    } else if (id === "vol_turn") {
+      if (buy) parts.push('<span class="session-op buy">回檔試買(' + esc(buy) + ")</span>");
+      if (sell) parts.push('<span class="session-op sell">壓力減碼(' + esc(sell) + ")</span>");
+      if (stop) parts.push('<span class="session-op stop">防守停損(' + esc(stop) + ")</span>");
+    } else {
+      // 區間震盪／量縮打底：下緣試買、上緣減碼、破底停損
+      if (buy) parts.push('<span class="session-op buy">下緣試買(' + esc(buy) + ")</span>");
+      if (sell) parts.push('<span class="session-op sell">上緣減碼(' + esc(sell) + ")</span>");
+      if (stop) parts.push('<span class="session-op stop">破底停損(' + esc(stop) + ")</span>");
+    }
+    if (!parts.length) {
+      parts = [
+        '<span class="session-op buy">買' + (buy ? "(" + esc(buy) + ")" : "") + "</span>",
+        '<span class="session-op sell">賣' + (sell ? "(" + esc(sell) + ")" : "") + "</span>",
+        '<span class="session-op stop">停損' + (stop ? "(" + esc(stop) + ")" : "") + "</span>"
+      ];
+    }
+    return '<span class="session-ops">' + parts.join("") + "</span>";
+  }
+
   function renderSessionDiagnoseCard(diag, opts) {
     opts = opts || {};
     const title = opts.title || "盤中狀態診斷";
@@ -1208,7 +1245,8 @@
     return '<article class="card stock-session-card">' +
       '<details class="session-fold">' +
       "<summary><span class=\"session-fold-title\">" + esc(title) + "</span>" +
-      '<span class="tag ' + tone + '">' + esc(diag.stateLabel) + "</span></summary>" +
+      '<span class="tag ' + tone + '">' + esc(diag.stateLabel) + "</span>" +
+      sessionOpsSummaryHtml(diag) + "</summary>" +
       '<div class="session-fold-body">' +
       '<p class="stock-session-meta">' + meta + "</p>" +
       "<h4>多空判斷</h4><ul class=\"session-list\">" + why + "</ul>" +
@@ -1248,7 +1286,8 @@
       "</ul>";
     return '<details class="session-fold horizon-fold">' +
       "<summary><span class=\"session-fold-title\">" + esc(title) + "</span>" +
-      '<span class="tag ' + tone + '">' + esc(diag.stateLabel || "") + "</span></summary>" +
+      '<span class="tag ' + tone + '">' + esc(diag.stateLabel || "") + "</span>" +
+      sessionOpsSummaryHtml(diag) + "</summary>" +
       '<div class="session-fold-body">' +
       '<p class="stock-session-meta">現價 ' + (diag.price != null ? fmt(diag.price) : "—") +
       (diag.asOf ? " · " + esc(diag.asOf) : "") + "</p>" +
