@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=110">
+  <link rel="stylesheet" href="app.css?v=111">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -134,15 +134,29 @@
               <div id="stock-legend" class="legend"></div>
             </div>
           </div>
-          <div id="stock-live" class="stock-live" hidden></div>
-          <div id="stock-detail" class="stock-detail" hidden></div>
-          <div id="stock-mops" class="stock-mops" hidden></div>
           <div id="stock-k-card" class="card chart-card stock-k-card" hidden>
+            <div class="stock-k-toolbar">
+              <strong class="stock-k-title">K 線</strong>
+              <div class="span-dates stock-k-dates" aria-label="K線區間日期">
+                <label class="span-date">
+                  <span>起</span>
+                  <input id="stock-k-from" type="date" inputmode="numeric">
+                </label>
+                <span class="span-sep">～</span>
+                <label class="span-date">
+                  <span>迄</span>
+                  <input id="stock-k-to" type="date" inputmode="numeric">
+                </label>
+              </div>
+            </div>
             <canvas id="stock-k-chart" width="640" height="420"></canvas>
             <p id="stock-k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思。</p>
             <div id="stock-k-pick" class="k-pick" hidden></div>
           </div>
           <div id="stock-k-patterns" class="k-patterns stock-k-patterns-foot" hidden></div>
+          <div id="stock-live" class="stock-live" hidden></div>
+          <div id="stock-detail" class="stock-detail" hidden></div>
+          <div id="stock-mops" class="stock-mops" hidden></div>
           <p id="stock-hover" class="tip" hidden></p>
         </div>
       </section>
@@ -569,11 +583,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=110"></script>
-  <script src="drive.js?v=110"></script>
-  <script src="sakata.js?v=110"></script>
-  <script src="market.js?v=110"></script>
-  <script src="chips.js?v=110"></script>
-  <script src="app.js?v=110"></script>
+  <script src="google_config.js?v=111"></script>
+  <script src="drive.js?v=111"></script>
+  <script src="sakata.js?v=111"></script>
+  <script src="market.js?v=111"></script>
+  <script src="chips.js?v=111"></script>
+  <script src="app.js?v=111"></script>
 </body>
 </html>

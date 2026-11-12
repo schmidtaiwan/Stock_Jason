@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 110;
+  const PAGE_BUILD = 111;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -923,14 +923,20 @@
   }
 
   function syncStockDateInputs() {
-    const from = $("stock-from");
-    const to = $("stock-to");
-    if (!from || !to) return;
-    if (document.activeElement === from || document.activeElement === to) return;
-    if (state.stockDateFrom) from.value = state.stockDateFrom;
-    if (state.stockDateTo) to.value = state.stockDateTo;
-    from.classList.toggle("custom", !!state.stockCustom);
-    to.classList.toggle("custom", !!state.stockCustom);
+    const pairs = [
+      [$("stock-from"), $("stock-to")],
+      [$("stock-k-from"), $("stock-k-to")]
+    ];
+    pairs.forEach(function (pair) {
+      const from = pair[0];
+      const to = pair[1];
+      if (!from || !to) return;
+      if (document.activeElement === from || document.activeElement === to) return;
+      if (state.stockDateFrom) from.value = state.stockDateFrom;
+      if (state.stockDateTo) to.value = state.stockDateTo;
+      from.classList.toggle("custom", !!state.stockCustom);
+      to.classList.toggle("custom", !!state.stockCustom);
+    });
   }
 
   function isoToday() {
@@ -4046,9 +4052,14 @@
       setView("watch");
     });
   }
-  function applyStockCustomDates() {
-    const fromEl = $("stock-from");
-    const toEl = $("stock-to");
+  function applyStockCustomDates(ev) {
+    const src = ev && ev.target;
+    let fromEl = $("stock-from");
+    let toEl = $("stock-to");
+    if (src && (src.id === "stock-k-from" || src.id === "stock-k-to")) {
+      fromEl = $("stock-k-from");
+      toEl = $("stock-k-to");
+    }
     if (!fromEl || !toEl) return;
     const from = fromEl.value;
     const to = toEl.value;
@@ -4064,11 +4075,14 @@
       state.stockRange = "1d";
       state.stockStyle = "candle";
     }
+    syncStockDateInputs();
     buildStockToggles();
     loadStockChart();
   }
   if ($("stock-from")) $("stock-from").addEventListener("change", applyStockCustomDates);
   if ($("stock-to")) $("stock-to").addEventListener("change", applyStockCustomDates);
+  if ($("stock-k-from")) $("stock-k-from").addEventListener("change", applyStockCustomDates);
+  if ($("stock-k-to")) $("stock-k-to").addEventListener("change", applyStockCustomDates);
   $("idea-run").addEventListener("click", runIdeas);
   $("tech-run").addEventListener("click", runTech);
   $("advise-run").addEventListener("click", runAdvise);

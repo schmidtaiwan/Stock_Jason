@@ -346,6 +346,20 @@ main {
 .stock-k-card {
   margin-top: 12px;
 }
+.stock-k-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.stock-k-title {
+  font-size: 15px;
+}
+.stock-k-dates {
+  margin: 0;
+}
 .stock-k-card canvas {
   width: 100%;
   height: auto;
