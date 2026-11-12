@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 126;
+  const PAGE_BUILD = 127;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3085,6 +3085,8 @@
       box.innerHTML = "";
       return;
     }
+    const liveOpen = !!(box.querySelector("[data-live-fold]") && box.querySelector("[data-live-fold]").open);
+    const pvOpen = !!(box.querySelector("[data-pv-fold]") && box.querySelector("[data-pv-fold]").open);
     box.hidden = false;
     const q = bookQ || {};
     const cls = pctClass(q.change != null ? q.change : (q.pct || 0));
@@ -3093,8 +3095,8 @@
         (q.pct != null ? " (" + Math.abs(q.pct).toFixed(2) + "%)" : ""))
       : "—";
     const head = '<div class="stock-live-head">' +
-      '<span>時: ' + esc(q.tradeTime || "—") + "</span>" +
-      '<span>價: <strong class="' + cls + '">' + (q.price != null ? fmtPx(q.price) : "—") + "</strong></span>" +
+      "<span>時: " + esc(q.tradeTime || "—") + "</span>" +
+      '<span><strong class="' + cls + '">' + (q.price != null ? fmtPx(q.price) : "—") + "</strong></span>" +
       '<span class="' + cls + '">' + chgTxt + "</span></div>";
 
     const tape = (stockLiveTape || []).slice(-8).reverse();
@@ -3137,21 +3139,27 @@
     const maxLots = rows.reduce(function (m, r) { return Math.max(m, r.lots || 0); }, 0) || 1;
     const openPx = q.open != null ? q.open : (stockLivePv && stockLivePv.open);
     const highPx = q.high != null ? q.high : (stockLivePv && stockLivePv.high);
-    const pvHtml = '<div class="stock-pv">' +
-      '<div class="stock-pv-title">分價量表 <span class="fine">（分鐘量價近似＋盤中成交累積）</span></div>' +
-      (rows.length ? rows.slice(0, 40).map(function (r) {
-        const tags = [];
-        if (highPx != null && Math.abs(r.price - highPx) < 0.0001) tags.push('<em class="up">高</em>');
-        if (openPx != null && Math.abs(r.price - openPx) < 0.0001) tags.push("<em>開</em>");
-        const w = Math.max(4, Math.round((r.lots / maxLots) * 100));
-        return '<div class="stock-pv-row"><span class="px down">' + fmtPx(r.price) +
-          "</span>" + tags.join("") +
-          '<span class="bar"><i style="width:' + w + '%"></i></span>' +
-          '<span class="lots">' + (Math.round(r.lots) || r.lots) + "</span></div>";
-      }).join("") : '<p class="fine">尚無分價資料。</p>') + "</div>";
+    const pvBody = rows.length ? rows.slice(0, 40).map(function (r) {
+      const tags = [];
+      if (highPx != null && Math.abs(r.price - highPx) < 0.0001) tags.push('<em class="up">高</em>');
+      if (openPx != null && Math.abs(r.price - openPx) < 0.0001) tags.push("<em>開</em>");
+      const w = Math.max(4, Math.round((r.lots / maxLots) * 100));
+      return '<div class="stock-pv-row"><span class="px down">' + fmtPx(r.price) +
+        "</span>" + tags.join("") +
+        '<span class="bar"><i style="width:' + w + '%"></i></span>' +
+        '<span class="lots">' + (Math.round(r.lots) || r.lots) + "</span></div>";
+    }).join("") : '<p class="fine">尚無分價資料。</p>';
 
-    box.innerHTML = '<article class="card stock-live-card">' + head + tapeHtml + bookHtml +
-      "</article><article class=\"card stock-live-card\">" + pvHtml + "</article>";
+    box.innerHTML =
+      '<article class="card stock-live-card">' +
+      '<details class="session-fold stock-live-fold" data-live-fold' + (liveOpen ? " open" : "") + ">" +
+      "<summary>" + head + "</summary>" +
+      '<div class="session-fold-body">' + tapeHtml + bookHtml + "</div></details></article>" +
+      '<article class="card stock-live-card">' +
+      '<details class="session-fold stock-live-fold" data-pv-fold' + (pvOpen ? " open" : "") + ">" +
+      '<summary><span class="session-fold-title">分價量表</span>' +
+      '<span class="fine">分鐘量價近似＋盤中成交累積</span></summary>' +
+      '<div class="session-fold-body"><div class="stock-pv">' + pvBody + "</div></div></details></article>";
   }
 
   async function loadStockLive(row, quiet) {
