@@ -1047,7 +1047,7 @@ textarea { min-height: 120px; resize: vertical; }
   z-index: 6;
 }
 .watch-pin-2 {
-  left: 108px;
+  left: 86px;
   z-index: 5;
   box-shadow: 2px 0 0 var(--line);
 }
@@ -1055,9 +1055,9 @@ textarea { min-height: 120px; resize: vertical; }
   z-index: 6;
 }
 .watch-name {
-  width: 108px;
-  min-width: 108px;
-  max-width: 108px;
+  width: 86px;
+  min-width: 86px;
+  max-width: 86px;
   text-align: left !important;
   white-space: nowrap;
   overflow: hidden;
