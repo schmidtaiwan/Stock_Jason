@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 132;
+  const PAGE_BUILD = 133;
   const PAGE_DATE = "2026-11-12";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2838,11 +2838,13 @@
       const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
         '" data-open-watch="' + idx + '" data-price="" title="' + esc(tip) + '">' +
+        '<span class="watch-mini-main">' +
         '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
-        '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
         "</span>" +
         '<span class="watch-mini-ops" data-watch-ops="' + idx + '" hidden></span>' +
+        "</span>" +
+        '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
         "</button>";
     }).join("") + "</div>";
   }
