@@ -130,6 +130,13 @@ a.gate-ext[hidden] { display: none !important; }
 }
 .brand .mark { width: 36px; height: 36px; flex: 0 0 auto; }
 .brand h1 { font-size: 16px; margin: 0; line-height: 1.25; }
+.brand-tag {
+  margin: 0;
+  font-size: calc(16px - 2pt);
+  line-height: 1.2;
+  color: var(--muted, #9aa4b2);
+  font-weight: 500;
+}
 .header-bias {
   flex: 1 1 120px;
   min-width: 0;
