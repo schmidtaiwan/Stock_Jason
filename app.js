@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 170;
+  const PAGE_BUILD = 171;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2557,7 +2557,7 @@
     const showHold = !!(hold && hold.series && hold.series.length && plot.style !== "candle");
     const right = showHold ? 44 : 22;
     const top = 16;
-    const bottom = 28;
+    const bottom = 42;
     const iw = width - left - right;
     const ih = height - top - bottom;
     const candle = plot.style === "candle";
@@ -2761,11 +2761,20 @@
     }
     ctx.fillStyle = "#93a0b0";
     ctx.font = axisFont;
+    ctx.textBaseline = "top";
     const marks = [0, Math.floor((plot.axis.length - 1) / 2), plot.axis.length - 1];
     marks.forEach(function (i) {
-      const text = String(plot.axis[i] || "").slice(5, 16);
-      ctx.fillText(text, xOf(i) - 18, height - 8);
+      if (!(i >= 0) || i >= plot.axis.length) return;
+      let text = String(plot.axis[i] || "");
+      if (text.length >= 16) text = text.slice(5, 16);
+      else if (text.length >= 10) text = text.slice(5, 10);
+      const tw = ctx.measureText(text).width;
+      let x = xOf(i) - tw / 2;
+      if (x < 2) x = 2;
+      if (x + tw > width - 2) x = Math.max(2, width - 2 - tw);
+      ctx.fillText(text, x, height - bottom + 10);
     });
+    ctx.textBaseline = "alphabetic";
     canvas._layout = {
       left: left,
       top: top,
