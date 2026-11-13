@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 177;
+  const PAGE_BUILD = 178;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -489,7 +489,7 @@
       return;
     }
     const isMis = q && String(q.source || "").toLowerCase() === "mis";
-    // MIS 加權：證交所快照約 1～2 分鐘才跳一次；相對「N秒前」會誤以為 6 秒輪詢壞了
+    // MIS 加權：內容依證交所快照節奏更新；相對「N秒前」會誤以為輪詢壞了
     if (isMis && q.asOf != null && isFinite(q.asOf)) {
       const stamp = new Date(Number(q.asOf));
       const clock = stamp.toLocaleTimeString("zh-TW", {
@@ -501,7 +501,7 @@
       });
       lagEl.hidden = false;
       lagEl.textContent = "快照 " + clock;
-      lagEl.title = "證交所加權快照時間（約 1～2 分鐘更新一次）；頁面仍每 6 秒向 MIS 詢問最新快照";
+      lagEl.title = "證交所加權快照時間（MIS 約 5 秒快照）；頁面每 10 秒向 MIS 詢問最新快照";
       return;
     }
     let secs = null;
@@ -1798,7 +1798,7 @@
     stockLiveTimer = setInterval(function () {
       if (document.hidden || state.view !== "stock" || !state.stock) return;
       loadStockLive(state.stock, true);
-    }, 6000);
+    }, 10000);
   }
 
   function stopStockSessionClock() {
@@ -2081,19 +2081,19 @@
 
   function startTwiiClock() {
     stopTwiiClock();
-    // 盤中／MIS 強制時段：加權約每 6 秒刷一次（對齊 MIS 約 5.5 秒限流）
+    // 盤中／MIS 強制時段：加權每 10 秒刷一次
     twiiTimer = setInterval(function () {
       if (document.hidden) return;
       const open = isTwMarketOpen();
       const misForce = M.isMisForceWindow && M.isMisForceWindow();
       if (!open && !misForce) return;
       paintTwii(false);
-    }, 6000);
+    }, 10000);
   }
 
   function startLiveClock() {
     if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(liveTick, 20000);
+    liveTimer = setInterval(liveTick, 10000);
     startTwiiClock();
     document.addEventListener("visibilitychange", function () {
       const open = isTwMarketOpen();

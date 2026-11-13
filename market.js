@@ -2812,9 +2812,9 @@
     };
   }
 
-  // ── TWSE MIS 基本市況報導（約 5 秒快照；高頻會鎖 IP）────────────────
-  const MIS_MIN_GAP_MS = 5500;
-  const MIS_CACHE_MS = 5000;
+  // ── TWSE MIS 基本市況報導（約 5 秒快照；本站每 10 秒問一次）────────
+  const MIS_MIN_GAP_MS = 10000;
+  const MIS_CACHE_MS = 10000;
   // 台灣 08:00～14:00：強制只用 MIS，抓不到就間隔重試，不改走 Yahoo／鉅亨
   const MIS_FORCE_RETRY_MS = 3500;
   const MIS_FORCE_ATTEMPTS = 4;
