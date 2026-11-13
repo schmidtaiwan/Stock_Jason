@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 148;
+  const PAGE_BUILD = 149;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -103,6 +103,7 @@
   let saveTimer = 0;
   let importRows = [];
   let liveTimer = 0;
+  let twiiTimer = 0;
   let liveBusy = false;
   const alertSent = {};
 
@@ -411,14 +412,39 @@
       lagEl.textContent = "";
       return;
     }
-    let mins = null;
+    const isMis = q && String(q.source || "").toLowerCase() === "mis";
+    let secs = null;
     if (q && q.asOf != null && isFinite(q.asOf)) {
-      mins = Math.max(0, Math.floor((Date.now() - Number(q.asOf)) / 60000));
+      secs = Math.max(0, Math.floor((Date.now() - Number(q.asOf)) / 1000));
     } else if (q && q.delayMin != null && isFinite(q.delayMin) && q.delayMin > 0) {
-      mins = Math.round(q.delayMin);
+      secs = Math.round(Number(q.delayMin) * 60);
     }
-    // 開盤中延遲達 1 分鐘才顯示；Yahoo 台股常見約 15～20 分延遲
-    if (mins == null || mins < 1) {
+    if (secs == null) {
+      lagEl.hidden = true;
+      lagEl.textContent = "";
+      return;
+    }
+    // MIS 近即時：8 秒內不顯示；兩分鐘內改顯示秒，避免被整成「1 分鐘前」
+    if (isMis) {
+      if (secs < 8) {
+        lagEl.hidden = true;
+        lagEl.textContent = "";
+        return;
+      }
+      lagEl.hidden = false;
+      if (secs < 120) {
+        lagEl.textContent = secs + " 秒前";
+        return;
+      }
+      const mins = Math.floor(secs / 60);
+      lagEl.textContent = mins >= 60
+        ? (Math.floor(mins / 60) + " 小時前")
+        : (mins + " 分鐘前");
+      return;
+    }
+    // Yahoo 等：滿 1 分鐘才顯示
+    const mins = Math.floor(secs / 60);
+    if (mins < 1) {
       lagEl.hidden = true;
       lagEl.textContent = "";
       return;
@@ -1584,14 +1610,34 @@
     }, 30000);
   }
 
+  function stopTwiiClock() {
+    if (twiiTimer) clearInterval(twiiTimer);
+    twiiTimer = 0;
+  }
+
+  function startTwiiClock() {
+    stopTwiiClock();
+    // 盤中／MIS 強制時段：加權約每 6 秒刷一次（對齊 MIS 約 5.5 秒限流）
+    twiiTimer = setInterval(function () {
+      if (document.hidden) return;
+      const open = isTwMarketOpen();
+      const misForce = M.isMisForceWindow && M.isMisForceWindow();
+      if (!open && !misForce) return;
+      paintTwii(false);
+    }, 6000);
+  }
+
   function startLiveClock() {
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(liveTick, 20000);
+    startTwiiClock();
     document.addEventListener("visibilitychange", function () {
       const open = isTwMarketOpen();
       const misForce = M.isMisForceWindow && M.isMisForceWindow();
-      if (!document.hidden && (open || misForce)) liveTick();
-      else if (document.hidden && hasWatchAlerts() && open) liveTick();
+      if (!document.hidden && (open || misForce)) {
+        paintTwii(false);
+        liveTick();
+      } else if (document.hidden && hasWatchAlerts() && open) liveTick();
       if (!document.hidden && state.view === "pulse") loadUsBoard({ quiet: true });
     });
   }
