@@ -1221,16 +1221,35 @@ textarea { min-height: 120px; resize: vertical; }
   border-color: var(--accent);
   color: var(--accent);
 }
-/* 防窺：全頁所有顏色改灰階（含加權紅字、底欄黃字、漲跌色、輸入框） */
-html.sj-privacy {
+/* 防窺・深淺：全頁 filter 灰階深淺可調 */
+html.sj-privacy,
+html.sj-privacy-depth {
   --up: #9ca3af;
   --down: #9ca3af;
   --accent: #a3a3a3;
   --accent-2: #737373;
 }
-html.sj-privacy body,
-html.sj-privacy #app.sj-privacy {
+html.sj-privacy.sj-privacy-depth body,
+html.sj-privacy.sj-privacy-depth #app.sj-privacy {
   filter: grayscale(var(--sj-privacy-gray, 1));
+}
+.privacy-mode-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.privacy-mode-row .chip {
+  min-height: 44px;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+.privacy-same-note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 .privacy-gray-row {
   display: flex;
@@ -1259,63 +1278,107 @@ html.sj-privacy #app.sj-privacy {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
-html.sj-privacy .up,
-html.sj-privacy .down,
-html.sj-privacy .twii-chg,
-html.sj-privacy .twii-box strong,
-html.sj-privacy .header-bias strong,
-html.sj-privacy .watch-total strong,
-html.sj-privacy .watch-input,
-html.sj-privacy .watch-net-bar i.buy,
-html.sj-privacy .watch-net-bar i.sell,
-html.sj-privacy .watch-diag,
-html.sj-privacy .watch-lamp-chip,
-html.sj-privacy .watch-lv,
-html.sj-privacy .tag,
-html.sj-privacy .chip[aria-pressed="true"],
-html.sj-privacy .dock button[aria-current="page"],
-html.sj-privacy #watch-privacy-toggle[aria-pressed="true"],
-html.sj-privacy #watch-mode-toggle[aria-pressed="true"] {
+html.sj-privacy.sj-privacy-depth .up,
+html.sj-privacy.sj-privacy-depth .down,
+html.sj-privacy.sj-privacy-depth .twii-chg,
+html.sj-privacy.sj-privacy-depth .twii-box strong,
+html.sj-privacy.sj-privacy-depth .header-bias strong,
+html.sj-privacy.sj-privacy-depth .watch-total strong,
+html.sj-privacy.sj-privacy-depth .watch-input,
+html.sj-privacy.sj-privacy-depth .watch-net-bar i.buy,
+html.sj-privacy.sj-privacy-depth .watch-net-bar i.sell,
+html.sj-privacy.sj-privacy-depth .watch-diag,
+html.sj-privacy.sj-privacy-depth .watch-lamp-chip,
+html.sj-privacy.sj-privacy-depth .watch-lv,
+html.sj-privacy.sj-privacy-depth .tag,
+html.sj-privacy.sj-privacy-depth .chip[aria-pressed="true"],
+html.sj-privacy.sj-privacy-depth .dock button[aria-current="page"],
+html.sj-privacy.sj-privacy-depth #watch-privacy-toggle[aria-pressed="true"],
+html.sj-privacy.sj-privacy-depth #watch-mode-toggle[aria-pressed="true"] {
   color: #d1d5db !important;
   border-color: #6b7280 !important;
   background: #3f3f46 !important;
   background-image: none !important;
 }
-html.sj-privacy .watch-net-bar i.buy,
-html.sj-privacy .watch-net-bar i.sell {
+html.sj-privacy.sj-privacy-depth .watch-net-bar i.buy,
+html.sj-privacy.sj-privacy-depth .watch-net-bar i.sell {
   background: #6b7280 !important;
 }
-html.sj-privacy .watch-input {
+html.sj-privacy.sj-privacy-depth .watch-input {
   caret-color: #b0b6be;
 }
-html.sj-privacy .limit-up-flash .watch-name,
-html.sj-privacy .limit-down-flash .watch-name,
-html.sj-privacy .limit-up-flash .watch-mini-name,
-html.sj-privacy .limit-down-flash .watch-mini-name {
+html.sj-privacy.sj-privacy-depth .limit-up-flash .watch-name,
+html.sj-privacy.sj-privacy-depth .limit-down-flash .watch-name,
+html.sj-privacy.sj-privacy-depth .limit-up-flash .watch-mini-name,
+html.sj-privacy.sj-privacy-depth .limit-down-flash .watch-mini-name {
   animation: none !important;
   box-shadow: inset 0 0 0 1px #6b7280 !important;
   background-color: #1a1f26 !important;
   border-color: #6b7280 !important;
 }
-html.sj-privacy .account-avatar-fallback {
+html.sj-privacy.sj-privacy-depth .account-avatar-fallback {
   background: #6b7280 !important;
   color: #e5e7eb !important;
 }
-html.sj-privacy .watch-table .danger,
-html.sj-privacy .danger,
-html.sj-privacy .primary,
-html.sj-privacy .ghost {
+html.sj-privacy.sj-privacy-depth .watch-table .danger,
+html.sj-privacy.sj-privacy-depth .danger,
+html.sj-privacy.sj-privacy-depth .primary,
+html.sj-privacy.sj-privacy-depth .ghost {
   color: #b0b6be !important;
   border-color: #6b7280 !important;
 }
-html.sj-privacy .primary {
+html.sj-privacy.sj-privacy-depth .primary {
   background: #3f3f46 !important;
 }
-html.sj-privacy #twii-price,
-html.sj-privacy #twii-chg,
-html.sj-privacy #header-bias-text,
-html.sj-privacy #watch-total-pnl {
+html.sj-privacy.sj-privacy-depth #twii-price,
+html.sj-privacy.sj-privacy-depth #twii-chg,
+html.sj-privacy.sj-privacy-depth #header-bias-text,
+html.sj-privacy.sj-privacy-depth #watch-total-pnl {
   color: #c4c4c4 !important;
+}
+/* 防窺・同色：全部文字改成與「商品」表頭相同的灰色（--muted） */
+html.sj-privacy.sj-privacy-same {
+  --up: #93a0b0;
+  --down: #93a0b0;
+  --accent: #93a0b0;
+  --accent-2: #93a0b0;
+  --text: #93a0b0;
+}
+html.sj-privacy.sj-privacy-same body,
+html.sj-privacy.sj-privacy-same #app.sj-privacy {
+  filter: none !important;
+  color: #93a0b0;
+}
+html.sj-privacy.sj-privacy-same body,
+html.sj-privacy.sj-privacy-same #app,
+html.sj-privacy.sj-privacy-same #app :where(
+  p, span, strong, em, small, a, button, label, td, th, li, h1, h2, h3, h4,
+  input, select, textarea, legend, div, i
+) {
+  color: #93a0b0 !important;
+  -webkit-text-fill-color: #93a0b0;
+  caret-color: #93a0b0;
+}
+html.sj-privacy.sj-privacy-same .up,
+html.sj-privacy.sj-privacy-same .down,
+html.sj-privacy.sj-privacy-same .chip[aria-pressed="true"],
+html.sj-privacy.sj-privacy-same .dock button[aria-current="page"],
+html.sj-privacy.sj-privacy-same #watch-privacy-toggle[aria-pressed="true"],
+html.sj-privacy.sj-privacy-same #watch-mode-toggle[aria-pressed="true"] {
+  border-color: #6b7280 !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+html.sj-privacy.sj-privacy-same .watch-net-bar i.buy,
+html.sj-privacy.sj-privacy-same .watch-net-bar i.sell {
+  background: #6b7280 !important;
+}
+html.sj-privacy.sj-privacy-same .limit-up-flash .watch-name,
+html.sj-privacy.sj-privacy-same .limit-down-flash .watch-name,
+html.sj-privacy.sj-privacy-same .limit-up-flash .watch-mini-name,
+html.sj-privacy.sj-privacy-same .limit-down-flash .watch-mini-name {
+  animation: none !important;
+  box-shadow: none !important;
 }
 .watch-groups-bar {
   display: flex;

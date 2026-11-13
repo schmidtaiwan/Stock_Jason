@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 171;
+  const PAGE_BUILD = 172;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -95,6 +95,7 @@
       watchShowPnl: true,
       watchPrivacy: false,
       watchPrivacyGray: 100,
+      watchPrivacyMode: "depth",
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -213,6 +214,7 @@
         if (!isFinite(n)) return 100;
         return Math.max(0, Math.min(100, Math.round(n)));
       })(),
+      watchPrivacyMode: src.watchPrivacyMode === "same" ? "same" : "depth",
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -258,6 +260,10 @@
     return Math.max(0, Math.min(100, Math.round(n)));
   }
 
+  function privacyModeOf() {
+    return book.watchPrivacyMode === "same" ? "same" : "depth";
+  }
+
   function applyPrivacyGray() {
     document.documentElement.style.setProperty("--sj-privacy-gray", String(privacyGrayOf() / 100));
   }
@@ -274,17 +280,28 @@
 
   function syncWatchPrivacyUi() {
     const on = isWatchPrivacy();
+    const mode = privacyModeOf();
     const btn = $("watch-privacy-toggle");
     if (btn) {
       btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.title = "點一下開關防窺；長按調整灰階深淺";
+      btn.title = "點一下開關防窺；長按選深淺／同色";
     }
     const view = $("view-watch");
     if (view) view.classList.toggle("watch-privacy", on);
     const app = $("app");
-    if (app) app.classList.toggle("sj-privacy", on);
+    if (app) {
+      app.classList.toggle("sj-privacy", on);
+      app.classList.toggle("sj-privacy-same", on && mode === "same");
+      app.classList.toggle("sj-privacy-depth", on && mode === "depth");
+    }
     document.documentElement.classList.toggle("sj-privacy", on);
-    if (document.body) document.body.classList.toggle("sj-privacy", on);
+    document.documentElement.classList.toggle("sj-privacy-same", on && mode === "same");
+    document.documentElement.classList.toggle("sj-privacy-depth", on && mode === "depth");
+    if (document.body) {
+      document.body.classList.toggle("sj-privacy", on);
+      document.body.classList.toggle("sj-privacy-same", on && mode === "same");
+      document.body.classList.toggle("sj-privacy-depth", on && mode === "depth");
+    }
     applyPrivacyGray();
   }
 
@@ -1143,6 +1160,35 @@
     if (sheet) sheet.hidden = true;
   }
 
+  function paintPrivacySettings() {
+    const sheet = $("privacy-settings-sheet");
+    if (!sheet) return;
+    const mode = privacyModeOf();
+    const n = privacyGrayOf();
+    const depthOn = mode === "depth";
+    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="防窺設定">' +
+      '<p class="watch-move-title">防窺設定</p>' +
+      '<p class="watch-move-pos">選擇顯示模式</p>' +
+      '<div class="privacy-mode-row">' +
+      '<button type="button" class="chip" data-privacy-mode="depth" aria-pressed="' +
+      (depthOn ? "true" : "false") + '">深淺</button>' +
+      '<button type="button" class="chip" data-privacy-mode="same" aria-pressed="' +
+      (!depthOn ? "true" : "false") + '">同色</button>' +
+      "</div>" +
+      (depthOn
+        ? ('<p class="watch-move-pos">灰階深淺（左右拖曳）</p>' +
+          '<div class="privacy-gray-row">' +
+          '<span class="privacy-gray-edge">淺</span>' +
+          '<input id="privacy-gray-bar" class="privacy-gray-bar" type="range" min="0" max="100" step="1" value="' +
+          n + '" aria-label="灰階深淺">' +
+          '<span class="privacy-gray-edge">深</span>' +
+          "</div>" +
+          '<p class="privacy-gray-val"><span data-privacy-gray-val>' + n + "%</span></p>")
+        : '<p class="privacy-same-note">同色：全部文字改成與「商品」欄相同的灰色</p>') +
+      '<button type="button" class="primary watch-move-done" data-privacy-close="1">完成</button>' +
+      "</div>";
+  }
+
   function openPrivacySettings() {
     privacySkipClick = true;
     if (!isWatchPrivacy()) {
@@ -1160,6 +1206,17 @@
       sheet.addEventListener("click", function (ev) {
         if (ev.target === sheet || ev.target.closest("[data-privacy-close]")) {
           closePrivacySettings();
+          return;
+        }
+        const modeBtn = ev.target.closest("[data-privacy-mode]");
+        if (modeBtn) {
+          const next = modeBtn.getAttribute("data-privacy-mode") === "same" ? "same" : "depth";
+          if (privacyModeOf() !== next) {
+            book.watchPrivacyMode = next;
+            scheduleSave();
+            syncWatchPrivacyUi();
+            paintPrivacySettings();
+          }
         }
       });
       sheet.addEventListener("input", function (ev) {
@@ -1173,19 +1230,7 @@
         scheduleSave();
       });
     }
-    const n = privacyGrayOf();
-    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="防窺設定">' +
-      '<p class="watch-move-title">防窺設定</p>' +
-      '<p class="watch-move-pos">灰階深淺（左右拖曳調整）</p>' +
-      '<div class="privacy-gray-row">' +
-      '<span class="privacy-gray-edge">淺</span>' +
-      '<input id="privacy-gray-bar" class="privacy-gray-bar" type="range" min="0" max="100" step="1" value="' +
-      n + '" aria-label="灰階深淺">' +
-      '<span class="privacy-gray-edge">深</span>' +
-      "</div>" +
-      '<p class="privacy-gray-val"><span data-privacy-gray-val>' + n + "</span></p>" +
-      '<button type="button" class="primary watch-move-done" data-privacy-close="1">完成</button>' +
-      "</div>";
+    paintPrivacySettings();
     sheet.hidden = false;
     try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
   }
