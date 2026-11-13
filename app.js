@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 199;
+  const PAGE_BUILD = 200;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -389,8 +389,28 @@
 
   function showVer() {
     const text = String(PAGE_BUILD);
-    $("gate-ver").textContent = text;
-    $("pageVer").textContent = text;
+    if ($("gate-ver")) $("gate-ver").textContent = text;
+    if ($("pageVer")) $("pageVer").textContent = text;
+    checkFreshBuild();
+  }
+
+  // 手機常快取舊 index：偵測 build.json 較新就強制重整一次
+  function checkFreshBuild() {
+    const key = "sj-build-reload";
+    fetch("build.json?t=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
+      .then(function (res) { return res && res.ok ? res.json() : null; })
+      .then(function (j) {
+        const remote = j && Number(j.build);
+        if (!(remote > PAGE_BUILD)) return;
+        try {
+          if (sessionStorage.getItem(key) === String(remote)) return;
+          sessionStorage.setItem(key, String(remote));
+        } catch (err) { /* ignore */ }
+        const url = new URL(location.href);
+        url.searchParams.set("v", String(remote));
+        location.replace(url.toString());
+      })
+      .catch(function () { /* offline／舊站無 build.json */ });
   }
 
   function showApp() {
