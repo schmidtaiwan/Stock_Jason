@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 181;
+  const PAGE_BUILD = 182;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -207,7 +207,7 @@
       watch: active.items,
       watchGroups: groups,
       watchGroupId: gid,
-      watchMode: src.watchMode === "mini" ? "mini" : "full",
+      watchMode: "full",
       watchShowPnl: !!src.watchShowPnl,
       watchPrivacy: !!src.watchPrivacy,
       watchPrivacyGray: (function () {
@@ -249,7 +249,7 @@
   }
 
   function isWatchMini() {
-    return book.watchMode === "mini";
+    return false;
   }
 
   function isWatchShowPnl() {
@@ -1109,34 +1109,29 @@
   }
 
   function paintWatchGroups() {
-    const box = $("watch-groups");
-    if (!box) return;
     flushWatchToGroup();
     const groups = book.watchGroups || [];
-    box.innerHTML = groups.map(function (g) {
-      const on = g.id === book.watchGroupId;
-      return '<button type="button" class="chip watch-group-chip" data-watch-group="' + esc(g.id) +
-        '" aria-pressed="' + (on ? "true" : "false") + '">' + esc(g.name) +
-        '<span class="watch-group-count">' + (g.items || []).length + "</span></button>";
-    }).join("") +
-      '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋群組</button>' +
-      '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
-      '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
-      (groups.length > 1
-        ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
-        : "");
-    syncWatchModeBtn();
+    const sel = $("watch-group-select");
+    if (sel) {
+      const cur = book.watchGroupId;
+      sel.innerHTML = groups.map(function (g) {
+        return '<option value="' + esc(g.id) + '"' + (g.id === cur ? " selected" : "") + ">" +
+          esc(g.name) + "（" + (g.items || []).length + "）</option>";
+      }).join("");
+      if (cur) sel.value = cur;
+    }
+    const box = $("watch-groups");
+    if (box) {
+      box.innerHTML =
+        '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋群組</button>' +
+        '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
+        '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
+        (groups.length > 1
+          ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
+          : "");
+    }
     syncWatchPnlUi();
     syncWatchPrivacyUi();
-  }
-
-  function syncWatchModeBtn() {
-    const btn = $("watch-mode-toggle");
-    if (!btn) return;
-    const mini = isWatchMini();
-    btn.setAttribute("aria-pressed", mini ? "true" : "false");
-    btn.textContent = mini ? "詳細" : "極簡";
-    btn.title = mini ? "切換為詳細列表" : "切換為極簡並排";
   }
 
   function toggleWatchShowPnl() {
@@ -1197,9 +1192,8 @@
   }
 
   function toggleWatchMode() {
-    book.watchMode = isWatchMini() ? "full" : "mini";
+    book.watchMode = "full";
     scheduleSave();
-    syncWatchModeBtn();
     renderWatch(true);
   }
 
@@ -5300,7 +5294,6 @@
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-json-btn") $("watch-json").click();
-    else if (t.id === "watch-mode-toggle") toggleWatchMode();
     else if (t.id === "watch-privacy-toggle") {
       if (privacySkipClick) {
         privacySkipClick = false;
@@ -5613,6 +5606,11 @@
   });
   if ($("watch-pnl-toggle")) {
     $("watch-pnl-toggle").addEventListener("change", toggleWatchShowPnl);
+  }
+  if ($("watch-group-select")) {
+    $("watch-group-select").addEventListener("change", function () {
+      switchWatchGroup($("watch-group-select").value);
+    });
   }
   $("watch-list").addEventListener("change", async function (ev) {
     const modeEl = ev.target.getAttribute("data-watch-notify-mode");

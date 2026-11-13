@@ -1172,6 +1172,33 @@ textarea { min-height: 120px; resize: vertical; }
   margin-bottom: 8px;
 }
 .watch-head h2 { margin: 0; }
+.watch-group-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+}
+.watch-group-title {
+  appearance: none;
+  -webkit-appearance: none;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 28px 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2393a0b0' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 4px center / 12px 8px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.watch-group-title:focus {
+  outline: none;
+  color: var(--accent);
+}
 .watch-pnl-toggle {
   display: inline-flex;
   align-items: center;
@@ -1207,7 +1234,6 @@ textarea { min-height: 120px; resize: vertical; }
   gap: 8px;
   flex: 0 0 auto;
 }
-.watch-head #watch-mode-toggle,
 .watch-head #watch-privacy-toggle,
 .watch-head #watch-wake-toggle {
   flex: 0 0 auto;
@@ -1215,7 +1241,6 @@ textarea { min-height: 120px; resize: vertical; }
   padding: 6px 14px;
   border-radius: 999px;
 }
-#watch-mode-toggle[aria-pressed="true"],
 #watch-privacy-toggle[aria-pressed="true"],
 #watch-wake-toggle[aria-pressed="true"] {
   border-color: var(--accent);
@@ -1293,8 +1318,7 @@ html.sj-privacy.sj-privacy-depth .watch-lv,
 html.sj-privacy.sj-privacy-depth .tag,
 html.sj-privacy.sj-privacy-depth .chip[aria-pressed="true"],
 html.sj-privacy.sj-privacy-depth .dock button[aria-current="page"],
-html.sj-privacy.sj-privacy-depth #watch-privacy-toggle[aria-pressed="true"],
-html.sj-privacy.sj-privacy-depth #watch-mode-toggle[aria-pressed="true"] {
+html.sj-privacy.sj-privacy-depth #watch-privacy-toggle[aria-pressed="true"] {
   color: #d1d5db !important;
   border-color: #6b7280 !important;
   background: #3f3f46 !important;
@@ -1405,7 +1429,6 @@ html.sj-privacy.sj-privacy-same .down,
 html.sj-privacy.sj-privacy-same .chip[aria-pressed="true"],
 html.sj-privacy.sj-privacy-same .dock button[aria-current="page"],
 html.sj-privacy.sj-privacy-same #watch-privacy-toggle[aria-pressed="true"],
-html.sj-privacy.sj-privacy-same #watch-mode-toggle[aria-pressed="true"],
 html.sj-privacy.sj-privacy-same #watch-wake-toggle[aria-pressed="true"] {
   border-color: #2a3340 !important;
   background: #151b24 !important;
