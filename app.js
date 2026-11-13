@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 203;
+  const PAGE_BUILD = 204;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -471,7 +471,9 @@
       $("who").textContent = "";
     }
     $("watch-note").textContent = "";
-    $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
+    if ($("prefer")) {
+      $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
+    }
     if (!skipTwii) paintTwii(false);
   }
 
