@@ -739,7 +739,48 @@
     return out;
   }
 
+  // 證交所 BFI82U：外資及陸資（不含外資自營商）買進／賣出／買賣超（元）
+  async function twseBfi82u(dateYmd) {
+    const ymd = String(dateYmd || "").replace(/\D/g, "");
+    if (ymd.length !== 8) return { ok: false, date: ymd, foreign: null };
+    const json = await twseFetchJson(
+      "/rwd/zh/fund/BFI82U?response=json&dayDate=" + encodeURIComponent(ymd) + "&type=day"
+    );
+    if (!json || String(json.stat || "").toUpperCase() !== "OK") {
+      return { ok: false, date: ymd, foreign: null };
+    }
+    let foreign = null;
+    (json.data || []).forEach(function (row) {
+      const name = String((row && row[0]) || "");
+      if (!/外資及陸資/.test(name) || !/不含/.test(name)) return;
+      const buy = twseNum(row[1]);
+      const sell = twseNum(row[2]);
+      const net = twseNum(row[3]);
+      if (buy == null || sell == null) return;
+      const netAmt = net != null ? net : (buy - sell);
+      foreign = {
+        date: ymd.slice(0, 4) + "-" + ymd.slice(4, 6) + "-" + ymd.slice(6, 8),
+        buy: buy,
+        sell: sell,
+        net: netAmt,
+        buyYi: buy / 1e8,
+        sellYi: sell / 1e8,
+        netYi: netAmt / 1e8,
+        source: "twse"
+      };
+    });
+    return { ok: !!foreign, date: ymd, foreign: foreign };
+  }
+
   async function foreignSpotDay() {
+    // 優先證交所官方買賣金額；FinMind 當備援
+    try {
+      const days = twseWeekdayYmds(taipeiYmd(), 12);
+      for (let i = 0; i < days.length; i++) {
+        const hit = await twseBfi82u(days[i]);
+        if (hit && hit.ok && hit.foreign) return hit.foreign;
+      }
+    } catch (err) { /* fallback */ }
     const rows = await foreignInvestorRows();
     if (!rows.length) return null;
     return rows[rows.length - 1];

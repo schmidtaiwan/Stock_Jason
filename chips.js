@@ -50,8 +50,15 @@
           }
         }
         if (spot) {
-          if (spot.buyYi != null) pack.buyYi = spot.buyYi;
-          if (spot.sellYi != null) pack.sellYi = spot.sellYi;
+          // 看板「買超／賣超」顯示淨額（與證交所／新聞一致），不是買進／賣出毛額
+          const netYi = spot.netYi != null && isFinite(spot.netYi)
+            ? spot.netYi
+            : (spot.buyYi != null && spot.sellYi != null ? spot.buyYi - spot.sellYi : null);
+          if (netYi != null && isFinite(netYi)) {
+            pack.buyYi = netYi > 0 ? netYi : null;
+            pack.sellYi = netYi < 0 ? Math.abs(netYi) : null;
+            pack.netYi = netYi;
+          }
           pack.date = spot.date || pack.date;
         }
       } catch (err) { /* ignore */ }
