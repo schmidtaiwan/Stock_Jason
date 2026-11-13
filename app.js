@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 167;
+  const PAGE_BUILD = 168;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -94,6 +94,7 @@
       watchMode: "full",
       watchShowPnl: true,
       watchPrivacy: false,
+      watchPrivacyGray: 100,
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -207,6 +208,11 @@
       watchMode: src.watchMode === "mini" ? "mini" : "full",
       watchShowPnl: src.watchShowPnl !== false,
       watchPrivacy: !!src.watchPrivacy,
+      watchPrivacyGray: (function () {
+        const n = Number(src.watchPrivacyGray);
+        if (!isFinite(n)) return 100;
+        return Math.max(0, Math.min(100, Math.round(n)));
+      })(),
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -246,6 +252,16 @@
     return !!book.watchPrivacy;
   }
 
+  function privacyGrayOf() {
+    const n = Number(book.watchPrivacyGray);
+    if (!isFinite(n)) return 100;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+
+  function applyPrivacyGray() {
+    document.documentElement.style.setProperty("--sj-privacy-gray", String(privacyGrayOf() / 100));
+  }
+
   function syncWatchPnlUi() {
     const on = isWatchShowPnl();
     const cb = $("watch-pnl-toggle");
@@ -261,7 +277,7 @@
     const btn = $("watch-privacy-toggle");
     if (btn) {
       btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.title = on ? "關閉防窺（恢復彩色）" : "全頁灰階，降低旁人一眼看出漲跌";
+      btn.title = "點一下開關防窺；長按調整灰階深淺";
     }
     const view = $("view-watch");
     if (view) view.classList.toggle("watch-privacy", on);
@@ -269,6 +285,7 @@
     if (app) app.classList.toggle("sj-privacy", on);
     document.documentElement.classList.toggle("sj-privacy", on);
     if (document.body) document.body.classList.toggle("sj-privacy", on);
+    applyPrivacyGray();
   }
 
   function esc(s) {
@@ -1116,6 +1133,98 @@
     book.watchPrivacy = !isWatchPrivacy();
     scheduleSave();
     syncWatchPrivacyUi();
+  }
+
+  let privacyPress = null;
+  let privacySkipClick = false;
+
+  function closePrivacySettings() {
+    const sheet = $("privacy-settings-sheet");
+    if (sheet) sheet.hidden = true;
+  }
+
+  function openPrivacySettings() {
+    privacySkipClick = true;
+    if (!isWatchPrivacy()) {
+      book.watchPrivacy = true;
+      scheduleSave();
+      syncWatchPrivacyUi();
+    }
+    let sheet = $("privacy-settings-sheet");
+    if (!sheet) {
+      sheet = document.createElement("div");
+      sheet.id = "privacy-settings-sheet";
+      sheet.className = "watch-move-sheet privacy-settings-sheet";
+      sheet.hidden = true;
+      document.body.appendChild(sheet);
+      sheet.addEventListener("click", function (ev) {
+        if (ev.target === sheet || ev.target.closest("[data-privacy-close]")) {
+          closePrivacySettings();
+        }
+      });
+      sheet.addEventListener("input", function (ev) {
+        const bar = ev.target.closest("#privacy-gray-bar");
+        if (!bar) return;
+        const n = Math.max(0, Math.min(100, Math.round(Number(bar.value) || 0)));
+        book.watchPrivacyGray = n;
+        applyPrivacyGray();
+        const label = sheet.querySelector("[data-privacy-gray-val]");
+        if (label) label.textContent = n + "%";
+        scheduleSave();
+      });
+    }
+    const n = privacyGrayOf();
+    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="防窺設定">' +
+      '<p class="watch-move-title">防窺設定</p>' +
+      '<p class="watch-move-pos">灰階深淺（左右拖曳調整）</p>' +
+      '<div class="privacy-gray-row">' +
+      '<span class="privacy-gray-edge">淺</span>' +
+      '<input id="privacy-gray-bar" class="privacy-gray-bar" type="range" min="0" max="100" step="1" value="' +
+      n + '" aria-label="灰階深淺">' +
+      '<span class="privacy-gray-edge">深</span>' +
+      "</div>" +
+      '<p class="privacy-gray-val"><span data-privacy-gray-val>' + n + "</span></p>" +
+      '<button type="button" class="primary watch-move-done" data-privacy-close="1">完成</button>' +
+      "</div>";
+    sheet.hidden = false;
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
+  }
+
+  function bindPrivacyLongPress() {
+    const btn = $("watch-privacy-toggle");
+    if (!btn || btn.dataset.longBound) return;
+    btn.dataset.longBound = "1";
+
+    function clearPress() {
+      if (!privacyPress) return;
+      clearTimeout(privacyPress.timer);
+      privacyPress = null;
+    }
+
+    btn.addEventListener("pointerdown", function (ev) {
+      if (ev.button != null && ev.button !== 0) return;
+      privacySkipClick = false;
+      const pointerId = ev.pointerId;
+      privacyPress = {
+        pointerId: pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
+        timer: setTimeout(function () {
+          if (!privacyPress || privacyPress.pointerId !== pointerId) return;
+          privacyPress = null;
+          openPrivacySettings();
+        }, 450)
+      };
+    });
+    btn.addEventListener("pointermove", function (ev) {
+      if (!privacyPress) return;
+      if (Math.abs(ev.clientX - privacyPress.x) > 12 ||
+          Math.abs(ev.clientY - privacyPress.y) > 12) {
+        clearPress();
+      }
+    });
+    btn.addEventListener("pointerup", clearPress);
+    btn.addEventListener("pointercancel", clearPress);
   }
 
   const WAKE_KEY = "sj-wake-lock";
@@ -5020,7 +5129,13 @@
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
-    else if (t.id === "watch-privacy-toggle") toggleWatchPrivacy();
+    else if (t.id === "watch-privacy-toggle") {
+      if (privacySkipClick) {
+        privacySkipClick = false;
+        return;
+      }
+      toggleWatchPrivacy();
+    }
     else if (t.id === "watch-wake-toggle") toggleWakeLock();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
@@ -6001,6 +6116,7 @@
   syncChartDetailsUi();
   bindToolMenuDrag();
   bindWatchReorder();
+  bindPrivacyLongPress();
   D.ready().catch(function () { /* 登入時再提示 */ });
   if (D.account()) {
     $("gate").hidden = true;
