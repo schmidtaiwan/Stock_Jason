@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 179;
+  const PAGE_BUILD = 180;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -308,6 +308,21 @@
     root.style.setProperty("--sj-same-img-bright", String(0.45 + (n / 100) * 0.35));
   }
 
+  function clearPrivacySameBright() {
+    const root = document.documentElement;
+    [
+      "--sj-same-ink",
+      "--sj-same-img-bright",
+      "--up",
+      "--down",
+      "--accent",
+      "--muted",
+      "--ink"
+    ].forEach(function (key) {
+      root.style.removeProperty(key);
+    });
+  }
+
   function syncWatchPnlUi() {
     const on = isWatchShowPnl();
     const cb = $("watch-pnl-toggle");
@@ -344,6 +359,7 @@
     }
     applyPrivacyGray();
     if (on && mode === "same") applyPrivacySameBright();
+    else clearPrivacySameBright();
   }
 
   function esc(s) {

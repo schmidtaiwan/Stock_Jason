@@ -1933,9 +1933,9 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 .watch-lamp-chip.up { color: var(--up); }
 .watch-lamp-chip.down { color: var(--down); }
 .watch-col-price {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  width: 84px;
+  min-width: 84px;
+  max-width: 84px;
   text-align: left;
   white-space: nowrap;
   vertical-align: middle;
@@ -1948,12 +1948,17 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   line-height: 1.1;
 }
 .watch-col-chg {
-  width: 108px;
-  min-width: 108px;
+  width: 76px;
+  min-width: 76px;
 }
 .watch-col-pct {
-  width: 96px;
-  min-width: 96px;
+  width: 67px;
+  min-width: 67px;
+}
+.watch-col-shares {
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px;
 }
 /* 成交／漲跌／幅度／買價靠左（與商品同側對齊） */
 .watch-table th.watch-col-price,
