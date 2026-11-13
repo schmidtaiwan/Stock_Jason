@@ -1336,18 +1336,25 @@ html.sj-privacy.sj-privacy-depth #header-bias-text,
 html.sj-privacy.sj-privacy-depth #watch-total-pnl {
   color: #c4c4c4 !important;
 }
-/* 防窺・同色：全部文字改成與「商品」表頭相同的灰色（--muted） */
+/* 防窺・同色：文字統一淺灰、底色維持深色，確保對比可讀 */
 html.sj-privacy.sj-privacy-same {
-  --up: #93a0b0;
-  --down: #93a0b0;
-  --accent: #93a0b0;
-  --accent-2: #93a0b0;
-  --text: #93a0b0;
+  --sj-same-ink: #c8d0db;
+  --up: #c8d0db;
+  --down: #c8d0db;
+  --accent: #c8d0db;
+  --accent-2: #9aa3b0;
+  --muted: #c8d0db;
+  --ink: #c8d0db;
+  --text: #c8d0db;
 }
 html.sj-privacy.sj-privacy-same body,
 html.sj-privacy.sj-privacy-same #app.sj-privacy {
   filter: none !important;
-  color: #93a0b0;
+  color: #c8d0db;
+  background: #10151b !important;
+}
+html.sj-privacy.sj-privacy-same #app {
+  background: #10151b !important;
 }
 html.sj-privacy.sj-privacy-same body,
 html.sj-privacy.sj-privacy-same #app,
@@ -1355,19 +1362,58 @@ html.sj-privacy.sj-privacy-same #app :where(
   p, span, strong, em, small, a, button, label, td, th, li, h1, h2, h3, h4,
   input, select, textarea, legend, div, i
 ) {
-  color: #93a0b0 !important;
-  -webkit-text-fill-color: #93a0b0;
-  caret-color: #93a0b0;
+  color: #c8d0db !important;
+  -webkit-text-fill-color: #c8d0db;
+  caret-color: #c8d0db;
+}
+html.sj-privacy.sj-privacy-same .card,
+html.sj-privacy.sj-privacy-same .watch-summary,
+html.sj-privacy.sj-privacy-same .watch-total,
+html.sj-privacy.sj-privacy-same .watch-mini-card,
+html.sj-privacy.sj-privacy-same .dock,
+html.sj-privacy.sj-privacy-same header {
+  background-color: #12181f !important;
+  background-image: none !important;
+}
+html.sj-privacy.sj-privacy-same .watch-table th,
+html.sj-privacy.sj-privacy-same .watch-table td {
+  background-color: #12181f !important;
+}
+html.sj-privacy.sj-privacy-same .watch-pin {
+  background: #12181f !important;
+}
+html.sj-privacy.sj-privacy-same .watch-table thead .watch-pin {
+  background: #182028 !important;
+}
+html.sj-privacy.sj-privacy-same .chip,
+html.sj-privacy.sj-privacy-same .ghost,
+html.sj-privacy.sj-privacy-same .secondary,
+html.sj-privacy.sj-privacy-same .primary,
+html.sj-privacy.sj-privacy-same .danger,
+html.sj-privacy.sj-privacy-same .dock button {
+  background: #1a222c !important;
+  background-image: none !important;
+  border-color: #3a4654 !important;
+  color: #c8d0db !important;
+  -webkit-text-fill-color: #c8d0db;
 }
 html.sj-privacy.sj-privacy-same .up,
 html.sj-privacy.sj-privacy-same .down,
 html.sj-privacy.sj-privacy-same .chip[aria-pressed="true"],
 html.sj-privacy.sj-privacy-same .dock button[aria-current="page"],
 html.sj-privacy.sj-privacy-same #watch-privacy-toggle[aria-pressed="true"],
-html.sj-privacy.sj-privacy-same #watch-mode-toggle[aria-pressed="true"] {
-  border-color: #6b7280 !important;
-  background: transparent !important;
+html.sj-privacy.sj-privacy-same #watch-mode-toggle[aria-pressed="true"],
+html.sj-privacy.sj-privacy-same #watch-wake-toggle[aria-pressed="true"] {
+  border-color: #5b6573 !important;
+  background: #232b36 !important;
   background-image: none !important;
+  color: #c8d0db !important;
+  -webkit-text-fill-color: #c8d0db;
+}
+html.sj-privacy.sj-privacy-same .watch-input {
+  background: transparent !important;
+  color: #c8d0db !important;
+  -webkit-text-fill-color: #c8d0db;
 }
 html.sj-privacy.sj-privacy-same .watch-net-bar i.buy,
 html.sj-privacy.sj-privacy-same .watch-net-bar i.sell {
@@ -1379,6 +1425,7 @@ html.sj-privacy.sj-privacy-same .limit-up-flash .watch-mini-name,
 html.sj-privacy.sj-privacy-same .limit-down-flash .watch-mini-name {
   animation: none !important;
   box-shadow: none !important;
+  background-color: #12181f !important;
 }
 .watch-groups-bar {
   display: flex;

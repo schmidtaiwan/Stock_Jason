@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 172;
+  const PAGE_BUILD = 173;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1184,7 +1184,7 @@
           '<span class="privacy-gray-edge">深</span>' +
           "</div>" +
           '<p class="privacy-gray-val"><span data-privacy-gray-val>' + n + "%</span></p>")
-        : '<p class="privacy-same-note">同色：全部文字改成與「商品」欄相同的灰色</p>') +
+        : '<p class="privacy-same-note">同色：全部文字統一淺灰，底色維持深色以便對比閱讀</p>') +
       '<button type="button" class="primary watch-move-done" data-privacy-close="1">完成</button>' +
       "</div>";
   }
