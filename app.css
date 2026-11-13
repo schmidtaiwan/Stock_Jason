@@ -1429,6 +1429,25 @@ html.sj-privacy.sj-privacy-same .limit-down-flash .watch-mini-name {
   box-shadow: none !important;
   background-color: #12181f !important;
 }
+/* 同色：logo／頭像／圖表／色塊等圖案一律灰階，壓暗以配合暗灰文字 */
+html.sj-privacy.sj-privacy-same img,
+html.sj-privacy.sj-privacy-same svg,
+html.sj-privacy.sj-privacy-same canvas,
+html.sj-privacy.sj-privacy-same .mark,
+html.sj-privacy.sj-privacy-same .account-avatar,
+html.sj-privacy.sj-privacy-same .account-avatar-fallback,
+html.sj-privacy.sj-privacy-same .swatch,
+html.sj-privacy.sj-privacy-same .watch-lamp-chip,
+html.sj-privacy.sj-privacy-same .watch-net-bar,
+html.sj-privacy.sj-privacy-same .header-bias,
+html.sj-privacy.sj-privacy-same .twii-box {
+  filter: grayscale(1) brightness(0.62) contrast(0.9) !important;
+}
+html.sj-privacy.sj-privacy-same .account-avatar-fallback {
+  background: #2a3340 !important;
+  color: #5c6673 !important;
+  -webkit-text-fill-color: #5c6673;
+}
 .watch-groups-bar {
   display: flex;
   flex-wrap: wrap;
