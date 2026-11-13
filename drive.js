@@ -334,13 +334,130 @@
     return id;
   }
 
+  async function findBookFilesAnyFolder(name) {
+    const q = "name='" + qEscape(name) + "' and trashed=false";
+    const live = await listFiles(q);
+    let trashed = [];
+    try {
+      trashed = await listFiles("name='" + qEscape(name) + "' and trashed=true");
+    } catch (err) { /* 無垃圾桶權限就略過 */ }
+    const seen = {};
+    const out = [];
+    live.concat(trashed).forEach(function (f) {
+      if (!f || !f.id || seen[f.id]) return;
+      seen[f.id] = true;
+      out.push(f);
+    });
+    return out;
+  }
+
+  function bookScore(data) {
+    if (!data || typeof data !== "object") return 0;
+    let n = Array.isArray(data.watch) ? data.watch.length : 0;
+    (Array.isArray(data.watchGroups) ? data.watchGroups : []).forEach(function (g) {
+      n += Array.isArray(g && g.items) ? g.items.length : 0;
+    });
+    n += Array.isArray(data.holdings) ? data.holdings.length : 0;
+    n += Array.isArray(data.journal) ? data.journal.length : 0;
+    return n;
+  }
+
+  async function readFileJsonById(id) {
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?alt=media&supportsAllDrives=true"
+    );
+    if (!res.ok) return null;
+    try { return await res.json(); } catch (err) { return null; }
+  }
+
+  async function listRevisions(id) {
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) +
+      "/revisions?pageSize=50&fields=revisions(id,modifiedTime,keepForever)"
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rows = data.revisions || [];
+    rows.sort(function (a, b) {
+      return String(b.modifiedTime || "").localeCompare(String(a.modifiedTime || ""));
+    });
+    return rows;
+  }
+
+  async function readRevisionJson(fileId, revId) {
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) +
+      "/revisions/" + encodeURIComponent(revId) + "?alt=media"
+    );
+    if (!res.ok) return null;
+    try { return await res.json(); } catch (err) { return null; }
+  }
+
+  async function recoverBookFromRevisions(fileId) {
+    const revs = await listRevisions(fileId);
+    for (let i = 0; i < revs.length; i++) {
+      const data = await readRevisionJson(fileId, revs[i].id);
+      if (bookScore(data) > 0) return data;
+    }
+    return null;
+  }
+
   async function readBook() {
     const name = bookName(accountEmail());
-    const id = await findBookFile(name);
-    if (!id) return null;
-    const res = await driveFetch("https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?alt=media&supportsAllDrives=true");
-    if (!res.ok) await readErr(res, "讀取自選股失敗");
-    return res.json();
+    const files = await findBookFilesAnyFolder(name);
+    let best = null;
+    let bestScore = -1;
+    let bestId = "";
+    for (let i = 0; i < files.length; i++) {
+      const data = await readFileJsonById(files[i].id);
+      const score = bookScore(data);
+      if (score > bestScore) {
+        best = data;
+        bestScore = score;
+        bestId = files[i].id;
+      }
+    }
+    // 現行檔被清空時：從 Drive 舊版還原
+    if (bestScore <= 0) {
+      for (let i = 0; i < files.length; i++) {
+        try {
+          const recovered = await recoverBookFromRevisions(files[i].id);
+          const score = bookScore(recovered);
+          if (score > bestScore) {
+            best = recovered;
+            bestScore = score;
+            bestId = files[i].id;
+          }
+        } catch (err) { /* 下一檔 */ }
+      }
+    }
+    if (!bestId && !files.length) {
+      const id = await findBookFile(name);
+      if (!id) return null;
+      best = await readFileJsonById(id);
+      bestId = id;
+      bestScore = bookScore(best);
+      if (bestScore <= 0) {
+        try {
+          const recovered = await recoverBookFromRevisions(id);
+          if (bookScore(recovered) > 0) {
+            best = recovered;
+            bestScore = bookScore(recovered);
+          }
+        } catch (err) { /* ignore */ }
+      }
+    }
+    if (bestId) fileCache.set(name, bestId);
+    // 若是從舊版救回，立刻寫回現行檔，避免下次又讀到空的
+    if (bestScore > 0 && bestId) {
+      try {
+        const cur = await readFileJsonById(bestId);
+        if (bookScore(cur) <= 0) {
+          await patchJsonById(bestId, best);
+        }
+      } catch (err) { /* 讀到即可，寫回失敗下一輪再試 */ }
+    }
+    return best;
   }
 
   function writeBook(data) {
@@ -349,15 +466,20 @@
     return run;
   }
 
+  async function patchJsonById(id, data) {
+    const text = typeof data === "string" ? data : JSON.stringify(data);
+    const res = await driveFetch(
+      "https://www.googleapis.com/upload/drive/v3/files/" + encodeURIComponent(id) + "?uploadType=media&supportsAllDrives=true",
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: text }
+    );
+    if (!res.ok) await readErr(res, "寫入雲端失敗");
+  }
+
   async function writeJsonFile(name, data) {
     const text = typeof data === "string" ? data : JSON.stringify(data);
     const id = await findBookFile(name);
     if (id) {
-      const res = await driveFetch(
-        "https://www.googleapis.com/upload/drive/v3/files/" + encodeURIComponent(id) + "?uploadType=media&supportsAllDrives=true",
-        { method: "PATCH", headers: { "Content-Type": "application/json" }, body: text }
-      );
-      if (!res.ok) await readErr(res, "寫入雲端失敗");
+      await patchJsonById(id, text);
       return;
     }
     const parent = await ensureFolder();
@@ -376,7 +498,37 @@
   }
 
   async function writeBookNow(data) {
-    await writeJsonFile(bookName(accountEmail()), data);
+    const name = bookName(accountEmail());
+    const incoming = bookScore(data);
+    // 禁止用空自選覆寫雲端已有資料
+    try {
+      const files = await findBookFilesAnyFolder(name);
+      let existing = null;
+      let existingId = fileCache.get(name) || "";
+      if (existingId) existing = await readFileJsonById(existingId);
+      if (bookScore(existing) <= 0) {
+        for (let i = 0; i < files.length; i++) {
+          const row = await readFileJsonById(files[i].id);
+          if (bookScore(row) > bookScore(existing)) {
+            existing = row;
+            existingId = files[i].id;
+          }
+        }
+      }
+      if (incoming === 0 && bookScore(existing) > 0) {
+        console.warn("skip empty book overwrite");
+        if (existingId) fileCache.set(name, existingId);
+        return { skipped: true };
+      }
+      if (existingId && incoming > 0) {
+        fileCache.set(name, existingId);
+        await patchJsonById(existingId, data);
+        return;
+      }
+    } catch (err) {
+      console.warn("book overwrite guard", err);
+    }
+    await writeJsonFile(name, data);
   }
 
   // 登入者共用：StockJason/mis-live.json 只覆寫最新一筆 MIS 快照（非歷史）
@@ -486,6 +638,7 @@
     bookName: bookName,
     readBook: readBook,
     writeBook: writeBook,
+    bookScore: bookScore,
     readMisSnapshot: readMisSnapshot,
     writeMisSnapshot: writeMisSnapshot,
     friendly: friendly,

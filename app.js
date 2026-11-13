@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 154;
+  const PAGE_BUILD = 155;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1025,8 +1025,19 @@
 
   async function loadBook() {
     try {
-      if (D.account()) book = normalizeBook(await D.readBook());
-      else book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
+      if (D.account()) {
+        const raw = await D.readBook();
+        book = normalizeBook(raw);
+        const n = (book.watch || []).length;
+        const score = D.bookScore ? D.bookScore(raw) : n;
+        if (score > 0) {
+          flashStatus("已載入自選 " + Math.max(n, score) + " 檔（含群組／持股）");
+        } else {
+          flashStatus("雲端自選是空的；若剛不見，請再重新整理一次以嘗試舊版還原");
+        }
+      } else {
+        book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
+      }
     } catch (err) {
       book = emptyBook();
       flashStatus("讀取雲端失敗：" + (err.message || err));
