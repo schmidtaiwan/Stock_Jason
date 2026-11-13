@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 147;
+  const PAGE_BUILD = 148;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -4174,11 +4174,14 @@
       $("risk-out").innerHTML = '<article class="card"><p>市值合計 ' + fmt(r.total) + " · 組合 beta " + r.beta.toFixed(2) +
         "（對標普500）· 大盤跌 20% 時估計約跌 " + (r.drop * 100).toFixed(1) + "%</p><table><tr><th>標的</th><th>權重</th><th>beta</th><th>未實現</th></tr>" +
         r.rows.map(function (row) {
-          return "<tr><td>" + esc(row.code) + "</td><td>" + (row.weight * 100).toFixed(1) + "%</td><td>" +
+          const label = (row.name && String(row.name).trim()) || row.code || "—";
+          return "<tr><td>" + esc(label) + "</td><td>" + (row.weight * 100).toFixed(1) + "%</td><td>" +
             (row.beta == null ? "—" : row.beta.toFixed(2)) + "</td><td>" + (row.pnl == null ? "—" : fmt(row.pnl)) + "</td></tr>";
         }).join("") + "</table><h3>弱點</h3><ul>" + r.weak.map(function (line) { return "<li>" + esc(line) + "</li>"; }).join("") +
-        "</ul><h3>再平衡</h3><ul>" + r.plan.map(function (row) {
-          return "<li>" + esc(row.code) + " " + (row.from * 100).toFixed(1) + "% → " + (row.to * 100).toFixed(1) + "%</li>";
+        "</ul><h3>再平衡</h3><ul>" + r.plan.map(function (row, i) {
+          const src = (r.rows && r.rows[i]) || row;
+          const label = (src.name && String(src.name).trim()) || row.code || "—";
+          return "<li>" + esc(label) + " " + (row.from * 100).toFixed(1) + "% → " + (row.to * 100).toFixed(1) + "%</li>";
         }).join("") + "</ul>" + (r.cashLeft > 0.01 ? "<p>超過上限的部分約 " + (r.cashLeft * 100).toFixed(1) + "% 先留現金。</p>" : "") +
         "<p>" + cash + "</p><p class=\"fine\">beta 用近 180 個交易日，相關高於 0.75 才標成隱藏連動。</p></article>";
     } catch (err) {
