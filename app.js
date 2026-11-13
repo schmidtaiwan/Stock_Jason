@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 198;
+  const PAGE_BUILD = 199;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3841,7 +3841,8 @@
     else renderWatchFull(box);
     // 切極簡／進出個股重建時先套用上次報價，避免整排變「…」
     applyCachedWatchQuotes(box);
-    withWatchTimeout(M.watchBoard(book.watch), 20000, null).then(function (rows) {
+    // 盤後／剛登入：watchBoard 會先灌雲端 mis-live 快照再補 MIS
+    withWatchTimeout(M.watchBoard(book.watch), 22000, null).then(function (rows) {
       if (gen !== renderWatch.gen) return;
       if (!rows) {
         applyCachedWatchQuotes(box);
