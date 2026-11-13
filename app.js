@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 195;
+  const PAGE_BUILD = 196;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -812,6 +812,10 @@
 
   function openWatchMoveSheet(idx) {
     watchDragMoved = true;
+    try {
+      const sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
+    } catch (err) { /* ignore */ }
     paintWatchMoveSheet(idx);
     try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
   }
@@ -825,42 +829,79 @@
       if (!watchLongPress) return;
       clearTimeout(watchLongPress.timer);
       watchLongPress = null;
+      box.classList.remove("is-longpress");
     }
+
+    function watchLongPressTarget(ev) {
+      if (ev.target.closest("input, select, textarea, button.danger, label, .watch-alert")) return null;
+      const row = ev.target.closest("[data-watch-row]");
+      if (!row || !box.contains(row)) return null;
+      const idx = Number(row.getAttribute("data-watch-row"));
+      if (!(idx >= 0)) return null;
+      return { row: row, idx: idx };
+    }
+
+    box.addEventListener("contextmenu", function (ev) {
+      if (!watchLongPressTarget(ev) && !box.classList.contains("is-longpress")) return;
+      ev.preventDefault();
+    });
 
     box.addEventListener("pointerdown", function (ev) {
       if (ev.button != null && ev.button !== 0) return;
-      const hit = ev.target.closest(".watch-link, .watch-mini-card");
-      if (!hit || !box.contains(hit)) return;
-      if (ev.target.closest("input, select, button.danger, label, .watch-alert")) return;
-      const row = hit.closest("[data-watch-row]") || hit;
-      const idx = Number(row.getAttribute("data-watch-row"));
-      if (!(idx >= 0)) return;
+      const hit = watchLongPressTarget(ev);
+      if (!hit) return;
       const pointerId = ev.pointerId;
       watchDragMoved = false;
+      box.classList.add("is-longpress");
+      try {
+        if (ev.pointerType === "touch" && hit.row.setPointerCapture) {
+          hit.row.setPointerCapture(pointerId);
+        }
+      } catch (err) { /* ignore */ }
       watchLongPress = {
-        idx: idx,
+        idx: hit.idx,
         pointerId: pointerId,
         x: ev.clientX,
         y: ev.clientY,
+        opened: false,
         timer: setTimeout(function () {
           if (!watchLongPress || watchLongPress.pointerId !== pointerId) return;
           const i = watchLongPress.idx;
+          watchLongPress.opened = true;
           watchLongPress = null;
           openWatchMoveSheet(i);
-        }, 450)
+          box.classList.remove("is-longpress");
+        }, 420)
       };
     });
 
     box.addEventListener("pointermove", function (ev) {
       if (!watchLongPress) return;
-      if (Math.abs(ev.clientX - watchLongPress.x) > 12 ||
-          Math.abs(ev.clientY - watchLongPress.y) > 12) {
+      if (Math.abs(ev.clientX - watchLongPress.x) > 14 ||
+          Math.abs(ev.clientY - watchLongPress.y) > 14) {
         clearLongPress();
       }
     });
 
     box.addEventListener("pointerup", clearLongPress);
-    box.addEventListener("pointercancel", clearLongPress);
+    box.addEventListener("pointercancel", function (ev) {
+      // Chrome 若仍觸發選取取消，已打開選單就不要清掉操作狀態
+      if (watchLongPress && watchLongPress.opened) return;
+      if (watchDragMoved) return;
+      clearLongPress();
+    });
+
+    // 非 passive：長按過程擋掉瀏覽器預設選取／callout
+    box.addEventListener("touchstart", function (ev) {
+      if (!watchLongPressTarget(ev)) return;
+      box.classList.add("is-longpress");
+    }, { passive: true });
+
+    box.addEventListener("selectstart", function (ev) {
+      if (box.classList.contains("is-longpress") || watchLongPressTarget(ev)) {
+        ev.preventDefault();
+      }
+    });
   }
 
   function openTool(id) {

@@ -1526,6 +1526,10 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   text-align: left;
   white-space: normal;
   overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .watch-mini-main {
   display: flex;
@@ -1757,6 +1761,31 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 .watch-table tr:last-child td { border-bottom: 0; }
 .watch-table tbody tr[data-watch-row] {
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.watch-table tbody tr[data-watch-row] .watch-link,
+.watch-table tbody tr[data-watch-row] .watch-name,
+.watch-table tbody tr[data-watch-row] .watch-num,
+.watch-table tbody tr[data-watch-row] .watch-px {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.watch-table tbody tr[data-watch-row] input,
+.watch-table tbody tr[data-watch-row] select,
+.watch-table tbody tr[data-watch-row] textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+#watch-list.is-longpress,
+#watch-list.is-longpress * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 .watch-table tbody tr[data-watch-row]:active td {
   background: rgba(255, 255, 255, 0.04);
