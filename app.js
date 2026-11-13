@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 163;
+  const PAGE_BUILD = 164;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3453,7 +3453,7 @@
 
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
+      '<th class="watch-pin">商品</th><th class="watch-col-price">成交</th>' +
       '<th class="watch-col-chg">漲跌</th><th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
       '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th><th class="watch-col-cost">買價</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
@@ -3479,7 +3479,7 @@
           '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
           watchNetBarHtml(idx) +
           "</td>" +
-          '<td class="watch-col-price watch-pin watch-pin-2">' +
+          '<td class="watch-col-price">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +

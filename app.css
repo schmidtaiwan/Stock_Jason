@@ -1664,14 +1664,6 @@ html.sj-privacy #watch-total-pnl {
   background: #182028 !important;
   z-index: 6;
 }
-.watch-pin-2 {
-  left: 86px;
-  z-index: 5;
-  box-shadow: 2px 0 0 var(--line);
-}
-.watch-table thead .watch-pin-2 {
-  z-index: 6;
-}
 .watch-name {
   width: 86px;
   min-width: 86px;
@@ -1757,7 +1749,7 @@ html.sj-privacy #watch-total-pnl {
   min-width: 96px;
 }
 /* 成交／漲跌／幅度／買價靠左（與商品同側對齊） */
-.watch-table th.watch-pin-2,
+.watch-table th.watch-col-price,
 .watch-table td.watch-col-price,
 .watch-table .watch-col-chg,
 .watch-table .watch-col-pct,
