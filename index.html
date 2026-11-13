@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=165">
+  <link rel="stylesheet" href="app.css?v=166">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -246,14 +246,16 @@
         <div id="watch-compose" hidden>
           <button id="watch-compose-back" class="ghost" type="button">返回自選</button>
           <div class="card">
-            <label for="watch-q">台股代號或名稱</label>
-            <input id="watch-q" type="search" placeholder="例如 2330,2308 或 廣達" enterkeyhint="search" autocomplete="off">
-            <div class="grid2">
-              <div>
+            <div class="watch-add-row">
+              <div class="watch-add-q">
+                <label for="watch-q">台股代號或名稱</label>
+                <input id="watch-q" type="search" placeholder="例如 2330,2308 或 廣達" enterkeyhint="search" autocomplete="off">
+              </div>
+              <div class="watch-add-cost">
                 <label for="watch-cost">買進價格</label>
                 <input id="watch-cost" inputmode="decimal" placeholder="平均成本" autocomplete="off">
               </div>
-              <div>
+              <div class="watch-add-shares">
                 <label for="watch-shares">股數</label>
                 <input id="watch-shares" inputmode="numeric" placeholder="1000" autocomplete="off">
               </div>
@@ -602,11 +604,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=165"></script>
-  <script src="drive.js?v=165"></script>
-  <script src="sakata.js?v=165"></script>
-  <script src="market.js?v=165"></script>
-  <script src="chips.js?v=165"></script>
-  <script src="app.js?v=165"></script>
+  <script src="google_config.js?v=166"></script>
+  <script src="drive.js?v=166"></script>
+  <script src="sakata.js?v=166"></script>
+  <script src="market.js?v=166"></script>
+  <script src="chips.js?v=166"></script>
+  <script src="app.js?v=166"></script>
 </body>
 </html>

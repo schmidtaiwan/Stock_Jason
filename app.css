@@ -1490,6 +1490,30 @@ html.sj-privacy #watch-total-pnl {
   }
 }
 #watch-compose-back { margin: 0 0 10px; }
+.watch-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.8em 4.6em;
+  gap: 8px;
+  align-items: end;
+  margin: 0 0 10px;
+}
+.watch-add-row label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.watch-add-row input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.watch-add-cost input,
+.watch-add-shares input {
+  text-align: left;
+  padding-left: 8px;
+  padding-right: 8px;
+}
 .watch-summary {
   display: flex;
   align-items: flex-start;
