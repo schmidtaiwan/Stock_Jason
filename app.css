@@ -1337,13 +1337,16 @@ html.sj-privacy.sj-privacy-depth .watch-input {
   caret-color: #b0b6be;
 }
 html.sj-privacy.sj-privacy-depth .limit-up-flash .watch-name,
+html.sj-privacy.sj-privacy-depth .limit-up-flash .watch-mini-name {
+  animation: none !important;
+  box-shadow: none !important;
+  background-color: #5a3030 !important;
+}
 html.sj-privacy.sj-privacy-depth .limit-down-flash .watch-name,
-html.sj-privacy.sj-privacy-depth .limit-up-flash .watch-mini-name,
 html.sj-privacy.sj-privacy-depth .limit-down-flash .watch-mini-name {
   animation: none !important;
-  box-shadow: inset 0 0 0 1px #6b7280 !important;
-  background-color: #1a1f26 !important;
-  border-color: #6b7280 !important;
+  box-shadow: none !important;
+  background-color: #2a4034 !important;
 }
 html.sj-privacy.sj-privacy-depth .account-avatar-fallback {
   background: #6b7280 !important;
@@ -1451,12 +1454,16 @@ html.sj-privacy.sj-privacy-same .watch-net-bar i.sell {
   background: #3a4450 !important;
 }
 html.sj-privacy.sj-privacy-same .limit-up-flash .watch-name,
+html.sj-privacy.sj-privacy-same .limit-up-flash .watch-mini-name {
+  animation: none !important;
+  box-shadow: none !important;
+  background-color: #5a3030 !important;
+}
 html.sj-privacy.sj-privacy-same .limit-down-flash .watch-name,
-html.sj-privacy.sj-privacy-same .limit-up-flash .watch-mini-name,
 html.sj-privacy.sj-privacy-same .limit-down-flash .watch-mini-name {
   animation: none !important;
   box-shadow: none !important;
-  background-color: #12181f !important;
+  background-color: #2a4034 !important;
 }
 /* 同色：logo／頭像／圖表／色塊等圖案一律灰階，壓暗以配合暗灰文字 */
 html.sj-privacy.sj-privacy-same img,
@@ -1756,43 +1763,34 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* 漲停紅框閃／跌停綠光閃 */
+/* 漲停紅底／跌停綠底（商品欄；台股紅漲綠跌） */
 @keyframes watch-limit-up-flash {
-  0%, 100% {
-    box-shadow: inset 0 0 0 2px #ff1f1f;
-    background-color: #2a1212;
-  }
-  50% {
-    box-shadow: inset 0 0 0 2px #ff6b6b, 0 0 14px 1px rgba(255, 40, 40, 0.55);
-    background-color: #4a1818;
-  }
+  0%, 100% { background-color: #7a1a1a; }
+  50% { background-color: #a42222; }
 }
 @keyframes watch-limit-down-flash {
-  0%, 100% {
-    box-shadow: inset 0 0 0 2px #16a34a;
-    background-color: #0f2218;
-  }
-  50% {
-    box-shadow: inset 0 0 0 2px #4ade80, 0 0 14px 1px rgba(34, 197, 94, 0.5);
-    background-color: #163828;
-  }
+  0%, 100% { background-color: #14532d; }
+  50% { background-color: #166534; }
 }
-/* 漲跌停只閃「商品／名稱」欄，成交與漲跌欄不閃 */
 .watch-table tbody tr.limit-up-flash td.watch-name {
   animation: watch-limit-up-flash 0.85s ease-in-out infinite;
+  background-color: #7a1a1a !important;
   border-radius: 8px;
 }
 .watch-table tbody tr.limit-down-flash td.watch-name {
   animation: watch-limit-down-flash 0.85s ease-in-out infinite;
+  background-color: #14532d !important;
   border-radius: 8px;
 }
 .watch-mini-card.limit-up-flash .watch-mini-name {
   animation: watch-limit-up-flash 0.85s ease-in-out infinite;
+  background-color: #7a1a1a !important;
   border-radius: 8px;
   padding: 2px 4px;
 }
 .watch-mini-card.limit-down-flash .watch-mini-name {
   animation: watch-limit-down-flash 0.85s ease-in-out infinite;
+  background-color: #14532d !important;
   border-radius: 8px;
   padding: 2px 4px;
 }
