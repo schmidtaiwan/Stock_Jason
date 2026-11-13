@@ -698,27 +698,75 @@
     return copyBars(out);
   }
 
-  async function foreignNets() {
-    const key = "foreign|nets";
+  async function foreignInvestorRows() {
+    const key = "foreign|rows";
     if (cache.has(key)) return cache.get(key);
     const url = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockTotalInstitutionalInvestors&start_date=" + isoDaysAgo(460);
     const res = await fetch(url);
     if (!res.ok) throw new Error("外資買賣超讀取失敗");
     const json = await res.json();
-    const nets = (json.data || []).filter(function (row) {
+    const rows = (json.data || []).filter(function (row) {
       return row.name === "Foreign_Investor";
     }).map(function (row) {
-      return { date: row.date, net: (num(row.buy) - num(row.sell)) / 1e8 };
+      const buy = num(row.buy) || 0;
+      const sell = num(row.sell) || 0;
+      return {
+        date: row.date,
+        buy: buy,
+        sell: sell,
+        net: buy - sell,
+        buyYi: buy / 1e8,
+        sellYi: sell / 1e8,
+        netYi: (buy - sell) / 1e8
+      };
     }).filter(function (row) { return isFinite(row.net); });
-    nets.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    rows.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    cache.set(key, rows);
+    return rows;
+  }
+
+  async function foreignNets() {
+    const key = "foreign|nets";
+    if (cache.has(key)) return cache.get(key);
+    const nets = await foreignInvestorRows();
     function sumLast(n) {
       const slice = nets.slice(-n);
       if (!slice.length) return null;
-      return slice.reduce(function (acc, row) { return acc + row.net; }, 0);
+      return slice.reduce(function (acc, row) { return acc + row.netYi; }, 0);
     }
     const out = { "1d": sumLast(1), "5d": sumLast(5), "20d": sumLast(20), "180d": sumLast(180), "1y": sumLast(250) };
     cache.set(key, out);
     return out;
+  }
+
+  async function foreignSpotDay() {
+    const rows = await foreignInvestorRows();
+    if (!rows.length) return null;
+    return rows[rows.length - 1];
+  }
+
+  async function txForeignOiLatest() {
+    const key = "tx|oi|latest";
+    if (cache.has(key)) return cache.get(key);
+    const rows = await finMindRaw("TaiwanFuturesInstitutionalInvestors", isoDaysAgo(20), "TX");
+    let best = null;
+    rows.forEach(function (row) {
+      if (!/外資/.test(String(row.institutional_investors || ""))) return;
+      const longOi = num(row.long_open_interest_balance_volume) || 0;
+      const shortOi = num(row.short_open_interest_balance_volume) || 0;
+      const date = String(row.date || "");
+      if (!date) return;
+      if (!best || date > best.date) {
+        best = {
+          date: date,
+          longOi: longOi,
+          shortOi: shortOi,
+          netOi: longOi - shortOi
+        };
+      }
+    });
+    cache.set(key, best);
+    return best;
   }
 
   let yahooDirect = true;
@@ -6031,6 +6079,8 @@
     riskReport: riskReport,
     reviewJournal: reviewJournal,
     foreignNets: foreignNets,
+    foreignSpotDay: foreignSpotDay,
+    txForeignOiLatest: txForeignOiLatest,
     stockDetail: stockDetail,
     stockDisclose: stockDisclose,
     stockNews: stockNews,

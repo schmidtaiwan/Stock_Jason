@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 169;
+  const PAGE_BUILD = 170;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2139,11 +2139,51 @@
     }
   }
 
+  function lotsChipText(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return Math.round(n).toLocaleString("zh-Hant") + "口";
+  }
+
+  async function renderMarketFlow() {
+    const box = $("market-flow");
+    if (!box) return;
+    const gen = (renderMarketFlow.gen = (renderMarketFlow.gen || 0) + 1);
+    box.innerHTML = '<span class="note">讀取空單／買賣超…</span>';
+    try {
+      const pack = await Promise.all([
+        M.txForeignOiLatest ? M.txForeignOiLatest() : Promise.resolve(null),
+        M.foreignSpotDay ? M.foreignSpotDay() : Promise.resolve(null)
+      ]);
+      if (gen !== renderMarketFlow.gen) return;
+      const oi = pack[0];
+      const spot = pack[1];
+      const shortTxt = oi ? lotsChipText(oi.shortOi) : "—";
+      const buyYi = spot && spot.buyYi != null ? spot.buyYi : null;
+      const sellYi = spot && spot.sellYi != null ? spot.sellYi : null;
+      const tip = [
+        oi && oi.date ? ("空單日期 " + oi.date) : "",
+        spot && spot.date ? ("現貨日期 " + spot.date) : ""
+      ].filter(Boolean).join(" · ");
+      box.title = tip || "";
+      box.innerHTML =
+        '<span class="market-flow-chip" title="外資台指期空單未平倉">空單口數 ' + esc(shortTxt) + "</span>" +
+        '<span class="market-flow-chip up" title="外資現貨當日買超（億元）">外資買超 ' +
+        esc(buyYi == null ? "—" : moneyText(buyYi)) + "</span>" +
+        '<span class="market-flow-chip down" title="外資現貨當日賣超（億元）">賣超 ' +
+        esc(sellYi == null ? "—" : moneyText(sellYi)) + "</span>";
+    } catch (err) {
+      if (gen === renderMarketFlow.gen) {
+        box.innerHTML = '<span class="note">空單／買賣超暫讀不到</span>';
+      }
+    }
+  }
+
   async function loadChart() {
     const gen = ++state.chartGen;
     $("chart-status").textContent = "正在讀行情…";
     paintFocus();
     renderForeign();
+    renderMarketFlow();
     try {
       let items = [];
       let statusNote = "";

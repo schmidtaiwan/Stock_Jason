@@ -480,8 +480,26 @@ main {
 }
 #view-chart .market-box,
 #view-chart #market-box {
-  margin-top: 12px;
+  margin: 8px 0 12px;
 }
+#view-chart #market-flow {
+  margin-top: 8px;
+}
+#view-chart .market-flow-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #182028;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#view-chart .market-flow-chip.up { color: var(--up); }
+#view-chart .market-flow-chip.down { color: var(--down); }
 .k-select-hint { margin: 6px 0 0; }
 .k-pick {
   margin-top: 10px;
