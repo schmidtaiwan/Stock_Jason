@@ -1355,6 +1355,42 @@ textarea { min-height: 120px; resize: vertical; }
   font-size: 14px;
 }
 .watch-table tr:last-child td { border-bottom: 0; }
+
+/* 漲停紅框閃／跌停綠光閃 */
+@keyframes watch-limit-up-flash {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px #ff1f1f;
+    background-color: #2a1212;
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px #ff6b6b, 0 0 14px 1px rgba(255, 40, 40, 0.55);
+    background-color: #4a1818;
+  }
+}
+@keyframes watch-limit-down-flash {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px #16a34a;
+    background-color: #0f2218;
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px #4ade80, 0 0 14px 1px rgba(34, 197, 94, 0.5);
+    background-color: #163828;
+  }
+}
+.watch-table tbody tr.limit-up-flash td {
+  animation: watch-limit-up-flash 0.85s ease-in-out infinite;
+}
+.watch-table tbody tr.limit-down-flash td {
+  animation: watch-limit-down-flash 0.85s ease-in-out infinite;
+}
+.watch-mini-card.limit-up-flash {
+  animation: watch-limit-up-flash 0.85s ease-in-out infinite;
+  border-color: #ff1f1f;
+}
+.watch-mini-card.limit-down-flash {
+  animation: watch-limit-down-flash 0.85s ease-in-out infinite;
+  border-color: #16a34a;
+}
 .watch-table th:nth-child(n+2),
 .watch-table .watch-num,
 .watch-table td:nth-child(n+2) {

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 141;
+  const PAGE_BUILD = 142;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2777,6 +2777,32 @@
     });
   }
 
+  function watchLimitFlashSide(m) {
+    if (!m || !(m.price > 0)) return "";
+    const px = Number(m.price);
+    const up = m.limitUp != null ? Number(m.limitUp) : null;
+    const down = m.limitDown != null ? Number(m.limitDown) : null;
+    const tolUp = up > 0 ? Math.max(0.01, up * 0.0008) : 0;
+    const tolDn = down > 0 ? Math.max(0.01, down * 0.0008) : 0;
+    if (up > 0 && px >= up - tolUp) return "up";
+    if (down > 0 && px <= down + tolDn) return "down";
+    // 無漲跌停價時：台股常見約 ±10% 板（含部分特殊股接近）
+    if (m.pct != null && isFinite(m.pct)) {
+      if (m.pct >= 9.5) return "up";
+      if (m.pct <= -9.5) return "down";
+    }
+    return "";
+  }
+
+  function applyWatchLimitFlash(row, m) {
+    if (!row) return;
+    row.classList.remove("limit-up-flash", "limit-down-flash");
+    const side = watchLimitFlashSide(m);
+    if (side === "up") row.classList.add("limit-up-flash");
+    else if (side === "down") row.classList.add("limit-down-flash");
+    row.setAttribute("data-limit", side || "");
+  }
+
   function applyWatchQuoteRow(box, m, idx) {
     const item = book.watch[idx];
     const row = box.querySelector('[data-watch-row="' + idx + '"]');
@@ -2827,13 +2853,17 @@
             : "—";
         }
         row.setAttribute("data-price", String(m.price));
+        applyWatchLimitFlash(row, m);
       } else {
         priceCell.className = "watch-px watch-num" + miniPx;
         priceCell.textContent = "—";
         if (chgCell) { chgCell.className = "watch-num watch-col-chg"; chgCell.textContent = "—"; }
         if (pctCell) { pctCell.className = "watch-num watch-col-pct"; pctCell.textContent = "—"; }
         row.setAttribute("data-price", "");
+        applyWatchLimitFlash(row, null);
       }
+    } else {
+      applyWatchLimitFlash(row, m && m.price > 0 ? m : null);
     }
     if (!isWatchMini()) paintWatchPnl(idx);
   }
