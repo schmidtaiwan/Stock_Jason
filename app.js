@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 182;
+  const PAGE_BUILD = 183;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -387,7 +387,7 @@
   }
 
   function showVer() {
-    const text = "版次 " + PAGE_BUILD + " (" + PAGE_DATE + ")";
+    const text = String(PAGE_BUILD);
     $("gate-ver").textContent = text;
     $("pageVer").textContent = text;
   }
@@ -403,22 +403,8 @@
     loadHeaderBias();
   }
 
-  function paintHeaderBias(brief) {
-    const box = $("header-bias");
-    const text = $("header-bias-text");
-    if (!box || !text) return;
-    if (!brief || !brief.bias) {
-      box.hidden = true;
-      text.textContent = "—";
-      text.className = "";
-      return;
-    }
-    const cls = /多|開高|短多/.test(brief.bias) ? "up"
-      : /空|開低/.test(brief.bias) ? "down" : "";
-    box.hidden = false;
-    text.className = cls;
-    text.textContent = brief.bias;
-    box.title = (brief.summary || brief.bias) + "（點擊看動向節奏解讀）";
+  function paintHeaderBias() {
+    /* 頁首預判區塊已移除 */
   }
 
   async function loadHeaderBias() {
@@ -1123,7 +1109,7 @@
     const box = $("watch-groups");
     if (box) {
       box.innerHTML =
-        '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋群組</button>' +
+        '<button type="button" class="ghost watch-group-add watch-group-icon" id="watch-group-add" title="新增群組" aria-label="新增群組">+</button>' +
         '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
         '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
         (groups.length > 1

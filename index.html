@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=182">
+  <link rel="stylesheet" href="app.css?v=183">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -40,10 +40,6 @@
             <h1>三生有杏</h1>
           </div>
         </div>
-        <button id="header-bias" class="header-bias" type="button" hidden title="點擊看動向節奏解讀">
-          <span class="header-bias-label">預判</span>
-          <strong id="header-bias-text">—</strong>
-        </button>
         <div id="twii-box" class="twii-box" aria-label="加權指數" title="加權指數">
           <span class="twii-label">加權</span>
           <strong id="twii-price">—</strong>
@@ -217,22 +213,18 @@
       </section>
 
       <section id="view-watch" hidden>
-        <div class="watch-head">
+        <div class="watch-toolbar">
           <label class="watch-group-title-wrap" title="選擇群組">
             <select id="watch-group-select" class="watch-group-title" aria-label="目前群組"></select>
           </label>
-          <div class="watch-head-actions">
-            <label class="watch-pnl-toggle" title="勾選後顯示列損益與合計">
-              <input id="watch-pnl-toggle" type="checkbox">
-              損益
-            </label>
-            <button id="watch-privacy-toggle" class="ghost" type="button" aria-pressed="false" title="點一下開關防窺；長按選深淺／同色">防窺</button>
-            <button id="watch-wake-toggle" class="ghost" type="button" aria-pressed="false" title="保持螢幕常亮（需瀏覽器支援）">常亮</button>
-          </div>
-        </div>
-        <div class="watch-groups-bar">
-          <div id="watch-groups" class="watch-groups" aria-label="自選群組"></div>
-          <button id="watch-open-add" class="primary" type="button" title="加入股票" aria-label="加入股票">加入股票</button>
+          <div id="watch-groups" class="watch-groups" aria-label="群組操作"></div>
+          <button id="watch-open-add" class="primary" type="button" title="加入股票" aria-label="加入股票">加入</button>
+          <label class="watch-pnl-toggle" title="勾選後顯示列損益與合計">
+            <input id="watch-pnl-toggle" type="checkbox">
+            損益
+          </label>
+          <button id="watch-privacy-toggle" class="ghost" type="button" aria-pressed="false" title="點一下開關防窺；長按選深淺／同色">防窺</button>
+          <button id="watch-wake-toggle" class="ghost" type="button" aria-pressed="false" title="保持螢幕常亮（需瀏覽器支援）">常亮</button>
         </div>
         <div id="watch-board">
           <div class="watch-summary">
@@ -605,11 +597,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=182"></script>
-  <script src="drive.js?v=182"></script>
-  <script src="sakata.js?v=182"></script>
-  <script src="market.js?v=182"></script>
-  <script src="chips.js?v=182"></script>
-  <script src="app.js?v=182"></script>
+  <script src="google_config.js?v=183"></script>
+  <script src="drive.js?v=183"></script>
+  <script src="sakata.js?v=183"></script>
+  <script src="market.js?v=183"></script>
+  <script src="chips.js?v=183"></script>
+  <script src="app.js?v=183"></script>
 </body>
 </html>
