@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 145;
+  const PAGE_BUILD = 146;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -911,6 +911,85 @@
     book.watchPrivacy = !isWatchPrivacy();
     scheduleSave();
     syncWatchPrivacyUi();
+  }
+
+  const WAKE_KEY = "sj-wake-lock";
+  let wakeLockSentinel = null;
+  let wakeWanted = false;
+
+  function wakeSupported() {
+    return !!(navigator.wakeLock && typeof navigator.wakeLock.request === "function");
+  }
+
+  function syncWakeBtn() {
+    const btn = $("watch-wake-toggle");
+    if (!btn) return;
+    const on = !!wakeWanted;
+    btn.hidden = false;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.disabled = !wakeSupported() && !on;
+    btn.title = !wakeSupported()
+      ? "此瀏覽器不支援螢幕常亮（可改用 Chrome／Safari，或到系統設定關閉自動鎖定）"
+      : (on ? "關閉螢幕常亮" : "保持螢幕常亮，避免看盤時鎖屏");
+    btn.textContent = on ? "常亮中" : "常亮";
+  }
+
+  async function releaseWakeLock() {
+    const cur = wakeLockSentinel;
+    wakeLockSentinel = null;
+    if (!cur) return;
+    try { await cur.release(); } catch (err) { /* ignore */ }
+  }
+
+  async function requestWakeLock() {
+    if (!wakeWanted || !wakeSupported() || document.hidden) {
+      await releaseWakeLock();
+      syncWakeBtn();
+      return;
+    }
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      wakeLockSentinel = lock;
+      lock.addEventListener("release", function () {
+        if (wakeLockSentinel === lock) wakeLockSentinel = null;
+        syncWakeBtn();
+      });
+    } catch (err) {
+      wakeLockSentinel = null;
+      flashStatus("無法常亮：" + ((err && err.message) || "請允許螢幕常亮或改系統設定"));
+    }
+    syncWakeBtn();
+  }
+
+  function setWakeWanted(on) {
+    wakeWanted = !!on;
+    try {
+      if (wakeWanted) localStorage.setItem(WAKE_KEY, "1");
+      else localStorage.removeItem(WAKE_KEY);
+    } catch (err) { /* ignore */ }
+    if (wakeWanted) requestWakeLock();
+    else releaseWakeLock().then(syncWakeBtn);
+    syncWakeBtn();
+  }
+
+  function toggleWakeLock() {
+    if (!wakeSupported() && !wakeWanted) {
+      flashStatus("此瀏覽器不支援網頁常亮。iPhone 可到「設定→螢幕亮度與顯示→自動鎖定→永不」暫關鎖屏。");
+      syncWakeBtn();
+      return;
+    }
+    setWakeWanted(!wakeWanted);
+  }
+
+  function initWakeLock() {
+    try { wakeWanted = localStorage.getItem(WAKE_KEY) === "1"; } catch (err) { wakeWanted = false; }
+    syncWakeBtn();
+    if (wakeWanted) requestWakeLock();
+    document.addEventListener("visibilitychange", function () {
+      if (!wakeWanted) return;
+      if (document.hidden) releaseWakeLock();
+      else requestWakeLock();
+    });
   }
 
   async function loadBook() {
@@ -4542,6 +4621,7 @@
     else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
     else if (t.id === "watch-privacy-toggle") toggleWatchPrivacy();
+    else if (t.id === "watch-wake-toggle") toggleWakeLock();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-del") deleteWatchGroup();
@@ -5508,4 +5588,5 @@
   paintTwii(true);
   startLiveClock();
   syncUsBoardFoldUi();
+  initWakeLock();
 })();

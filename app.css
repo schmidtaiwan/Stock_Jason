@@ -1085,14 +1085,16 @@ textarea { min-height: 120px; resize: vertical; }
   flex: 0 0 auto;
 }
 .watch-head #watch-mode-toggle,
-.watch-head #watch-privacy-toggle {
+.watch-head #watch-privacy-toggle,
+.watch-head #watch-wake-toggle {
   flex: 0 0 auto;
   min-height: 36px;
   padding: 6px 14px;
   border-radius: 999px;
 }
 #watch-mode-toggle[aria-pressed="true"],
-#watch-privacy-toggle[aria-pressed="true"] {
+#watch-privacy-toggle[aria-pressed="true"],
+#watch-wake-toggle[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
 }
