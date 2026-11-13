@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 157;
+  const PAGE_BUILD = 158;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -68,6 +68,8 @@
     from: "",
     to: "",
     chartStyle: "line",
+    chartKPick: false,
+    stockKPick: false,
     stockRange: "1d",
     stockCustom: false,
     stockDateFrom: "",
@@ -1112,6 +1114,7 @@
         btn.setAttribute("aria-pressed", btn.dataset.chartStyle === state.chartStyle ? "true" : "false");
       });
     }
+    syncChartKPickUi();
     syncDateInputs();
   }
 
@@ -1129,17 +1132,75 @@
         btn.setAttribute("aria-pressed", btn.dataset.stockStyle === state.stockStyle ? "true" : "false");
       });
     }
+    syncStockKPickUi();
     syncStockDateInputs();
+  }
+
+  function isChartKPickOn() {
+    return state.chartStyle === "candle" && !!state.chartKPick;
+  }
+
+  function isStockKPickOn() {
+    return state.stockStyle === "candle" && !!state.stockKPick;
+  }
+
+  function syncChartKPickUi() {
+    const pack = $("chart-k-pack");
+    const cb = $("chart-k-pick");
+    const canvas = $("chart");
+    const candle = state.chartStyle === "candle";
+    if (pack) pack.classList.toggle("is-active", candle);
+    if (cb) {
+      cb.disabled = !candle;
+      cb.checked = candle && !!state.chartKPick;
+    }
+    if (canvas) {
+      const on = isChartKPickOn();
+      canvas.classList.toggle("chart-pick-on", on);
+      canvas.style.touchAction = on ? "none" : "pan-y";
+      canvas.style.cursor = on ? "crosshair" : "default";
+    }
+    if (!candle) {
+      state.kDrag = null;
+      if ($("hover")) $("hover").hidden = true;
+    }
+  }
+
+  function syncStockKPickUi() {
+    const pack = $("stock-k-pack");
+    const cb = $("stock-k-pick");
+    const canvas = $("stock-k-chart");
+    const candle = state.stockStyle === "candle";
+    if (pack) pack.classList.toggle("is-active", candle);
+    if (cb) {
+      cb.disabled = !candle;
+      cb.checked = candle && !!state.stockKPick;
+    }
+    if (canvas) {
+      const on = isStockKPickOn();
+      canvas.classList.toggle("chart-pick-on", on);
+      canvas.style.touchAction = on ? "none" : "pan-y";
+      canvas.style.cursor = on ? "crosshair" : "default";
+      canvas.style.pointerEvents = candle ? "auto" : "none";
+    }
+    if (!candle) {
+      state.stockKDrag = null;
+      if ($("stock-hover")) $("stock-hover").hidden = true;
+    }
   }
 
   function setChartStyle(style) {
     state.chartStyle = style === "candle" ? "candle" : "line";
+    if (state.chartStyle !== "candle") state.chartKPick = false;
     buildToggles();
+    syncChartKPickUi();
   }
 
   function setStockStyle(style) {
     state.stockStyle = style === "candle" ? "candle" : "line";
+    if (state.stockStyle !== "candle") state.stockKPick = false;
     buildStockToggles();
+    syncStockKPickUi();
   }
 
   function syncDateInputs() {
@@ -2421,8 +2482,11 @@
       lineCanvas.style.cursor = "default";
     }
     if (kCanvas) {
+      const pick = showK && isStockKPickOn();
       kCanvas.style.pointerEvents = showK ? "auto" : "none";
-      kCanvas.style.cursor = showK ? "crosshair" : "default";
+      kCanvas.classList.toggle("chart-pick-on", pick);
+      kCanvas.style.touchAction = pick ? "none" : "pan-y";
+      kCanvas.style.cursor = pick ? "crosshair" : "default";
     }
     if (!showK && $("stock-hover")) $("stock-hover").hidden = true;
     if (!showK && lineCanvas) {
@@ -2443,10 +2507,11 @@
 
   function renderKPatterns(item) {
     const hint = $("k-select-hint");
-    if (hint) hint.hidden = !(item && state.chartStyle === "candle");
+    if (hint) hint.hidden = state.chartStyle !== "candle";
     if (!item) {
       if ($("k-pick")) { $("k-pick").hidden = true; $("k-pick").innerHTML = ""; }
     }
+    syncChartKPickUi();
     // 走勢頁酒田已改為加權明日／5 日操作，內容由 loadChartSession 寫入
   }
 
@@ -4856,7 +4921,7 @@
   $("predict-horizon").addEventListener("change", syncPredictStockBox);
   $("tool-back").addEventListener("click", function () { setView("tools"); });
   $("chart").addEventListener("pointermove", function (ev) {
-    if (state.kDrag && state.plot && state.plot.style === "candle") {
+    if (state.kDrag && state.plot && state.plot.style === "candle" && isChartKPickOn()) {
       const i = chartIndexAt(ev.clientX);
       if (i != null) {
         state.kDrag.to = i;
@@ -4864,10 +4929,11 @@
       }
       return;
     }
-    onChartPointer(ev);
+    if (isChartKPickOn()) onChartPointer(ev);
   });
   $("chart").addEventListener("pointerleave", function () { $("hover").hidden = true; });
   $("chart").addEventListener("pointerdown", function (ev) {
+    if (!isChartKPickOn()) return;
     if (!state.plot || state.plot.style !== "candle") return;
     const i = chartIndexAt(ev.clientX);
     if (i == null) return;
@@ -4888,6 +4954,17 @@
     state.kDrag = null;
     if (state.kSel) draw();
   });
+  if ($("chart-k-pick")) {
+    $("chart-k-pick").addEventListener("change", function () {
+      state.chartKPick = !!$("chart-k-pick").checked && state.chartStyle === "candle";
+      if (!state.chartKPick) {
+        state.kDrag = null;
+        if ($("hover")) $("hover").hidden = true;
+      }
+      syncChartKPickUi();
+      if (state.plot) draw();
+    });
+  }
 
   function onStockChartPointer(ev) {
     const canvas = (ev && ev.currentTarget) || $("stock-chart");
@@ -4924,7 +5001,7 @@
 
   if ($("stock-k-chart")) {
     $("stock-k-chart").addEventListener("pointermove", function (ev) {
-      if (state.stockKDrag && state.stockPlot && state.stockStyle === "candle") {
+      if (state.stockKDrag && state.stockPlot && isStockKPickOn()) {
         const i = chartIndexAt(ev.clientX, "stock-k-chart");
         if (i != null) {
           state.stockKDrag.to = i;
@@ -4932,12 +5009,13 @@
         }
         return;
       }
-      onStockChartPointer(ev);
+      if (isStockKPickOn()) onStockChartPointer(ev);
     });
     $("stock-k-chart").addEventListener("pointerleave", function () {
       if ($("stock-hover")) $("stock-hover").hidden = true;
     });
     $("stock-k-chart").addEventListener("pointerdown", function (ev) {
+      if (!isStockKPickOn()) return;
       if (!state.stockPlot || state.stockStyle !== "candle") return;
       const i = chartIndexAt(ev.clientX, "stock-k-chart");
       if (i == null) return;
@@ -4957,6 +5035,17 @@
     $("stock-k-chart").addEventListener("pointercancel", function () {
       state.stockKDrag = null;
       if (state.stockKSel) drawStock();
+    });
+  }
+  if ($("stock-k-pick")) {
+    $("stock-k-pick").addEventListener("change", function () {
+      state.stockKPick = !!$("stock-k-pick").checked && state.stockStyle === "candle";
+      if (!state.stockKPick) {
+        state.stockKDrag = null;
+        if ($("stock-hover")) $("stock-hover").hidden = true;
+      }
+      syncStockKPickUi();
+      if (state.stockPlot) drawStock();
     });
   }
 

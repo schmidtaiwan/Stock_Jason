@@ -382,6 +382,61 @@ main {
 .chart-styles .chips {
   margin: 0;
   flex: 1 1 auto;
+  align-items: center;
+}
+.chart-k-pack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #10161e;
+  flex: 0 0 auto;
+}
+.chart-k-pack.is-active {
+  border-color: rgba(224, 161, 0, 0.55);
+  background: #1a160c;
+}
+.chart-k-pack .chip {
+  margin: 0;
+}
+.chart-k-pick-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.2;
+  user-select: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chart-k-pick-toggle input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.chart-k-pack.is-active .chart-k-pick-toggle {
+  color: var(--ink);
+}
+.chart-k-pick-toggle:has(input:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
+#chart.chart-pick-on,
+#stock-k-chart.chart-pick-on {
+  touch-action: none;
+  cursor: crosshair;
+}
+#chart:not(.chart-pick-on),
+#stock-k-chart:not(.chart-pick-on) {
+  touch-action: pan-y;
+  cursor: default;
 }
 .chart-detail-btn {
   flex: 0 0 auto;
@@ -577,7 +632,7 @@ canvas {
   max-width: 100%;
   height: 260px;
   display: block;
-  touch-action: none;
+  touch-action: pan-y;
 }
 #view-stock,
 #view-tool,

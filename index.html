@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=157">
+  <link rel="stylesheet" href="app.css?v=158">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -82,7 +82,13 @@
         <div id="chart-styles" class="chart-styles" aria-label="圖表類型">
           <div class="chips">
             <button type="button" class="chip" data-chart-style="line" aria-pressed="true">線圖</button>
-            <button type="button" class="chip" data-chart-style="candle" aria-pressed="false">K線</button>
+            <div class="chart-k-pack" id="chart-k-pack" title="勾選「點選」後才能在 K 線上拖曳分析；未勾選可上下捲動">
+              <button type="button" class="chip" data-chart-style="candle" aria-pressed="false">K線</button>
+              <label class="chart-k-pick-toggle">
+                <input id="chart-k-pick" type="checkbox">
+                點選
+              </label>
+            </div>
           </div>
         </div>
         <div id="chart-session" class="stock-session" hidden></div>
@@ -94,7 +100,7 @@
             <span class="chart-fold-chevron" aria-hidden="true">▾</span>
           </button>
           <div id="chart-details" class="chart-details">
-            <p id="k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思；也可點下方型態列反白。</p>
+            <p id="k-select-hint" class="fine k-select-hint" hidden>先勾「點選」再於 K 線拖曳紅框分析；未勾選時可上下捲動畫面。</p>
             <div id="k-pick" class="k-pick" hidden></div>
             <div id="legend" class="legend"></div>
             <div id="k-patterns" class="k-patterns" hidden></div>
@@ -132,7 +138,13 @@
           <div id="stock-styles" class="chart-styles" aria-label="個股圖表類型">
             <div class="chips">
               <button type="button" class="chip" data-stock-style="line" aria-pressed="true">線圖</button>
-              <button type="button" class="chip" data-stock-style="candle" aria-pressed="false">K線</button>
+              <div class="chart-k-pack" id="stock-k-pack" title="勾選「點選」後才能在 K 線上拖曳分析；未勾選可上下捲動">
+                <button type="button" class="chip" data-stock-style="candle" aria-pressed="false">K線</button>
+                <label class="chart-k-pick-toggle">
+                  <input id="stock-k-pick" type="checkbox">
+                  點選
+                </label>
+              </div>
             </div>
             <button id="stock-detail-toggle" class="ghost chart-detail-btn" type="button" aria-pressed="true">細部資料</button>
           </div>
@@ -160,7 +172,7 @@
               </div>
             </div>
             <canvas id="stock-k-chart" width="640" height="420"></canvas>
-            <p id="stock-k-select-hint" class="fine k-select-hint" hidden>在 K 線上拖曳紅框選取一段，放開後解讀這段代表意思。</p>
+            <p id="stock-k-select-hint" class="fine k-select-hint" hidden>先勾「點選」再於 K 線拖曳紅框分析；未勾選時可上下捲動畫面。</p>
             <div id="stock-k-pick" class="k-pick" hidden></div>
           </div>
           <div id="stock-k-patterns" class="k-patterns stock-k-patterns-foot" hidden></div>
@@ -590,11 +602,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=157"></script>
-  <script src="drive.js?v=157"></script>
-  <script src="sakata.js?v=157"></script>
-  <script src="market.js?v=157"></script>
-  <script src="chips.js?v=157"></script>
-  <script src="app.js?v=157"></script>
+  <script src="google_config.js?v=158"></script>
+  <script src="drive.js?v=158"></script>
+  <script src="sakata.js?v=158"></script>
+  <script src="market.js?v=158"></script>
+  <script src="chips.js?v=158"></script>
+  <script src="app.js?v=158"></script>
 </body>
 </html>
