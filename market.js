@@ -349,9 +349,13 @@
           const cut = clipBars(rows, from, to);
           if (cut.length) return cut;
         } else if (rows.length) {
-          const keep = (RANGES[rangeId] && RANGES[rangeId].klt === 101)
-            ? Math.max(1, RANGES[rangeId].lmt || rows.length)
-            : rows.length;
+          const spec = RANGES[rangeId] || {};
+          let keep = rows.length;
+          // 五日等：台股日線只留最近 N 個交易日（先前 klt≠101 會整段回傳，起迄會變成近一年）
+          if (spec.days) keep = Math.max(1, spec.days);
+          else if (spec.klt === 101) keep = Math.max(1, spec.lmt || rows.length);
+          else if (spec.klt === 102) keep = rows.length;
+          else if (spec.lmt) keep = Math.max(1, spec.lmt);
           const out = rows.slice(-keep);
           out.symbolName = rows.symbolName || stockId;
           return out;
@@ -3260,10 +3264,17 @@
     years.forEach(function (row) { actual[Number(row.year)] = row; });
     const y1 = actual[nowY - 1] ? actual[nowY - 1].sum : null;
     const y2 = actual[nowY - 2] ? actual[nowY - 2].sum : null;
-    const growth = (y1 != null && y2 != null && y2 !== 0) ? (y1 / y2 - 1) : null;
+    // 低基期暴衝（如景碩 0.11→3.51）不可直接複利外推；限幅且基期過低就不估後兩年
+    let growthRaw = (y1 != null && y2 != null && y2 !== 0) ? (y1 / y2 - 1) : null;
+    const growthUsable = growthRaw != null && isFinite(growthRaw) && Math.abs(y2) >= 0.5
+      && growthRaw >= -0.6 && growthRaw <= 1.0;
+    const growth = growthUsable
+      ? Math.max(-0.5, Math.min(0.8, growthRaw))
+      : null;
     const cur = actual[nowY];
     let yearNow = cur ? cur.sum : null;
     if (cur && cur.n > 0 && cur.n < 4) yearNow = cur.sum * (4 / cur.n);
+    const fwdKind = growth == null ? "粗估略（成長異常）" : (growth !== growthRaw ? "粗估(限幅)" : "粗估");
     const epsYears = want.map(function (y) {
       if (y < nowY) {
         return { year: y, eps: actual[y] ? actual[y].sum : null, kind: "實際" };
@@ -3271,11 +3282,14 @@
       if (y === nowY) {
         return { year: y, eps: yearNow, kind: cur && cur.n >= 4 ? "實際" : "年化粗估" };
       }
-      if (y === nowY + 1) {
-        return { year: y, eps: yearNow != null && growth != null ? yearNow * (1 + growth) : null, kind: "粗估" };
+      if (growth == null || yearNow == null) {
+        return { year: y, eps: null, kind: fwdKind };
       }
-      const next = yearNow != null && growth != null ? yearNow * (1 + growth) : null;
-      return { year: y, eps: next != null && growth != null ? next * (1 + growth) : null, kind: "粗估" };
+      if (y === nowY + 1) {
+        return { year: y, eps: yearNow * (1 + growth), kind: fwdKind };
+      }
+      const next = yearNow * (1 + growth);
+      return { year: y, eps: next * (1 + growth), kind: fwdKind };
     });
 
     const per = pers.length ? pers[pers.length - 1] : null;
@@ -5868,6 +5882,7 @@
     watchSessionDiagnose: watchSessionDiagnose,
     yahooOneMinBars: yahooOneMinBars,
     twPulse: twPulse,
+    txNightLatest: txNightLatest,
     yahooSymbolQuote: yahooSymbolQuote,
     latestTwseT86: latestTwseT86,
     twseT86Days: async function (days) {

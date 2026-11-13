@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 138;
-  const PAGE_DATE = "2026-11-12";
+  const PAGE_BUILD = 139;
+  const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
   let usBoardOpen = true;
@@ -3448,7 +3448,7 @@
       }).join("") + "</tbody></table><p>本益比 " + (per && per.per != null ? per.per.toFixed(2) + " 倍" : "—") +
       " · 股價淨值比 " + (per && per.pbr != null ? per.pbr.toFixed(2) : "—") +
       " · 殖利率 " + (per && per.yield != null ? per.yield.toFixed(2) + "%" : "—") +
-      '</p><p class="fine">前兩年為財報季 EPS 加總；今年未滿四季會年化。後兩年依近兩年成長粗估，不是券商正式預估。</p></article>';
+      '</p><p class="fine">前兩年為財報季 EPS 加總；今年未滿四季會年化。後兩年依近兩年成長粗估（基期過低或成長過猛則略過／限幅），不是券商正式預估。</p></article>';
     const volHtml = '<article class="card"><h3>近 60 日成交張數</h3><ul class="vol-list">' +
       (detail.volumes || []).map(function (row) {
         return "<li><span>" + esc(row.date.slice(5)) + '</span><strong class="' + (row.spread > 0 ? "up" : row.spread < 0 ? "down" : "") + '">' +
