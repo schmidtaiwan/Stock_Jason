@@ -349,9 +349,8 @@
     return run;
   }
 
-  async function writeBookNow(data) {
-    const name = bookName(accountEmail());
-    const text = JSON.stringify(data);
+  async function writeJsonFile(name, data) {
+    const text = typeof data === "string" ? data : JSON.stringify(data);
     const id = await findBookFile(name);
     if (id) {
       const res = await driveFetch(
@@ -374,6 +373,33 @@
     if (!res.ok) await readErr(res, "建立雲端檔失敗");
     const created = await res.json();
     if (created.id) fileCache.set(name, created.id);
+  }
+
+  async function writeBookNow(data) {
+    await writeJsonFile(bookName(accountEmail()), data);
+  }
+
+  // 登入者共用：StockJason/mis-live.json 只覆寫最新一筆 MIS 快照（非歷史）
+  const MIS_LIVE_NAME = "mis-live.json";
+
+  async function readMisSnapshot() {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const id = await findBookFile(MIS_LIVE_NAME);
+    if (!id) return null;
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?alt=media&supportsAllDrives=true"
+    );
+    if (!res.ok) await readErr(res, "讀取 MIS 快照失敗");
+    return res.json();
+  }
+
+  function writeMisSnapshot(data) {
+    if (!account || !isAllowed(accountEmail())) return Promise.resolve();
+    const run = writeLock.then(function () {
+      return writeJsonFile(MIS_LIVE_NAME, data);
+    });
+    writeLock = run.then(function () {}, function () {});
+    return run;
   }
 
   async function fetchAccount() {
@@ -460,6 +486,8 @@
     bookName: bookName,
     readBook: readBook,
     writeBook: writeBook,
+    readMisSnapshot: readMisSnapshot,
+    writeMisSnapshot: writeMisSnapshot,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

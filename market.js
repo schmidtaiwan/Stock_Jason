@@ -2735,6 +2735,130 @@
   const misExHint = Object.create(null);
   let misLastFetchAt = 0;
   let misQueue = Promise.resolve();
+  // 登入後：雲端硬碟只保留最新一筆 MIS 快照，多裝置共用、少打證交所
+  const MIS_DRIVE_MAX_AGE_MS = 25000;
+  const MIS_DRIVE_WRITE_GAP_MS = 12000;
+  const MIS_DRIVE_READ_GAP_MS = 8000;
+  let misDriveSnap = null;
+  let misDriveReadAt = 0;
+  let misDriveWriteAt = 0;
+  let misDriveWriteTimer = 0;
+  let misDriveWriteBusy = false;
+
+  function misDriveApi() {
+    const D = global.SJDrive;
+    if (!D || !D.account || !D.account()) return null;
+    if (D.isAllowed && !D.isAllowed((D.account().email) || "")) return null;
+    if (!D.readMisSnapshot || !D.writeMisSnapshot) return null;
+    return D;
+  }
+
+  function slimMisQuote(q) {
+    if (!q || !(q.price > 0)) return null;
+    return {
+      code: q.code || "",
+      name: q.name || "",
+      price: q.price,
+      change: q.change,
+      pct: q.pct,
+      open: q.open,
+      high: q.high,
+      low: q.low,
+      ref: q.ref,
+      limitUp: q.limitUp,
+      limitDown: q.limitDown,
+      volumeLots: q.volumeLots,
+      asOf: q.asOf,
+      source: "mis"
+    };
+  }
+
+  function applyMisDriveSnap(snap, preferAgeMs) {
+    if (!snap || !snap.byCode || typeof snap.byCode !== "object") return 0;
+    const age = snap.at != null ? Date.now() - Number(snap.at) : Infinity;
+    if (!(age >= 0) || age > (preferAgeMs != null ? preferAgeMs : MIS_DRIVE_MAX_AGE_MS)) return 0;
+    let n = 0;
+    Object.keys(snap.byCode).forEach(function (code) {
+      const id = String(code || "").toUpperCase();
+      const q = slimMisQuote(snap.byCode[code]);
+      if (!id || !q) return;
+      q.code = id;
+      const hit = misQuoteCache.get(id);
+      // 雲端較新或本機沒有才灌入
+      if (hit && hit.at >= Number(snap.at)) return;
+      misQuoteCache.set(id, { at: Number(snap.at) || Date.now(), quote: q, fromDrive: true });
+      n += 1;
+    });
+    misDriveSnap = snap;
+    return n;
+  }
+
+  async function hydrateMisFromDrive(needIds) {
+    const D = misDriveApi();
+    if (!D || !(needIds && needIds.length)) return;
+    const now = Date.now();
+    if (misDriveSnap && now - Number(misDriveSnap.at) <= MIS_DRIVE_MAX_AGE_MS) {
+      applyMisDriveSnap(misDriveSnap, MIS_DRIVE_MAX_AGE_MS);
+      const still = needIds.some(function (id) { return !misCacheGet(id); });
+      if (!still) return;
+    }
+    if (now - misDriveReadAt < MIS_DRIVE_READ_GAP_MS && misDriveSnap) {
+      applyMisDriveSnap(misDriveSnap, MIS_DRIVE_MAX_AGE_MS);
+      return;
+    }
+    misDriveReadAt = now;
+    try {
+      const snap = await withTimeout(D.readMisSnapshot(), 3500);
+      if (snap) applyMisDriveSnap(snap, MIS_DRIVE_MAX_AGE_MS);
+    } catch (err) { /* 雲端慢就改打 MIS */ }
+  }
+
+  function scheduleMisDriveWrite() {
+    const D = misDriveApi();
+    if (!D) return;
+    if (misDriveWriteTimer) clearTimeout(misDriveWriteTimer);
+    misDriveWriteTimer = setTimeout(function () {
+      misDriveWriteTimer = 0;
+      flushMisDriveWrite();
+    }, 600);
+  }
+
+  async function flushMisDriveWrite() {
+    const D = misDriveApi();
+    if (!D || misDriveWriteBusy) return;
+    const now = Date.now();
+    if (now - misDriveWriteAt < MIS_DRIVE_WRITE_GAP_MS) return;
+    const byCode = {};
+    let newest = 0;
+    misQuoteCache.forEach(function (hit, code) {
+      if (!hit || !hit.quote || !(hit.quote.price > 0)) return;
+      // 只上傳本機剛從 MIS 抓到的，避免把過舊雲端資料再寫回去循環
+      if (hit.fromDrive && now - hit.at > MIS_CACHE_MS) return;
+      if (hit.fromDrive) return;
+      const slim = slimMisQuote(hit.quote);
+      if (!slim) return;
+      byCode[code] = slim;
+      if (hit.at > newest) newest = hit.at;
+    });
+    if (!Object.keys(byCode).length) return;
+    // 與雲端舊快照合併：同一檔覆寫、其餘保留（多裝置不同自選）
+    let merged = byCode;
+    if (misDriveSnap && misDriveSnap.byCode) {
+      merged = Object.assign({}, misDriveSnap.byCode, byCode);
+    }
+    const payload = {
+      at: newest || now,
+      byCode: merged,
+      source: "mis"
+    };
+    misDriveWriteBusy = true;
+    misDriveWriteAt = now;
+    try {
+      await D.writeMisSnapshot(payload);
+      misDriveSnap = payload;
+    } catch (err) { /* 寫入失敗不影響行情 */ }
+    misDriveWriteBusy = false;
+  }
 
   function taipeiMinutesNow(now) {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -2999,7 +3123,7 @@
     });
     const out = {};
     if (!ids.length) return out;
-    const need = [];
+    let need = [];
     ids.forEach(function (id) {
       const hit = misCacheGet(id);
       if (hit && hit.price > 0) out[id] = hit;
@@ -3007,6 +3131,20 @@
     });
     if (!need.length) return out;
 
+    // 登入者先吃雲端最新快照，減少各裝置重複打 MIS
+    await hydrateMisFromDrive(need);
+    need = need.filter(function (id) {
+      if (out[id]) return false;
+      const hit = misCacheGet(id);
+      if (hit && hit.price > 0) {
+        out[id] = hit;
+        return false;
+      }
+      return true;
+    });
+    if (!need.length) return out;
+
+    let fetched = false;
     const run = misQueue.then(async function () {
       const still = need.filter(function (id) { return !misCacheGet(id); });
       if (!still.length) return;
@@ -3034,6 +3172,7 @@
           const parsed = parseMisRow(row);
           if (!parsed || !(parsed.price > 0)) return;
           misQuoteCache.set(parsed.code, { at: Date.now(), quote: parsed });
+          fetched = true;
         });
       }
     });
@@ -3044,6 +3183,7 @@
       const hit = misCacheGet(id) || (misQuoteCache.get(id) && misQuoteCache.get(id).quote) || null;
       if (hit && hit.price > 0) out[id] = hit;
     });
+    if (fetched) scheduleMisDriveWrite();
     return out;
   }
 
