@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 192;
+  const PAGE_BUILD = 193;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1500,9 +1500,20 @@
       const on = !state.custom && state.range === id;
       return '<button type="button" class="chip" data-range="' + id + '" aria-pressed="' + on + '">' + spec.label + "</button>";
     }).join("");
-    $("markets").innerHTML = M.MARKETS.map(function (m) {
+    const flow = state.flowOn || {};
+    const marketHtml = M.MARKETS.map(function (m) {
       return '<button type="button" class="chip" data-market="' + m.id + '" aria-pressed="' + !!state.on[m.id] + '">' + m.name + "</button>";
     }).join("");
+    const flowHtml = (M.FLOW_SERIES || []).map(function (f) {
+      const tip = f.id === "short"
+        ? "外資台指期空單未平倉歷史曲線（五日以上線圖）"
+        : f.id === "buy"
+          ? "外資現貨買超歷史曲線（五日以上線圖）"
+          : "外資現貨賣超歷史曲線（五日以上線圖）";
+      return '<button type="button" class="chip chip-flow" data-flow="' + f.id + '" aria-pressed="' +
+        !!flow[f.id] + '" title="' + tip + '">' + f.name + "</button>";
+    }).join("");
+    $("markets").innerHTML = marketHtml + flowHtml;
     const styles = $("chart-styles");
     if (styles) {
       styles.querySelectorAll("[data-chart-style]").forEach(function (btn) {
@@ -2253,56 +2264,11 @@
     }
   }
 
-  function lotsChipText(n) {
-    if (n == null || !isFinite(n)) return "—";
-    return Math.round(n).toLocaleString("zh-Hant") + "口";
-  }
-
-  async function renderMarketFlow() {
-    const box = $("market-flow");
-    if (!box) return;
-    const gen = (renderMarketFlow.gen = (renderMarketFlow.gen || 0) + 1);
-    box.innerHTML = '<span class="note">讀取空單／買賣超…</span>';
-    try {
-      const pack = await Promise.all([
-        M.txForeignOiLatest ? M.txForeignOiLatest() : Promise.resolve(null),
-        M.foreignSpotDay ? M.foreignSpotDay() : Promise.resolve(null)
-      ]);
-      if (gen !== renderMarketFlow.gen) return;
-      const oi = pack[0];
-      const spot = pack[1];
-      const shortTxt = oi ? lotsChipText(oi.shortOi) : "—";
-      const buyYi = spot && spot.buyYi != null ? spot.buyYi : null;
-      const sellYi = spot && spot.sellYi != null ? spot.sellYi : null;
-      const tip = [
-        oi && oi.date ? ("空單日期 " + oi.date) : "",
-        spot && spot.date ? ("現貨日期 " + spot.date) : "",
-        "點選可疊加歷史曲線（五日以上線圖）"
-      ].filter(Boolean).join(" · ");
-      box.title = tip || "";
-      const flow = state.flowOn || {};
-      box.innerHTML =
-        '<button type="button" class="market-flow-chip" data-flow="short" aria-pressed="' +
-        !!flow.short + '" title="外資台指期空單未平倉（點選顯示歷史曲線）">空單口數 ' + esc(shortTxt) + "</button>" +
-        '<button type="button" class="market-flow-chip up" data-flow="buy" aria-pressed="' +
-        !!flow.buy + '" title="外資現貨當日買超（億元；點選顯示歷史曲線）">外資買超 ' +
-        esc(buyYi == null ? "—" : moneyText(buyYi)) + "</button>" +
-        '<button type="button" class="market-flow-chip down" data-flow="sell" aria-pressed="' +
-        !!flow.sell + '" title="外資現貨當日賣超（億元；點選顯示歷史曲線）">賣超 ' +
-        esc(sellYi == null ? "—" : moneyText(sellYi)) + "</button>";
-    } catch (err) {
-      if (gen === renderMarketFlow.gen) {
-        box.innerHTML = '<span class="note">空單／買賣超暫讀不到</span>';
-      }
-    }
-  }
-
   async function loadChart() {
     const gen = ++state.chartGen;
     $("chart-status").textContent = "正在讀行情…";
     paintFocus();
     renderForeign();
-    renderMarketFlow();
     try {
       let items = [];
       let statusNote = "";
@@ -5300,8 +5266,8 @@
       state.flowOn[t.dataset.flow] = t.getAttribute("aria-pressed") !== "true";
       if (state.flowOn[t.dataset.flow] && state.chartStyle === "candle") {
         state.chartStyle = "line";
-        buildToggles();
       }
+      buildToggles();
       loadChart();
     } else if (t.dataset.chartStyle) {
       setChartStyle(t.dataset.chartStyle);

@@ -3682,7 +3682,7 @@
   const FLOW_SERIES = [
     { id: "short", name: "空單", color: "#94a3b8" },
     { id: "buy", name: "外資買超", color: "#f87171" },
-    { id: "sell", name: "賣超", color: "#4ade80" }
+    { id: "sell", name: "外資賣超", color: "#4ade80" }
   ];
 
   function flowKeepCount(rangeId, window) {
