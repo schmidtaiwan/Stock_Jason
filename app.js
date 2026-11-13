@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 180;
+  const PAGE_BUILD = 181;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3734,8 +3734,9 @@
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-col-price">成交</th>' +
-      '<th class="watch-col-chg">漲跌</th><th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
-      '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th><th class="watch-col-cost">買價</th>' +
+      '<th class="watch-col-chg">漲跌</th><th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th>' +
+      '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th>' +
+      '<th class="watch-col-cost">買價</th><th class="watch-col-shares">股數</th><th></th><th>通知</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -3765,8 +3766,6 @@
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
-          '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
-          '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
           '<td class="watch-num watch-col-lamp"><span class="watch-lamp-chip" data-watch-lamp="' +
           idx + '">—</span></td>' +
           '<td class="watch-num watch-col-chip" data-watch-foreign="' + idx + '">—</td>' +
@@ -3776,6 +3775,10 @@
           '"></span></td>' +
           '<td class="watch-num watch-col-lv"><span class="watch-lv watch-lv-sup" data-watch-sup="' + idx +
           '"></span></td>' +
+          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
+          '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
+          '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
+          '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
           '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
           '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
@@ -3786,9 +3789,7 @@
           '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
           '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
           '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
-          "</label></div></td>" +
-          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
-          '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td></tr>';
+          "</label></div></td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
