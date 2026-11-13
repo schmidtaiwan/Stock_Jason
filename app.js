@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 175;
+  const PAGE_BUILD = 176;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -96,6 +96,7 @@
       watchPrivacy: false,
       watchPrivacyGray: 100,
       watchPrivacyMode: "depth",
+      watchPrivacySameBright: 35,
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -215,6 +216,11 @@
         return Math.max(0, Math.min(100, Math.round(n)));
       })(),
       watchPrivacyMode: src.watchPrivacyMode === "same" ? "same" : "depth",
+      watchPrivacySameBright: (function () {
+        const n = Number(src.watchPrivacySameBright);
+        if (!isFinite(n)) return 35;
+        return Math.max(0, Math.min(100, Math.round(n)));
+      })(),
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -264,8 +270,42 @@
     return book.watchPrivacyMode === "same" ? "same" : "depth";
   }
 
+  function privacySameBrightOf() {
+    const n = Number(book.watchPrivacySameBright);
+    if (!isFinite(n)) return 35;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+
+  function sameInkFromBright(pct) {
+    const t = Math.max(0, Math.min(100, Number(pct) || 0)) / 100;
+    // 暗：接近底色；亮：仍偏灰、不過亮
+    const r0 = 0x34, g0 = 0x3c, b0 = 0x48;
+    const r1 = 0x9a, g1 = 0xa3, b1 = 0xb0;
+    const hex = function (n) {
+      return Math.round(n).toString(16).padStart(2, "0");
+    };
+    return "#" +
+      hex(r0 + (r1 - r0) * t) +
+      hex(g0 + (g1 - g0) * t) +
+      hex(b0 + (b1 - b0) * t);
+  }
+
   function applyPrivacyGray() {
     document.documentElement.style.setProperty("--sj-privacy-gray", String(privacyGrayOf() / 100));
+  }
+
+  function applyPrivacySameBright() {
+    const n = privacySameBrightOf();
+    const ink = sameInkFromBright(n);
+    const root = document.documentElement;
+    root.style.setProperty("--sj-same-ink", ink);
+    root.style.setProperty("--up", ink);
+    root.style.setProperty("--down", ink);
+    root.style.setProperty("--accent", ink);
+    root.style.setProperty("--muted", ink);
+    root.style.setProperty("--ink", ink);
+    // 圖案灰階亮度：暗一些對應低文字亮度
+    root.style.setProperty("--sj-same-img-bright", String(0.45 + (n / 100) * 0.35));
   }
 
   function syncWatchPnlUi() {
@@ -303,6 +343,7 @@
       document.body.classList.toggle("sj-privacy-depth", on && mode === "depth");
     }
     applyPrivacyGray();
+    if (on && mode === "same") applyPrivacySameBright();
   }
 
   function esc(s) {
@@ -1165,6 +1206,7 @@
     if (!sheet) return;
     const mode = privacyModeOf();
     const n = privacyGrayOf();
+    const bright = privacySameBrightOf();
     const depthOn = mode === "depth";
     sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="防窺設定">' +
       '<p class="watch-move-title">防窺設定</p>' +
@@ -1184,7 +1226,15 @@
           '<span class="privacy-gray-edge">深</span>' +
           "</div>" +
           '<p class="privacy-gray-val"><span data-privacy-gray-val>' + n + "%</span></p>")
-        : '<p class="privacy-same-note">同色：文字與圖案皆暗灰階，旁人難一眼看清，近看仍可辨</p>') +
+        : ('<p class="watch-move-pos">同色文字亮暗（左右拖曳）</p>' +
+          '<div class="privacy-gray-row">' +
+          '<span class="privacy-gray-edge">暗</span>' +
+          '<input id="privacy-same-bar" class="privacy-gray-bar" type="range" min="0" max="100" step="1" value="' +
+          bright + '" aria-label="同色文字亮暗">' +
+          '<span class="privacy-gray-edge">亮</span>' +
+          "</div>" +
+          '<p class="privacy-gray-val"><span data-privacy-same-val>' + bright + "%</span></p>" +
+          '<p class="privacy-same-note">文字與圖案皆同色灰階，調暗較防窺、調亮較好辨</p>')) +
       '<button type="button" class="primary watch-move-done" data-privacy-close="1">完成</button>' +
       "</div>";
   }
@@ -1220,14 +1270,25 @@
         }
       });
       sheet.addEventListener("input", function (ev) {
-        const bar = ev.target.closest("#privacy-gray-bar");
-        if (!bar) return;
-        const n = Math.max(0, Math.min(100, Math.round(Number(bar.value) || 0)));
-        book.watchPrivacyGray = n;
-        applyPrivacyGray();
-        const label = sheet.querySelector("[data-privacy-gray-val]");
-        if (label) label.textContent = n + "%";
-        scheduleSave();
+        const grayBar = ev.target.closest("#privacy-gray-bar");
+        if (grayBar) {
+          const n = Math.max(0, Math.min(100, Math.round(Number(grayBar.value) || 0)));
+          book.watchPrivacyGray = n;
+          applyPrivacyGray();
+          const label = sheet.querySelector("[data-privacy-gray-val]");
+          if (label) label.textContent = n + "%";
+          scheduleSave();
+          return;
+        }
+        const sameBar = ev.target.closest("#privacy-same-bar");
+        if (sameBar) {
+          const n = Math.max(0, Math.min(100, Math.round(Number(sameBar.value) || 0)));
+          book.watchPrivacySameBright = n;
+          applyPrivacySameBright();
+          const label = sheet.querySelector("[data-privacy-same-val]");
+          if (label) label.textContent = n + "%";
+          scheduleSave();
+        }
       });
     }
     paintPrivacySettings();

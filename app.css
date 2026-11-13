@@ -1336,22 +1336,23 @@ html.sj-privacy.sj-privacy-depth #header-bias-text,
 html.sj-privacy.sj-privacy-depth #watch-total-pnl {
   color: #c4c4c4 !important;
 }
-/* 防窺・同色：文字與底色接近（暗灰），旁人難一眼看清，近看仍可辨 */
+/* 防窺・同色：文字／圖案同色灰，亮暗由 --sj-same-ink 控制 */
 html.sj-privacy.sj-privacy-same {
   --sj-same-ink: #5c6673;
   --sj-same-bg: #12181f;
-  --up: #5c6673;
-  --down: #5c6673;
-  --accent: #5c6673;
+  --sj-same-img-bright: 0.62;
+  --up: var(--sj-same-ink);
+  --down: var(--sj-same-ink);
+  --accent: var(--sj-same-ink);
   --accent-2: #4a5360;
-  --muted: #5c6673;
-  --ink: #5c6673;
-  --text: #5c6673;
+  --muted: var(--sj-same-ink);
+  --ink: var(--sj-same-ink);
+  --text: var(--sj-same-ink);
 }
 html.sj-privacy.sj-privacy-same body,
 html.sj-privacy.sj-privacy-same #app.sj-privacy {
   filter: none !important;
-  color: #5c6673;
+  color: var(--sj-same-ink);
   background: #10151b !important;
 }
 html.sj-privacy.sj-privacy-same #app {
@@ -1363,9 +1364,9 @@ html.sj-privacy.sj-privacy-same #app :where(
   p, span, strong, em, small, a, button, label, td, th, li, h1, h2, h3, h4,
   input, select, textarea, legend, div, i
 ) {
-  color: #5c6673 !important;
-  -webkit-text-fill-color: #5c6673;
-  caret-color: #5c6673;
+  color: var(--sj-same-ink) !important;
+  -webkit-text-fill-color: var(--sj-same-ink);
+  caret-color: var(--sj-same-ink);
 }
 html.sj-privacy.sj-privacy-same .card,
 html.sj-privacy.sj-privacy-same .watch-summary,
@@ -1396,8 +1397,8 @@ html.sj-privacy.sj-privacy-same .dock button {
   background: #151b24 !important;
   background-image: none !important;
   border-color: #2a3340 !important;
-  color: #5c6673 !important;
-  -webkit-text-fill-color: #5c6673;
+  color: var(--sj-same-ink) !important;
+  -webkit-text-fill-color: var(--sj-same-ink);
 }
 html.sj-privacy.sj-privacy-same .up,
 html.sj-privacy.sj-privacy-same .down,
@@ -1409,13 +1410,13 @@ html.sj-privacy.sj-privacy-same #watch-wake-toggle[aria-pressed="true"] {
   border-color: #2a3340 !important;
   background: #151b24 !important;
   background-image: none !important;
-  color: #5c6673 !important;
-  -webkit-text-fill-color: #5c6673;
+  color: var(--sj-same-ink) !important;
+  -webkit-text-fill-color: var(--sj-same-ink);
 }
 html.sj-privacy.sj-privacy-same .watch-input {
   background: transparent !important;
-  color: #5c6673 !important;
-  -webkit-text-fill-color: #5c6673;
+  color: var(--sj-same-ink) !important;
+  -webkit-text-fill-color: var(--sj-same-ink);
 }
 html.sj-privacy.sj-privacy-same .watch-net-bar i.buy,
 html.sj-privacy.sj-privacy-same .watch-net-bar i.sell {
@@ -1441,12 +1442,12 @@ html.sj-privacy.sj-privacy-same .watch-lamp-chip,
 html.sj-privacy.sj-privacy-same .watch-net-bar,
 html.sj-privacy.sj-privacy-same .header-bias,
 html.sj-privacy.sj-privacy-same .twii-box {
-  filter: grayscale(1) brightness(0.62) contrast(0.9) !important;
+  filter: grayscale(1) brightness(var(--sj-same-img-bright, 0.62)) contrast(0.9) !important;
 }
 html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   background: #2a3340 !important;
-  color: #5c6673 !important;
-  -webkit-text-fill-color: #5c6673;
+  color: var(--sj-same-ink) !important;
+  -webkit-text-fill-color: var(--sj-same-ink);
 }
 .watch-groups-bar {
   display: flex;
