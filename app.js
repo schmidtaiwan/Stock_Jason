@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 149;
+  const PAGE_BUILD = 150;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -410,9 +410,25 @@
     if (!isTwMarketOpen()) {
       lagEl.hidden = true;
       lagEl.textContent = "";
+      lagEl.removeAttribute("title");
       return;
     }
     const isMis = q && String(q.source || "").toLowerCase() === "mis";
+    // MIS 加權：證交所快照約 1～2 分鐘才跳一次；相對「N秒前」會誤以為 6 秒輪詢壞了
+    if (isMis && q.asOf != null && isFinite(q.asOf)) {
+      const stamp = new Date(Number(q.asOf));
+      const clock = stamp.toLocaleTimeString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+      lagEl.hidden = false;
+      lagEl.textContent = "快照 " + clock;
+      lagEl.title = "證交所加權快照時間（約 1～2 分鐘更新一次）；頁面仍每 6 秒向 MIS 詢問最新快照";
+      return;
+    }
     let secs = null;
     if (q && q.asOf != null && isFinite(q.asOf)) {
       secs = Math.max(0, Math.floor((Date.now() - Number(q.asOf)) / 1000));
@@ -422,24 +438,7 @@
     if (secs == null) {
       lagEl.hidden = true;
       lagEl.textContent = "";
-      return;
-    }
-    // MIS 近即時：8 秒內不顯示；兩分鐘內改顯示秒，避免被整成「1 分鐘前」
-    if (isMis) {
-      if (secs < 8) {
-        lagEl.hidden = true;
-        lagEl.textContent = "";
-        return;
-      }
-      lagEl.hidden = false;
-      if (secs < 120) {
-        lagEl.textContent = secs + " 秒前";
-        return;
-      }
-      const mins = Math.floor(secs / 60);
-      lagEl.textContent = mins >= 60
-        ? (Math.floor(mins / 60) + " 小時前")
-        : (mins + " 分鐘前");
+      lagEl.removeAttribute("title");
       return;
     }
     // Yahoo 等：滿 1 分鐘才顯示
@@ -447,9 +446,11 @@
     if (mins < 1) {
       lagEl.hidden = true;
       lagEl.textContent = "";
+      lagEl.removeAttribute("title");
       return;
     }
     lagEl.hidden = false;
+    lagEl.removeAttribute("title");
     lagEl.textContent = mins >= 60
       ? (Math.floor(mins / 60) + " 小時前")
       : (mins + " 分鐘前");
