@@ -1310,6 +1310,7 @@ html.sj-privacy #watch-total-pnl {
 }
 .watch-group-add,
 .watch-group-rename,
+.watch-group-export,
 .watch-group-del {
   min-height: 32px;
   padding: 4px 10px;
@@ -1601,9 +1602,24 @@ html.sj-privacy #watch-total-pnl {
 .watch-table td:nth-child(n+2) {
   text-align: right;
 }
-.watch-table th:nth-child(8),
-.watch-table td:nth-child(8) {
+.watch-table th.watch-col-lamp,
+.watch-table td.watch-col-lamp,
+.watch-table .watch-col-lamp {
   text-align: center;
+}
+.watch-table tr.is-dragging,
+.watch-mini-card.is-dragging {
+  opacity: 0.55;
+  outline: 1px dashed var(--accent, #7eb8ff);
+}
+.watch-table tr[data-watch-row],
+.watch-mini-card[data-watch-row] {
+  touch-action: pan-y;
+}
+.watch-table tr.is-dragging,
+.watch-mini-card.is-dragging {
+  touch-action: none;
+  cursor: grabbing;
 }
 .watch-pin {
   position: sticky;

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 159;
+  const PAGE_BUILD = 160;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -649,6 +649,100 @@
     box.addEventListener("pointercancel", endToolDrag);
   }
 
+  let watchDrag = null;
+  let watchLongPress = null;
+  let watchDragMoved = false;
+
+  function bindWatchReorder() {
+    const box = $("watch-list");
+    if (!box || box.dataset.reorderBound) return;
+    box.dataset.reorderBound = "1";
+
+    function clearLongPress() {
+      if (!watchLongPress) return;
+      clearTimeout(watchLongPress.timer);
+      watchLongPress = null;
+    }
+
+    function endWatchDrag() {
+      clearLongPress();
+      if (!watchDrag) return;
+      const dragging = box.querySelector(".is-dragging");
+      if (dragging) dragging.classList.remove("is-dragging");
+      const host = box.querySelector("tbody") || box.querySelector(".watch-mini-grid");
+      if (host) {
+        const nodes = Array.prototype.slice.call(host.querySelectorAll(":scope > [data-watch-row]"));
+        const order = nodes.map(function (el) {
+          return Number(el.getAttribute("data-watch-row"));
+        }).filter(function (i) { return isFinite(i); });
+        if (order.length === book.watch.length) {
+          const changed = order.some(function (i, j) { return i !== j; });
+          if (changed) {
+            book.watch = order.map(function (i) { return book.watch[i]; });
+            flushWatchToGroup();
+            scheduleSave();
+            renderWatch(true);
+          }
+        }
+      }
+      watchDrag = null;
+    }
+
+    box.addEventListener("pointerdown", function (ev) {
+      if (ev.button != null && ev.button !== 0) return;
+      if (ev.target.closest("input, select, button.danger, label, .watch-alert")) return;
+      const row = ev.target.closest("[data-watch-row]");
+      if (!row || !box.contains(row)) return;
+      const idx = Number(row.getAttribute("data-watch-row"));
+      if (!(idx >= 0)) return;
+      const pointerId = ev.pointerId;
+      watchDragMoved = false;
+      watchLongPress = {
+        idx: idx,
+        row: row,
+        pointerId: pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
+        timer: setTimeout(function () {
+          if (!watchLongPress || watchLongPress.pointerId !== pointerId) return;
+          watchDrag = { idx: watchLongPress.idx, pointerId: pointerId };
+          watchLongPress.row.classList.add("is-dragging");
+          try { watchLongPress.row.setPointerCapture(pointerId); } catch (err) { /* ignore */ }
+          try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
+          watchLongPress = null;
+          watchDragMoved = true;
+        }, 400)
+      };
+    });
+
+    box.addEventListener("pointermove", function (ev) {
+      if (watchLongPress) {
+        if (Math.abs(ev.clientX - watchLongPress.x) > 12 ||
+            Math.abs(ev.clientY - watchLongPress.y) > 12) {
+          clearLongPress();
+        }
+        return;
+      }
+      if (!watchDrag || watchDrag.pointerId !== ev.pointerId) return;
+      const host = box.querySelector("tbody") || box.querySelector(".watch-mini-grid");
+      if (!host) return;
+      const dragging = host.querySelector('[data-watch-row="' + watchDrag.idx + '"]');
+      if (!dragging) return;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const over = el && el.closest ? el.closest("[data-watch-row]") : null;
+      if (!over || over === dragging || !host.contains(over)) return;
+      const rect = over.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      if (ev.clientY < mid) host.insertBefore(dragging, over);
+      else host.insertBefore(dragging, over.nextSibling);
+      watchDragMoved = true;
+      ev.preventDefault();
+    });
+
+    box.addEventListener("pointerup", endWatchDrag);
+    box.addEventListener("pointercancel", endWatchDrag);
+  }
+
   function openTool(id) {
     const titles = {
       mops: "公開資訊觀測",
@@ -842,6 +936,56 @@
     }
   }
 
+  function exportWatchGroupFubonJson() {
+    flushWatchToGroup();
+    const g = activeWatchGroup();
+    const name = (g && g.name) || "自選";
+    const holdings = [];
+    (book.watch || []).forEach(function (item) {
+      const code = String(item.code || "").trim().toUpperCase();
+      if (!code) return;
+      const shares = Number(item.shares);
+      const qty = shares > 0 ? shares : 0;
+      const cost = Number(item.cost);
+      const costPrice = cost > 0 ? cost : 0;
+      const stockName = String(item.name || "").trim();
+      holdings.push({
+        code: code,
+        name: stockName,
+        todayQty: qty,
+        tradableQty: qty,
+        costPrice: costPrice,
+        raw: {
+          stock_no: code,
+          stock_name: stockName,
+          today_qty: qty,
+          tradable_qty: qty,
+          cost_price: costPrice
+        }
+      });
+    });
+    if (!holdings.length) {
+      flashStatus("目前群組沒有可匯出的股票");
+      return;
+    }
+    const payload = {
+      source: "StockJason",
+      exportedAt: new Date().toISOString(),
+      group: name,
+      holdings: holdings
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const safe = String(name).replace(/[\\/:*?"<>|]+/g, "_");
+    a.download = "fubon-" + safe + "-" + PAGE_DATE + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    flashStatus("已匯出「" + name + "」" + holdings.length + " 檔富邦 JSON");
+  }
+
   function paintWatchGroups() {
     const box = $("watch-groups");
     if (!box) return;
@@ -855,6 +999,7 @@
     }).join("") +
       '<button type="button" class="ghost watch-group-add" id="watch-group-add" title="新增群組" aria-label="新增群組">＋群組</button>' +
       '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
+      '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
       (groups.length > 1
         ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
         : "");
@@ -2841,7 +2986,8 @@
     const p = Number(price);
     const c = Number(cost);
     const s = Number(shares);
-    if (!(p > 0) || !isFinite(c) || !(s > 0)) {
+    // 買價必須 > 0；空白／0 不可當成本 0 去算成假大賺
+    if (!(p > 0) || !(c > 0) || !(s > 0)) {
       return { text: "—", cls: "", value: null, tip: "" };
     }
     const costAmt = c * s;
@@ -3261,7 +3407,7 @@
       if (item.market) item.market = twName(item.market);
       const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
-        '" data-open-watch="' + idx + '" data-price="" title="' + esc(tip) + '">' +
+        '" data-open-watch="' + idx + '" data-price="" title="長按可上下排序 · ' + esc(tip) + '">' +
         '<span class="watch-mini-main">' +
         '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
@@ -3277,8 +3423,8 @@
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
-      '<th>漲跌</th><th>幅度</th><th>買價</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
-      '<th>燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th>' +
+      '<th>漲跌</th><th>幅度</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
+      '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th><th>買價</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -3297,7 +3443,7 @@
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
-          '" title="' + esc(label) + '">' +
+          '" title="長按可上下排序 · ' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
           '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
           watchNetBarHtml(idx) +
@@ -3306,8 +3452,6 @@
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +
-          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
-          '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
@@ -3330,7 +3474,9 @@
           '<input data-watch-notify-val="' + idx + '" inputmode="decimal" value="' + esc(valText) +
           '" placeholder="' + (mode === "pct" ? "3" : "數值") + '" aria-label="通知門檻">' +
           '<span data-alert-suffix="1">' + esc(meta.suffix || "") + "</span>" +
-          "</label></div></td></tr>";
+          "</label></div></td>" +
+          '<td class="watch-col-cost"><input class="watch-input" data-watch-cost="' + idx +
+          '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td></tr>';
       }).join("") + "</tbody></table></div>";
   }
 
@@ -3559,21 +3705,27 @@
   }
 
   function savePosition(row) {
+    const nextCost = row.cost == null ? "" : String(row.cost).trim();
+    const costOk = Number(nextCost) > 0;
     const item = {
       secid: row.secid,
       code: row.code,
       name: twName(row.name),
       market: twName(row.market || ""),
       shares: row.shares == null ? "" : String(row.shares).trim(),
-      cost: row.cost == null ? "" : String(row.cost).trim()
+      cost: costOk ? nextCost : ""
     };
-    const found = book.watch.find(function (entry) { return entry.secid === item.secid; });
+    const found = book.watch.find(function (entry) {
+      return entry.secid === item.secid ||
+        (item.code && String(entry.code || "").toUpperCase() === String(item.code).toUpperCase());
+    });
     if (found) {
       found.shares = item.shares;
-      found.cost = item.cost;
-      found.name = item.name;
-      found.code = item.code;
-      found.market = item.market;
+      // JSON 沒買價時保留原本買價，不要清成空白
+      if (costOk) found.cost = item.cost;
+      if (item.name) found.name = item.name;
+      found.code = item.code || found.code;
+      found.market = item.market || found.market;
     } else book.watch.push(item);
     syncHolding(found || item);
     flushWatchToGroup();
@@ -4080,9 +4232,20 @@
           }) || named.find(function (item) { return item.market === "台股"; }) || null;
         } catch (err) { /* 名稱備援失敗就用代號結果 */ }
       }
+      const known = ({
+        "00403A": "主動統一升級50",
+        "00985A": "主動野村台灣50",
+        "3702": "大聯大",
+        "2308": "台達電",
+        "2345": "智邦",
+        "2382": "廣達",
+        "3037": "欣興",
+        "3189": "景碩",
+        "6274": "台燿"
+      })[want] || "";
       const item = {
         code: hit ? hit.code : row.code,
-        name: hit ? hit.name : (byName || row.code),
+        name: hit ? hit.name : (known || byName || row.code),
         secid: hit ? hit.secid : (want ? "178." + want : ""),
         market: hit ? hit.market : "台股",
         shares: row.shares,
@@ -4090,11 +4253,19 @@
         note: ""
       };
       if (!item.secid && item.code) item.secid = "178." + String(item.code).toUpperCase();
+      const existed = (book.watch || []).find(function (entry) {
+        return (item.secid && entry.secid === item.secid) ||
+          (want && String(entry.code || "").toUpperCase() === want);
+      });
+      if (existed && Number(existed.cost) > 0) {
+        item.cost = String(existed.cost);
+        item.note = "沿用自選買價";
+      }
       const costOk = row.cost > 0 && row.cost !== row.shares && row.cost < 100000;
       if (costOk) {
         item.cost = (Math.round(row.cost * 100) / 100).toFixed(2);
         item.note = row.note || "匯入成本";
-      } else if (item.secid && (row.pct != null || row.pnl != null)) {
+      } else if (!(Number(item.cost) > 0) && item.secid && (row.pct != null || row.pnl != null)) {
         try {
           const map = await M.quoteMap([item.secid]);
           const quote = map[item.secid];
@@ -4115,7 +4286,10 @@
           }
         } catch (err) { /* 沒報價就讓使用者自己填買價 */ }
       }
-      if (!item.note && row.pnl != null) item.note = "損益 " + row.pnl + "，請補買價";
+      if (!(Number(item.cost) > 0)) {
+        item.cost = "";
+        item.note = "JSON 無成本，請補買價（不會清掉原買價）";
+      }
       return item;
     });
     return Promise.all(tasks);
@@ -4786,7 +4960,13 @@
       syncStockDetailsUi();
     } else if (t.dataset.view) setView(t.dataset.view);
     else if (t.dataset.tool) openTool(t.dataset.tool);
-    else if (t.dataset.openWatch != null) openSymbol(book.watch[Number(t.dataset.openWatch)]);
+    else if (t.dataset.openWatch != null) {
+      if (watchDragMoved) {
+        watchDragMoved = false;
+        return;
+      }
+      openSymbol(book.watch[Number(t.dataset.openWatch)]);
+    }
     else if (t.id === "watch-open-add") setWatchCompose(true);
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
@@ -4796,6 +4976,7 @@
     else if (t.id === "watch-wake-toggle") toggleWakeLock();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
+    else if (t.id === "watch-group-export") exportWatchGroupFubonJson();
     else if (t.id === "watch-group-del") deleteWatchGroup();
     else if (t.dataset.watchGroup) switchWatchGroup(t.dataset.watchGroup);
     else if (t.id === "import-ok") commitImport();
@@ -5771,6 +5952,7 @@
   buildToggles();
   syncChartDetailsUi();
   bindToolMenuDrag();
+  bindWatchReorder();
   D.ready().catch(function () { /* 登入時再提示 */ });
   if (D.account()) {
     $("gate").hidden = true;
