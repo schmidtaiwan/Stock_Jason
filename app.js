@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 200;
+  const PAGE_BUILD = 201;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2195,39 +2195,72 @@
     }).format(new Date());
   }
 
+  function canGoogleTaskNotify() {
+    return !!(D && D.account && D.account() && D.isAllowed && D.isAllowed(D.account().email) &&
+      D.createStockAlertTask);
+  }
+
   async function ensureNotifyPermission() {
-    if (!("Notification" in window)) {
-      $("watch-status").textContent = "這個瀏覽器不支援系統通知。";
-      return false;
-    }
-    if (Notification.permission === "granted") return true;
-    if (Notification.permission === "denied") {
-      $("watch-status").textContent = "通知權限被拒絕，請到瀏覽器設定開啟。";
-      return false;
-    }
-    try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        $("watch-status").textContent = "尚未允許通知，無法跳出資訊。";
-        return false;
+    let browserOk = false;
+    if ("Notification" in window) {
+      if (Notification.permission === "granted") browserOk = true;
+      else if (Notification.permission !== "denied") {
+        try {
+          const perm = await Notification.requestPermission();
+          browserOk = perm === "granted";
+        } catch (err) { browserOk = false; }
       }
-      $("watch-status").textContent = "已開啟通知。盤中達門檻會跳出提醒。";
+    }
+    let taskOk = false;
+    if (canGoogleTaskNotify() && D.ensureTasksAccess) {
+      try {
+        await D.ensureTasksAccess({ promptConsent: true });
+        taskOk = true;
+      } catch (err) {
+        flashStatus(D.friendly ? D.friendly(err) : ((err && err.message) || "Google 工作授權失敗"));
+      }
+    }
+    if (taskOk && browserOk) {
+      $("watch-status").textContent = "已開啟：瀏覽器通知＋Google 工作（股價通知）。";
       return true;
-    } catch (err) {
-      $("watch-status").textContent = "無法請求通知權限。";
+    }
+    if (taskOk) {
+      $("watch-status").textContent = "已連 Google 工作「股價通知」。達門檻會建立工作給 " +
+        ((D.account() && D.account().email) || "jason660803@gmail.com") + "。";
+      return true;
+    }
+    if (browserOk) {
+      $("watch-status").textContent = "已開啟瀏覽器通知（未連 Google 工作）。";
+      return true;
+    }
+    if (!("Notification" in window) && !canGoogleTaskNotify()) {
+      $("watch-status").textContent = "請先登入 Google，才能把通知寫入工作清單。";
       return false;
     }
+    if (Notification.permission === "denied" && !taskOk) {
+      $("watch-status").textContent = "瀏覽器通知被拒；請登入 Google 以改寫入「股價通知」工作。";
+      return false;
+    }
+    $("watch-status").textContent = "尚未允許通知，也未授權 Google 工作。";
+    return false;
   }
 
   function fireWatchNotice(title, body, tag) {
     try {
-      new Notification(title, {
-        body: body,
-        tag: tag || "stock-jason",
-        renotify: true,
-        silent: false
-      });
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, {
+          body: body,
+          tag: tag || "stock-jason",
+          renotify: true,
+          silent: false
+        });
+      }
     } catch (err) { /* 略過 */ }
+    if (canGoogleTaskNotify()) {
+      D.createStockAlertTask(title, body).catch(function (err) {
+        flashStatus(D.friendly ? D.friendly(err) : ((err && err.message) || "寫入 Google 工作失敗"));
+      });
+    }
   }
 
   function watchAlertHit(item, quote) {
@@ -2273,7 +2306,9 @@
   }
 
   function checkWatchAlertsFromRows(items, rows) {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const canBrowser = ("Notification" in window) && Notification.permission === "granted";
+    const canTask = canGoogleTaskNotify();
+    if (!canBrowser && !canTask) return;
     const day = taipeiDay();
     (items || []).forEach(function (item, idx) {
       if (!item || !item.notify) return;
@@ -2293,7 +2328,8 @@
   async function pollWatchAlerts() {
     const items = (book.watch || []).filter(function (item) { return item.notify; });
     if (!items.length) return;
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const canBrowser = ("Notification" in window) && Notification.permission === "granted";
+    if (!canBrowser && !canGoogleTaskNotify()) return;
     try {
       const rows = await M.watchBoard(items);
       checkWatchAlertsFromRows(items, rows);
