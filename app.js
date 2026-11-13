@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 153;
+  const PAGE_BUILD = 154;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -533,6 +533,8 @@
     $("view-watch").hidden = name !== "watch";
     $("view-tools").hidden = name !== "tools";
     $("view-tool").hidden = name !== "tool";
+    // 自選：列表區內捲動，底欄固定不擋最後幾列
+    document.documentElement.classList.toggle("sj-watch-scroll", name === "watch");
     const dockView = name === "tool" ? "tools" : name === "stock" ? "watch" : name;
     document.querySelectorAll(".dock button").forEach(function (btn) {
       const on = btn.getAttribute("data-view") === dockView;

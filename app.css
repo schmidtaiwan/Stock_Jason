@@ -955,6 +955,70 @@ canvas {
   border-top: 1px solid var(--line);
   box-sizing: border-box;
 }
+
+/* 自選：整頁鎖高，只有列表往下捲；底欄固定可見 */
+html.sj-watch-scroll,
+html.sj-watch-scroll body {
+  height: 100%;
+  overflow: hidden;
+}
+html.sj-watch-scroll .app {
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html.sj-watch-scroll .top {
+  flex: 0 0 auto;
+}
+html.sj-watch-scroll main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+html.sj-watch-scroll #view-watch {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html.sj-watch-scroll #view-watch .watch-head,
+html.sj-watch-scroll #view-watch .watch-groups-bar,
+html.sj-watch-scroll #view-watch #watch-compose {
+  flex: 0 0 auto;
+}
+html.sj-watch-scroll #watch-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html.sj-watch-scroll #watch-board .watch-summary {
+  flex: 0 0 auto;
+}
+html.sj-watch-scroll #watch-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+html.sj-watch-scroll #watch-list .watch-table-wrap {
+  max-height: none;
+  margin-top: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html.sj-watch-scroll #watch-list .watch-mini-grid {
+  margin-top: 0;
+}
 .dock button {
   background: transparent;
   color: var(--muted);
