@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 188;
+  const PAGE_BUILD = 189;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -761,6 +761,22 @@
         }
         const cur = Number(sheet.dataset.idx);
         if (!(cur >= 0)) return;
+        if (action === "delete") {
+          const row = book.watch[cur];
+          const label = row ? ((row.name || row.code || "").trim() || "個股") : "個股";
+          if (!window.confirm("從自選刪除「" + label + "」？")) return;
+          const removed = book.watch.splice(cur, 1)[0];
+          if (removed) {
+            book.holdings = book.holdings.filter(function (item) {
+              return item.secid !== removed.secid;
+            });
+          }
+          flushWatchToGroup();
+          scheduleSave();
+          closeWatchMoveSheet();
+          renderWatch(true);
+          return;
+        }
         let to = cur;
         if (action === "top") to = 0;
         else if (action === "up") to = cur - 1;
@@ -778,8 +794,8 @@
     const name = (item.name || item.code || "").trim() || "個股";
     const last = book.watch.length - 1;
     sheet.dataset.idx = String(idx);
-    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="移動個股">' +
-      '<p class="watch-move-title">移動「' + esc(name) + '」</p>' +
+    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="調整個股">' +
+      '<p class="watch-move-title">調整「' + esc(name) + '」</p>' +
       '<p class="watch-move-pos">第 ' + (idx + 1) + " / " + book.watch.length + " 檔</p>" +
       '<div class="watch-move-actions">' +
       '<button type="button" class="secondary" data-watch-move="top"' + (idx === 0 ? " disabled" : "") + ">置頂</button>" +
@@ -787,6 +803,7 @@
       '<button type="button" class="secondary" data-watch-move="down"' + (idx >= last ? " disabled" : "") + ">下移</button>" +
       '<button type="button" class="secondary" data-watch-move="bottom"' + (idx >= last ? " disabled" : "") + ">置底</button>" +
       "</div>" +
+      '<button type="button" class="danger watch-move-del" data-watch-move="delete">刪除</button>' +
       '<button type="button" class="primary watch-move-done" data-watch-move="close">完成</button>' +
       "</div>";
     sheet.hidden = false;
@@ -3688,7 +3705,7 @@
       if (item.market) item.market = twName(item.market);
       const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
-        '" data-open-watch="' + idx + '" data-price="" title="長按可移動位置 · ' + esc(tip) + '">' +
+        '" data-open-watch="' + idx + '" data-price="" title="長按可調整／刪除 · ' + esc(tip) + '">' +
         '<span class="watch-mini-main">' +
         '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
@@ -3723,10 +3740,10 @@
             NOTIFY_MODES[key].label + "</option>";
         }).join("");
         return '<tr data-watch-row="' + idx + '" data-open-watch="' + idx +
-          '" data-price="" title="點整列進個股 · 長按名稱可移動">' +
+          '" data-price="" title="點整列進個股 · 長按名稱可調整／刪除">' +
           '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
-          '" title="長按可移動位置 · ' + esc(label) + '">' +
+          '" title="長按可調整／刪除 · ' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
           '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
           watchNetBarHtml(idx) +

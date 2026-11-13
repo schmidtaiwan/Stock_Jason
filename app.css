@@ -1846,6 +1846,11 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   min-height: 44px;
   font-size: 15px;
 }
+.watch-move-del {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
 .watch-move-done {
   width: 100%;
   min-height: 44px;
