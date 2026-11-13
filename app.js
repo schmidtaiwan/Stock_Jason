@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 178;
+  const PAGE_BUILD = 179;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -92,7 +92,7 @@
       watchGroups: [{ id: gid, name: "預設", items: [] }],
       watchGroupId: gid,
       watchMode: "full",
-      watchShowPnl: true,
+      watchShowPnl: false,
       watchPrivacy: false,
       watchPrivacyGray: 100,
       watchPrivacyMode: "depth",
@@ -208,7 +208,7 @@
       watchGroups: groups,
       watchGroupId: gid,
       watchMode: src.watchMode === "mini" ? "mini" : "full",
-      watchShowPnl: src.watchShowPnl !== false,
+      watchShowPnl: !!src.watchShowPnl,
       watchPrivacy: !!src.watchPrivacy,
       watchPrivacyGray: (function () {
         const n = Number(src.watchPrivacyGray);
@@ -253,7 +253,7 @@
   }
 
   function isWatchShowPnl() {
-    return book.watchShowPnl !== false;
+    return !!book.watchShowPnl;
   }
 
   function isWatchPrivacy() {
