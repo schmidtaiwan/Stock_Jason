@@ -794,20 +794,30 @@
     const missed = [];
     const need = [];
     const now = Date.now();
+    const forceMis = isMisForceWindow();
     ids.forEach(function (id) {
       const hit = quoteFresh.get(id);
-      if (hit && now - hit.at < 60000) out[id] = hit.quote;
-      else need.push(id);
+      // 強制 MIS 時段：台股不沿用非 MIS 快取
+      if (hit && now - hit.at < 60000 && !(forceMis && String(id).indexOf("tw.") === 0 && hit.quote && hit.quote.source !== "mis")) {
+        out[id] = hit.quote;
+      } else need.push(id);
     });
-    await mapPool(need, 4, async function (id) {
+    const yahooNeed = [];
+    const misNeed = [];
+    need.forEach(function (id) {
+      if (forceMis && String(id).indexOf("tw.") === 0) misNeed.push(id);
+      else yahooNeed.push(id);
+    });
+    await mapPool(yahooNeed, 4, async function (id) {
       const quote = await yahooQuote(id);
       if (quote) {
         out[id] = quote;
         quoteFresh.set(id, { at: Date.now(), quote: quote });
       } else missed.push(id);
     });
-    if (missed.length) {
-      const rest = await quoteFeed(missed);
+    const feedIds = missed.concat(misNeed);
+    if (feedIds.length) {
+      const rest = await quoteFeed(feedIds);
       Object.keys(rest).forEach(function (id) {
         out[id] = rest[id];
         quoteFresh.set(id, { at: Date.now(), quote: rest[id] });
@@ -846,12 +856,17 @@
     if (tw.length) {
       const codes = tw.map(function (id) { return id.slice(3); });
       let board = {};
-      try { board = await misQuotes(codes); } catch (err) { board = {}; }
+      try {
+        board = isMisForceWindow()
+          ? await misQuotesForced(codes)
+          : await misQuotes(codes);
+      } catch (err) { board = {}; }
       const miss = codes.filter(function (c) {
         const id = String(c || "").toUpperCase();
         return !(board[id] && board[id].price > 0);
       });
-      if (miss.length) {
+      // 08:00～14:00 不改走鉅亨；其餘時段缺資料才補
+      if (miss.length && !isMisForceWindow()) {
         try {
           const cnyes = await cnyesQuotes(miss);
           Object.keys(cnyes).forEach(function (code) { board[code] = cnyes[code]; });
@@ -2713,10 +2728,72 @@
   // ── TWSE MIS 基本市況報導（約 5 秒快照；高頻會鎖 IP）────────────────
   const MIS_MIN_GAP_MS = 5500;
   const MIS_CACHE_MS = 5000;
+  // 台灣 08:00～14:00：強制只用 MIS，抓不到就間隔重試，不改走 Yahoo／鉅亨
+  const MIS_FORCE_RETRY_MS = 3500;
+  const MIS_FORCE_ATTEMPTS = 4;
   const misQuoteCache = new Map();
   const misExHint = Object.create(null);
   let misLastFetchAt = 0;
   let misQueue = Promise.resolve();
+
+  function taipeiMinutesNow(now) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Taipei",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(now || new Date());
+    const map = {};
+    parts.forEach(function (p) { if (p.type !== "literal") map[p.type] = p.value; });
+    return Number(map.hour) * 60 + Number(map.minute);
+  }
+
+  function isMisForceWindow(now) {
+    const mins = taipeiMinutesNow(now);
+    return mins >= 8 * 60 && mins < 14 * 60;
+  }
+
+  function misBoardHasPrice(board, codes) {
+    const ids = (codes || []).map(function (c) {
+      return String(c || "").toUpperCase();
+    }).filter(Boolean);
+    if (!ids.length) return false;
+    for (let i = 0; i < ids.length; i++) {
+      const q = board && board[ids[i]];
+      if (q && q.price > 0) return true;
+    }
+    return false;
+  }
+
+  async function misQuotesForced(codes, opts) {
+    opts = opts || {};
+    const attempts = Math.max(1, opts.attempts != null ? opts.attempts : MIS_FORCE_ATTEMPTS);
+    const gap = opts.gapMs != null ? opts.gapMs : MIS_FORCE_RETRY_MS;
+    const requireAll = !!opts.requireAll;
+    const ids = [];
+    (codes || []).forEach(function (c) {
+      const id = String(c || "").toUpperCase();
+      if (id && ids.indexOf(id) < 0) ids.push(id);
+    });
+    let last = {};
+    for (let i = 0; i < attempts; i++) {
+      try {
+        last = await misQuotes(ids);
+      } catch (err) {
+        last = last || {};
+      }
+      if (ids.length) {
+        const hit = ids.filter(function (id) {
+          return last[id] && last[id].price > 0;
+        }).length;
+        if (requireAll ? hit >= ids.length : hit > 0) return last;
+      } else if (misBoardHasPrice(last, ids)) {
+        return last;
+      }
+      if (i < attempts - 1) await sleep(gap);
+    }
+    return last;
+  }
 
   function misNum(raw) {
     const s = String(raw == null ? "" : raw).trim();
@@ -3037,26 +3114,35 @@
       }
     });
     bustLiveCaches(secids);
-    // MIS 佇列可能被加權指數佔住；與鉅亨並行，逾時就先用已有結果
     let byCode = {};
-    const misP = withTimeout(misQuotes(codes), 8000).catch(function () { return {}; });
-    const cnyesP = codes.length
-      ? cnyesQuotes(codes).catch(function () { return {}; })
-      : Promise.resolve({});
-    try {
-      const got = await Promise.all([misP, cnyesP]);
-      const fromMis = got[0] || {};
-      const fromCnyes = got[1] || {};
-      Object.keys(fromCnyes).forEach(function (c) {
-        if (fromCnyes[c] && fromCnyes[c].price > 0) byCode[c] = fromCnyes[c];
-      });
-      Object.keys(fromMis).forEach(function (c) {
-        if (fromMis[c] && fromMis[c].price > 0) byCode[c] = fromMis[c];
-      });
-    } catch (err) {
-      byCode = {};
+    if (isMisForceWindow()) {
+      // 台灣 08:00～14:00：只抓 MIS，失敗就間隔重試，不轉鉅亨／Yahoo
+      try {
+        byCode = await misQuotesForced(codes) || {};
+      } catch (err) {
+        byCode = {};
+      }
+    } else {
+      // 其餘時段：MIS 與鉅亨並行，逾時就先用已有結果
+      const misP = withTimeout(misQuotes(codes), 8000).catch(function () { return {}; });
+      const cnyesP = codes.length
+        ? cnyesQuotes(codes).catch(function () { return {}; })
+        : Promise.resolve({});
+      try {
+        const got = await Promise.all([misP, cnyesP]);
+        const fromMis = got[0] || {};
+        const fromCnyes = got[1] || {};
+        Object.keys(fromCnyes).forEach(function (c) {
+          if (fromCnyes[c] && fromCnyes[c].price > 0) byCode[c] = fromCnyes[c];
+        });
+        Object.keys(fromMis).forEach(function (c) {
+          if (fromMis[c] && fromMis[c].price > 0) byCode[c] = fromMis[c];
+        });
+      } catch (err) {
+        byCode = {};
+      }
     }
-    const needYahoo = list.filter(function (item) {
+    const needYahoo = isMisForceWindow() ? [] : list.filter(function (item) {
       const code = watchItemCode(item);
       return !(byCode[code] && byCode[code].price > 0);
     }).map(function (item) { return watchItemSecid(item); }).filter(Boolean);
@@ -3108,7 +3194,18 @@
   }
 
   async function twiiQuote() {
-    // 優先證交所 MIS 加權（tse_t00）；最多等 6 秒，逾時立刻改 Yahoo，避免 UI 卡死
+    if (isMisForceWindow()) {
+      // 台灣 08:00～14:00：強制 MIS，抓不到就重試，绝不改走其它來源
+      for (let i = 0; i < MIS_FORCE_ATTEMPTS; i++) {
+        try {
+          const mis = await misTwiiQuote();
+          if (mis && mis.price > 0) return mis;
+        } catch (errMis) { /* 下一輪 */ }
+        if (i < MIS_FORCE_ATTEMPTS - 1) await sleep(MIS_FORCE_RETRY_MS);
+      }
+      throw new Error("MIS 加權讀取失敗，稍後重試");
+    }
+    // 其餘時段：優先 MIS；最多等 6 秒，逾時改 Yahoo
     try {
       const mis = await withTimeout(misTwiiQuote(), 6000);
       if (mis && mis.price > 0) return mis;
@@ -5883,6 +5980,7 @@
     yahooOneMinBars: yahooOneMinBars,
     twPulse: twPulse,
     txNightLatest: txNightLatest,
+    isMisForceWindow: isMisForceWindow,
     yahooSymbolQuote: yahooSymbolQuote,
     latestTwseT86: latestTwseT86,
     twseT86Days: async function (days) {

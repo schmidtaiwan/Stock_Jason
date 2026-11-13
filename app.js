@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 139;
+  const PAGE_BUILD = 140;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -442,14 +442,16 @@
       paintTwiiSource(q);
     } catch (err) {
       if (seq !== twiiSeq) return;
+      const forceMis = M.isMisForceWindow && M.isMisForceWindow();
       if (!hadPrice) {
         priceEl.textContent = "—";
         priceEl.className = "";
         chgEl.className = "twii-chg";
-        chgEl.textContent = "加權讀取失敗";
-        paintTwiiSource(null);
+        chgEl.textContent = forceMis ? "MIS 重試中" : "加權讀取失敗";
+        if ($("twii-src")) $("twii-src").textContent = forceMis ? "來源 證交所 MIS" : "來源 —";
       } else {
-        chgEl.textContent = (chgEl.textContent || "").replace(/（更新失敗）$/, "") + "（更新失敗）";
+        chgEl.textContent = (chgEl.textContent || "").replace(/（更新失敗|MIS 重試中）$/, "") +
+          (forceMis ? "（MIS 重試中）" : "（更新失敗）");
       }
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
     } finally {
@@ -1167,15 +1169,19 @@
   }
 
   async function liveTick() {
-    if (liveBusy || !isTwMarketOpen()) return;
+    const open = isTwMarketOpen();
+    const misForce = M.isMisForceWindow && M.isMisForceWindow();
+    // 08:00～14:00 仍強制刷 MIS 加權／自選；盤中才刷走勢圖等
+    if (liveBusy || (!open && !misForce)) return;
     const alertOn = hasWatchAlerts();
     if (document.hidden && !alertOn) return;
     liveBusy = true;
     try {
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
       if (!document.hidden) paintTwii();
+      if (!document.hidden && state.view === "watch") paintWatchQuotes();
+      if (!open) return;
       if (!document.hidden && state.view === "chart") await loadChart();
-      else if (!document.hidden && state.view === "watch") paintWatchQuotes();
       else if (!document.hidden && state.view === "stock" && state.stock) await loadStockLive(state.stock, true);
       else if (alertOn) await pollWatchAlerts();
     } catch (err) {
@@ -1475,8 +1481,10 @@
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(liveTick, 20000);
     document.addEventListener("visibilitychange", function () {
-      if (!document.hidden && isTwMarketOpen()) liveTick();
-      else if (document.hidden && hasWatchAlerts() && isTwMarketOpen()) liveTick();
+      const open = isTwMarketOpen();
+      const misForce = M.isMisForceWindow && M.isMisForceWindow();
+      if (!document.hidden && (open || misForce)) liveTick();
+      else if (document.hidden && hasWatchAlerts() && open) liveTick();
       if (!document.hidden && state.view === "pulse") loadUsBoard({ quiet: true });
     });
   }
