@@ -1096,31 +1096,74 @@ textarea { min-height: 120px; resize: vertical; }
   border-color: var(--accent);
   color: var(--accent);
 }
-/* 防窺：自選紅框區（標題／群組／列表）一律灰階，漲跌色不易被旁窺 */
-#view-watch.watch-privacy > .watch-head,
-#view-watch.watch-privacy > .watch-groups-bar,
-#view-watch.watch-privacy > #watch-board {
-  filter: grayscale(1) contrast(0.92) brightness(1.04);
-  transition: filter 0.2s ease;
+/* 防窺：全頁所有顏色改灰階（含加權紅字、底欄黃字、漲跌色、輸入框） */
+html.sj-privacy {
+  --up: #9ca3af;
+  --down: #9ca3af;
+  --accent: #a3a3a3;
+  --accent-2: #737373;
 }
-#view-watch.watch-privacy .up,
-#view-watch.watch-privacy .down,
-#view-watch.watch-privacy .watch-net-bar i.buy,
-#view-watch.watch-privacy .watch-net-bar i.sell {
-  color: #b0b6be !important;
+html.sj-privacy body,
+html.sj-privacy #app.sj-privacy {
+  filter: grayscale(1);
 }
-#view-watch.watch-privacy .watch-net-bar i.buy,
-#view-watch.watch-privacy .watch-net-bar i.sell {
+html.sj-privacy .up,
+html.sj-privacy .down,
+html.sj-privacy .twii-chg,
+html.sj-privacy .twii-box strong,
+html.sj-privacy .header-bias strong,
+html.sj-privacy .watch-total strong,
+html.sj-privacy .watch-input,
+html.sj-privacy .watch-net-bar i.buy,
+html.sj-privacy .watch-net-bar i.sell,
+html.sj-privacy .watch-diag,
+html.sj-privacy .watch-lamp-chip,
+html.sj-privacy .watch-lv,
+html.sj-privacy .tag,
+html.sj-privacy .chip[aria-pressed="true"],
+html.sj-privacy .dock button[aria-current="page"],
+html.sj-privacy #watch-privacy-toggle[aria-pressed="true"],
+html.sj-privacy #watch-mode-toggle[aria-pressed="true"] {
+  color: #d1d5db !important;
+  border-color: #6b7280 !important;
+  background: #3f3f46 !important;
+  background-image: none !important;
+}
+html.sj-privacy .watch-net-bar i.buy,
+html.sj-privacy .watch-net-bar i.sell {
   background: #6b7280 !important;
 }
-#view-watch.watch-privacy .limit-up-flash,
-#view-watch.watch-privacy .limit-down-flash,
-#view-watch.watch-privacy .limit-up-flash td,
-#view-watch.watch-privacy .limit-down-flash td {
+html.sj-privacy .watch-input {
+  caret-color: #b0b6be;
+}
+html.sj-privacy .limit-up-flash,
+html.sj-privacy .limit-down-flash,
+html.sj-privacy .limit-up-flash td,
+html.sj-privacy .limit-down-flash td {
   animation: none !important;
   box-shadow: inset 0 0 0 1px #6b7280 !important;
   background-color: #1a1f26 !important;
   border-color: #6b7280 !important;
+}
+html.sj-privacy .account-avatar-fallback {
+  background: #6b7280 !important;
+  color: #e5e7eb !important;
+}
+html.sj-privacy .watch-table .danger,
+html.sj-privacy .danger,
+html.sj-privacy .primary,
+html.sj-privacy .ghost {
+  color: #b0b6be !important;
+  border-color: #6b7280 !important;
+}
+html.sj-privacy .primary {
+  background: #3f3f46 !important;
+}
+html.sj-privacy #twii-price,
+html.sj-privacy #twii-chg,
+html.sj-privacy #header-bias-text,
+html.sj-privacy #watch-total-pnl {
+  color: #c4c4c4 !important;
 }
 .watch-groups-bar {
   display: flex;

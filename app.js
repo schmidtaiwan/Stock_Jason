@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 144;
+  const PAGE_BUILD = 145;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -256,10 +256,14 @@
     const btn = $("watch-privacy-toggle");
     if (btn) {
       btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.title = on ? "關閉防窺（恢復漲跌色）" : "自選區改灰階，降低旁人一眼看出漲跌";
+      btn.title = on ? "關閉防窺（恢復彩色）" : "全頁灰階，降低旁人一眼看出漲跌";
     }
     const view = $("view-watch");
     if (view) view.classList.toggle("watch-privacy", on);
+    const app = $("app");
+    if (app) app.classList.toggle("sj-privacy", on);
+    document.documentElement.classList.toggle("sj-privacy", on);
+    if (document.body) document.body.classList.toggle("sj-privacy", on);
   }
 
   function esc(s) {
