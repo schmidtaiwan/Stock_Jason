@@ -1556,6 +1556,12 @@ html.sj-privacy #watch-total-pnl {
   font-size: 14px;
 }
 .watch-table tr:last-child td { border-bottom: 0; }
+.watch-table tbody tr[data-watch-row] {
+  cursor: pointer;
+}
+.watch-table tbody tr[data-watch-row]:active td {
+  background: rgba(255, 255, 255, 0.04);
+}
 
 /* 漲停紅框閃／跌停綠光閃 */
 @keyframes watch-limit-up-flash {

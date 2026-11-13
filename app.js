@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 164;
+  const PAGE_BUILD = 165;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -3471,7 +3471,8 @@
           return '<option value="' + key + '"' + (key === mode ? " selected" : "") + ">" +
             NOTIFY_MODES[key].label + "</option>";
         }).join("");
-        return '<tr data-watch-row="' + idx + '" data-price="">' +
+        return '<tr data-watch-row="' + idx + '" data-open-watch="' + idx +
+          '" data-price="" title="點整列進個股 · 長按名稱可移動">' +
           '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
           '" title="長按可移動位置 · ' + esc(label) + '">' +
@@ -4936,6 +4937,19 @@
       const span = Number(stockFocusLi.getAttribute("data-k-span") || 0);
       if (isFinite(i)) applyStockKSelection(Math.max(0, i - span), i, { exact: true });
       return;
+    }
+    // 自選整列點進個股（股數／買價／通知／移除除外）
+    const watchHit = ev.target.closest("#watch-list [data-watch-row]");
+    if (watchHit) {
+      if (!ev.target.closest("input, select, textarea, label, .watch-alert, button.danger, a")) {
+        if (watchDragMoved) {
+          watchDragMoved = false;
+          return;
+        }
+        const idx = Number(watchHit.getAttribute("data-watch-row"));
+        if (idx >= 0 && book.watch[idx]) openSymbol(book.watch[idx]);
+        return;
+      }
     }
     const t = ev.target.closest("button");
     if (!t) return;
