@@ -4,11 +4,9 @@
   const SCOPES = [
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/tasks"
+    "https://www.googleapis.com/auth/userinfo.profile"
   ].join(" ");
   const TOKEN_KEY = "sj-g-token";
-  const TASK_LIST_NAME = "股價通知";
 
   let tokenClient = null;
   let token = "";
@@ -19,8 +17,6 @@
   let fileCache = new Map();
   let writeLock = Promise.resolve();
   let readyPromise = null;
-  let stockTaskListId = "";
-  let tasksScopeOk = false;
 
   const LIVE_URL = "https://schmidtaiwan.github.io/Stock_Jason/";
 
@@ -611,8 +607,6 @@
     account = null;
     folderId = "";
     fileCache = new Map();
-    stockTaskListId = "";
-    tasksScopeOk = false;
     clearSession();
     if (old && global.google && google.accounts && google.accounts.oauth2) {
       try { google.accounts.oauth2.revoke(old, function () {}); } catch (e) { /* 忽略 */ }
@@ -629,90 +623,7 @@
     if (/popup_failed|無法開啟 Google|登入逾時/i.test(msg)) {
       return "無法開啟 Google 登入視窗。請改用 Chrome／Edge 開啟 " + LIVE_URL + "（Cursor 右側預覽常會白頁）。";
     }
-    if (/Tasks API has not been used|accessNotConfigured|API has not been enabled/i.test(msg)) {
-      return "請在 Google Cloud 專案啟用 Tasks API 後再登入一次。";
-    }
     return msg || "登入失敗";
-  }
-
-  async function ensureTasksAccess(opts) {
-    opts = opts || {};
-    if (!account || !isAllowed(account.email)) {
-      throw new Error("請先用允許的 Google 帳號登入");
-    }
-    if (tasksScopeOk && stockTaskListId && !opts.force) return stockTaskListId;
-    // 點擊當下可補授權 Tasks 範圍（既有 token 常缺此 scope）
-    if (opts.promptConsent) {
-      try {
-        await requestToken("consent", account.email || preferredEmail());
-      } catch (err) {
-        throw err;
-      }
-    }
-    let res = await driveFetch("https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=100");
-    if (res.status === 401 || res.status === 403) {
-      if (!opts.promptConsent) {
-        return ensureTasksAccess({ promptConsent: true, force: true });
-      }
-      await readErr(res, "尚未授權 Google 工作（Tasks）");
-    }
-    if (!res.ok) await readErr(res, "讀取 Google 工作清單失敗");
-    const data = await res.json();
-    const lists = data.items || [];
-    let hit = lists.find(function (row) {
-      return String(row.title || "") === TASK_LIST_NAME;
-    });
-    if (!hit) {
-      const create = await driveFetch("https://tasks.googleapis.com/tasks/v1/users/@me/lists", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: TASK_LIST_NAME })
-      });
-      if (!create.ok) await readErr(create, "建立「股價通知」工作清單失敗");
-      hit = await create.json();
-    }
-    stockTaskListId = hit && hit.id ? hit.id : "";
-    tasksScopeOk = !!stockTaskListId;
-    if (!stockTaskListId) throw new Error("找不到股價通知工作清單");
-    return stockTaskListId;
-  }
-
-  async function createStockAlertTask(title, notes) {
-    if (!account || !isAllowed(account.email)) return null;
-    const listId = await ensureTasksAccess();
-    const due = new Date();
-    // 設為今日到期，Google 工作／提醒較容易跳出
-    const dueIso = new Date(Date.UTC(due.getFullYear(), due.getMonth(), due.getDate())).toISOString();
-    const body = {
-      title: String(title || "股價通知").slice(0, 1024),
-      notes: String(notes || "").slice(0, 8192),
-      due: dueIso
-    };
-    const res = await driveFetch(
-      "https://tasks.googleapis.com/tasks/v1/lists/" + encodeURIComponent(listId) + "/tasks",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      }
-    );
-    if (res.status === 401 || res.status === 403) {
-      tasksScopeOk = false;
-      stockTaskListId = "";
-      const listId2 = await ensureTasksAccess({ promptConsent: true, force: true });
-      const res2 = await driveFetch(
-        "https://tasks.googleapis.com/tasks/v1/lists/" + encodeURIComponent(listId2) + "/tasks",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        }
-      );
-      if (!res2.ok) await readErr(res2, "寫入 Google 工作失敗");
-      return res2.json();
-    }
-    if (!res.ok) await readErr(res, "寫入 Google 工作失敗");
-    return res.json();
   }
 
   // 頁面一載入就預載 GIS，避免第一次點登入時錯過使用者手勢
@@ -734,8 +645,6 @@
     bookScore: bookScore,
     readMisSnapshot: readMisSnapshot,
     writeMisSnapshot: writeMisSnapshot,
-    ensureTasksAccess: ensureTasksAccess,
-    createStockAlertTask: createStockAlertTask,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,
