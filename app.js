@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 168;
+  const PAGE_BUILD = 169;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -50,7 +50,7 @@
 
   const state = {
     range: "1d",
-    on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true },
+    on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true, txf: false },
     focus: null,
     focusFrom: null,
     stock: null,

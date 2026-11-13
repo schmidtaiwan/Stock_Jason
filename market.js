@@ -18,7 +18,8 @@
     { id: "jp", name: "日股", region: "日股", secid: "100.N225", color: "#4ade80" },
     { id: "kr", name: "韓股", region: "韓股", secid: "100.KS11", color: "#22d3ee" },
     { id: "sox", name: "費半", region: "美股", secid: "251.SOX", color: "#fb923c" },
-    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#e2e8f0" }
+    { id: "fx", name: "匯率", region: "匯率", secid: "fx.USDTWD", color: "#e2e8f0" },
+    { id: "txf", name: "台指期(指)", region: "台股", secid: "fut.WTX", color: "#c4b5fd" }
   ];
 
   const UNIVERSE = [
@@ -328,10 +329,18 @@
         const rows = await fxBars("1d", day ? { from: day, to: day } : null);
         return day ? clipBars(rows, day, day) : rows;
       }
+      if (id === "fut.WTX") {
+        const rows = await txfBars("1d", day ? { from: day, to: day } : null);
+        return day ? clipBars(rows, day, day) : rows;
+      }
       return fiveMinBars(id, day || undefined);
     }
     if (id === "fx.USDTWD") {
       const rows = await fxBars(rangeId, from && to ? { from: from, to: to } : null);
+      return from && to ? clipBars(rows, from, to) : rows;
+    }
+    if (id === "fut.WTX") {
+      const rows = await txfBars(rangeId, from && to ? { from: from, to: to } : null);
       return from && to ? clipBars(rows, from, to) : rows;
     }
     const stockId = twStockId(id, id.indexOf(".") >= 0 ? id.slice(id.indexOf(".") + 1) : "");
@@ -645,6 +654,47 @@
     const keep = FX_KEEP[rangeId];
     const out = keep ? rows.slice(-keep) : rows.slice();
     out.symbolName = "台幣對美金";
+    return copyBars(out);
+  }
+
+  // 台指期近月（Yahoo 台指期近一 WTX&）
+  async function txfBars(rangeId, window) {
+    const from = window && window.from;
+    const to = window && window.to;
+    const query = from && to ? fxQueryForWindow(from, to) : (FX_QUERY[rangeId] || FX_QUERY["20d"]);
+    const key = "txf|" + query;
+    let rows = cache.get(key);
+    if (!rows) {
+      try {
+        rows = barsFromYahoo(await yahooChart("WTX&", query));
+      } catch (err) {
+        // Yahoo 失敗時改 FinMind 日線近月
+        const days = from && to ? spanDays(from, to) + 20 : 260;
+        const series = await txFuturesSeries(Math.max(60, days));
+        rows = series.map(function (row) {
+          const c = Number(row.close);
+          return {
+            t: String(row.date).slice(0, 10),
+            o: c,
+            h: c,
+            l: c,
+            c: c,
+            v: 0
+          };
+        });
+        if (!rows.length) throw err;
+      }
+      rows.symbolName = "台指期(指)";
+      cache.set(key, rows);
+    }
+    if (from && to) {
+      const cut = clipBars(rows, from, to);
+      if (!cut.length) throw new Error("這段日期沒有台指期");
+      return cut;
+    }
+    const keep = FX_KEEP[rangeId];
+    const out = keep ? rows.slice(-keep) : rows.slice();
+    out.symbolName = "台指期(指)";
     return copyBars(out);
   }
 
