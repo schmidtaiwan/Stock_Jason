@@ -1727,7 +1727,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 }
 .watch-table {
   width: max-content;
-  min-width: 1100px;
+  min-width: 980px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
@@ -1938,17 +1938,17 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   line-height: 1.1;
 }
 .watch-col-chg {
-  width: 76px;
-  min-width: 76px;
+  width: 61px;
+  min-width: 61px;
 }
 .watch-col-pct {
-  width: 67px;
-  min-width: 67px;
+  width: 54px;
+  min-width: 54px;
 }
 .watch-col-shares {
-  width: 70px;
-  min-width: 70px;
-  max-width: 70px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
 }
 /* 成交／漲跌／幅度／買價靠左（與商品同側對齊） */
 .watch-table th.watch-col-price,
@@ -1981,10 +1981,10 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 .watch-col-pnl,
 .watch-col-chip,
 .watch-col-lv {
-  min-width: 5.5em;
+  min-width: 4.4em;
 }
 .watch-col-lamp {
-  min-width: 3.6em;
+  min-width: 2.9em;
   text-align: center !important;
 }
 .watch-lv-brk.up { color: #d49292; }
@@ -2117,7 +2117,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 @media (max-width: 720px) {
   .gate, .app { width: 100%; }
   .watch-table {
-    min-width: 1100px;
+    min-width: 980px;
   }
 }
 .badge {
