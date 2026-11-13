@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 143;
+  const PAGE_BUILD = 144;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -89,6 +89,7 @@
       watchGroupId: gid,
       watchMode: "full",
       watchShowPnl: true,
+      watchPrivacy: false,
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -200,6 +201,7 @@
       watchGroupId: gid,
       watchMode: src.watchMode === "mini" ? "mini" : "full",
       watchShowPnl: src.watchShowPnl !== false,
+      watchPrivacy: !!src.watchPrivacy,
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
       journal: Array.isArray(src.journal) ? src.journal.map(fixRow) : [],
       capital: Number(src.capital) > 0 ? Number(src.capital) : 1000000,
@@ -235,6 +237,10 @@
     return book.watchShowPnl !== false;
   }
 
+  function isWatchPrivacy() {
+    return !!book.watchPrivacy;
+  }
+
   function syncWatchPnlUi() {
     const on = isWatchShowPnl();
     const cb = $("watch-pnl-toggle");
@@ -243,6 +249,17 @@
     if (board) board.classList.toggle("watch-hide-pnl", !on);
     const total = $("watch-total");
     if (total) total.hidden = !on;
+  }
+
+  function syncWatchPrivacyUi() {
+    const on = isWatchPrivacy();
+    const btn = $("watch-privacy-toggle");
+    if (btn) {
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.title = on ? "關閉防窺（恢復漲跌色）" : "自選區改灰階，降低旁人一眼看出漲跌";
+    }
+    const view = $("view-watch");
+    if (view) view.classList.toggle("watch-privacy", on);
   }
 
   function esc(s) {
@@ -810,6 +827,7 @@
         : "");
     syncWatchModeBtn();
     syncWatchPnlUi();
+    syncWatchPrivacyUi();
   }
 
   function syncWatchModeBtn() {
@@ -883,6 +901,12 @@
     scheduleSave();
     syncWatchModeBtn();
     renderWatch(true);
+  }
+
+  function toggleWatchPrivacy() {
+    book.watchPrivacy = !isWatchPrivacy();
+    scheduleSave();
+    syncWatchPrivacyUi();
   }
 
   async function loadBook() {
@@ -4513,6 +4537,7 @@
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-mode-toggle") toggleWatchMode();
+    else if (t.id === "watch-privacy-toggle") toggleWatchPrivacy();
     else if (t.id === "watch-group-add") addWatchGroup();
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-del") deleteWatchGroup();

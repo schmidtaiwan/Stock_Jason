@@ -1084,15 +1084,43 @@ textarea { min-height: 120px; resize: vertical; }
   gap: 8px;
   flex: 0 0 auto;
 }
-.watch-head #watch-mode-toggle {
+.watch-head #watch-mode-toggle,
+.watch-head #watch-privacy-toggle {
   flex: 0 0 auto;
   min-height: 36px;
   padding: 6px 14px;
   border-radius: 999px;
 }
-#watch-mode-toggle[aria-pressed="true"] {
+#watch-mode-toggle[aria-pressed="true"],
+#watch-privacy-toggle[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
+}
+/* 防窺：自選紅框區（標題／群組／列表）一律灰階，漲跌色不易被旁窺 */
+#view-watch.watch-privacy > .watch-head,
+#view-watch.watch-privacy > .watch-groups-bar,
+#view-watch.watch-privacy > #watch-board {
+  filter: grayscale(1) contrast(0.92) brightness(1.04);
+  transition: filter 0.2s ease;
+}
+#view-watch.watch-privacy .up,
+#view-watch.watch-privacy .down,
+#view-watch.watch-privacy .watch-net-bar i.buy,
+#view-watch.watch-privacy .watch-net-bar i.sell {
+  color: #b0b6be !important;
+}
+#view-watch.watch-privacy .watch-net-bar i.buy,
+#view-watch.watch-privacy .watch-net-bar i.sell {
+  background: #6b7280 !important;
+}
+#view-watch.watch-privacy .limit-up-flash,
+#view-watch.watch-privacy .limit-down-flash,
+#view-watch.watch-privacy .limit-up-flash td,
+#view-watch.watch-privacy .limit-down-flash td {
+  animation: none !important;
+  box-shadow: inset 0 0 0 1px #6b7280 !important;
+  background-color: #1a1f26 !important;
+  border-color: #6b7280 !important;
 }
 .watch-groups-bar {
   display: flex;
