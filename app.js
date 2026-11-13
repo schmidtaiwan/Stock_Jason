@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 160;
+  const PAGE_BUILD = 162;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -649,9 +649,83 @@
     box.addEventListener("pointercancel", endToolDrag);
   }
 
-  let watchDrag = null;
   let watchLongPress = null;
   let watchDragMoved = false;
+
+  function closeWatchMoveSheet() {
+    const sheet = $("watch-move-sheet");
+    if (sheet) sheet.hidden = true;
+  }
+
+  function moveWatchAt(from, to) {
+    const n = book.watch.length;
+    if (!(from >= 0 && from < n && to >= 0 && to < n) || from === to) return from;
+    const item = book.watch.splice(from, 1)[0];
+    book.watch.splice(to, 0, item);
+    flushWatchToGroup();
+    scheduleSave();
+    renderWatch(true);
+    return to;
+  }
+
+  function paintWatchMoveSheet(idx) {
+    let sheet = $("watch-move-sheet");
+    if (!sheet) {
+      sheet = document.createElement("div");
+      sheet.id = "watch-move-sheet";
+      sheet.className = "watch-move-sheet";
+      sheet.hidden = true;
+      document.body.appendChild(sheet);
+      sheet.addEventListener("click", function (ev) {
+        if (ev.target === sheet) {
+          closeWatchMoveSheet();
+          return;
+        }
+        const btn = ev.target.closest("[data-watch-move]");
+        if (!btn || btn.disabled) return;
+        const action = btn.getAttribute("data-watch-move");
+        if (action === "close") {
+          closeWatchMoveSheet();
+          return;
+        }
+        const cur = Number(sheet.dataset.idx);
+        if (!(cur >= 0)) return;
+        let to = cur;
+        if (action === "top") to = 0;
+        else if (action === "up") to = cur - 1;
+        else if (action === "down") to = cur + 1;
+        else if (action === "bottom") to = book.watch.length - 1;
+        const next = moveWatchAt(cur, to);
+        paintWatchMoveSheet(next);
+      });
+    }
+    const item = book.watch[idx];
+    if (!item) {
+      closeWatchMoveSheet();
+      return;
+    }
+    const name = (item.name || item.code || "").trim() || "個股";
+    const last = book.watch.length - 1;
+    sheet.dataset.idx = String(idx);
+    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="移動個股">' +
+      '<p class="watch-move-title">移動「' + esc(name) + '」</p>' +
+      '<p class="watch-move-pos">第 ' + (idx + 1) + " / " + book.watch.length + " 檔</p>" +
+      '<div class="watch-move-actions">' +
+      '<button type="button" class="secondary" data-watch-move="top"' + (idx === 0 ? " disabled" : "") + ">置頂</button>" +
+      '<button type="button" class="secondary" data-watch-move="up"' + (idx === 0 ? " disabled" : "") + ">上移</button>" +
+      '<button type="button" class="secondary" data-watch-move="down"' + (idx >= last ? " disabled" : "") + ">下移</button>" +
+      '<button type="button" class="secondary" data-watch-move="bottom"' + (idx >= last ? " disabled" : "") + ">置底</button>" +
+      "</div>" +
+      '<button type="button" class="primary watch-move-done" data-watch-move="close">完成</button>' +
+      "</div>";
+    sheet.hidden = false;
+  }
+
+  function openWatchMoveSheet(idx) {
+    watchDragMoved = true;
+    paintWatchMoveSheet(idx);
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
+  }
 
   function bindWatchReorder() {
     const box = $("watch-list");
@@ -664,83 +738,40 @@
       watchLongPress = null;
     }
 
-    function endWatchDrag() {
-      clearLongPress();
-      if (!watchDrag) return;
-      const dragging = box.querySelector(".is-dragging");
-      if (dragging) dragging.classList.remove("is-dragging");
-      const host = box.querySelector("tbody") || box.querySelector(".watch-mini-grid");
-      if (host) {
-        const nodes = Array.prototype.slice.call(host.querySelectorAll(":scope > [data-watch-row]"));
-        const order = nodes.map(function (el) {
-          return Number(el.getAttribute("data-watch-row"));
-        }).filter(function (i) { return isFinite(i); });
-        if (order.length === book.watch.length) {
-          const changed = order.some(function (i, j) { return i !== j; });
-          if (changed) {
-            book.watch = order.map(function (i) { return book.watch[i]; });
-            flushWatchToGroup();
-            scheduleSave();
-            renderWatch(true);
-          }
-        }
-      }
-      watchDrag = null;
-    }
-
     box.addEventListener("pointerdown", function (ev) {
       if (ev.button != null && ev.button !== 0) return;
+      const hit = ev.target.closest(".watch-link, .watch-mini-card");
+      if (!hit || !box.contains(hit)) return;
       if (ev.target.closest("input, select, button.danger, label, .watch-alert")) return;
-      const row = ev.target.closest("[data-watch-row]");
-      if (!row || !box.contains(row)) return;
+      const row = hit.closest("[data-watch-row]") || hit;
       const idx = Number(row.getAttribute("data-watch-row"));
       if (!(idx >= 0)) return;
       const pointerId = ev.pointerId;
       watchDragMoved = false;
       watchLongPress = {
         idx: idx,
-        row: row,
         pointerId: pointerId,
         x: ev.clientX,
         y: ev.clientY,
         timer: setTimeout(function () {
           if (!watchLongPress || watchLongPress.pointerId !== pointerId) return;
-          watchDrag = { idx: watchLongPress.idx, pointerId: pointerId };
-          watchLongPress.row.classList.add("is-dragging");
-          try { watchLongPress.row.setPointerCapture(pointerId); } catch (err) { /* ignore */ }
-          try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
+          const i = watchLongPress.idx;
           watchLongPress = null;
-          watchDragMoved = true;
-        }, 400)
+          openWatchMoveSheet(i);
+        }, 450)
       };
     });
 
     box.addEventListener("pointermove", function (ev) {
-      if (watchLongPress) {
-        if (Math.abs(ev.clientX - watchLongPress.x) > 12 ||
-            Math.abs(ev.clientY - watchLongPress.y) > 12) {
-          clearLongPress();
-        }
-        return;
+      if (!watchLongPress) return;
+      if (Math.abs(ev.clientX - watchLongPress.x) > 12 ||
+          Math.abs(ev.clientY - watchLongPress.y) > 12) {
+        clearLongPress();
       }
-      if (!watchDrag || watchDrag.pointerId !== ev.pointerId) return;
-      const host = box.querySelector("tbody") || box.querySelector(".watch-mini-grid");
-      if (!host) return;
-      const dragging = host.querySelector('[data-watch-row="' + watchDrag.idx + '"]');
-      if (!dragging) return;
-      const el = document.elementFromPoint(ev.clientX, ev.clientY);
-      const over = el && el.closest ? el.closest("[data-watch-row]") : null;
-      if (!over || over === dragging || !host.contains(over)) return;
-      const rect = over.getBoundingClientRect();
-      const mid = rect.top + rect.height / 2;
-      if (ev.clientY < mid) host.insertBefore(dragging, over);
-      else host.insertBefore(dragging, over.nextSibling);
-      watchDragMoved = true;
-      ev.preventDefault();
     });
 
-    box.addEventListener("pointerup", endWatchDrag);
-    box.addEventListener("pointercancel", endWatchDrag);
+    box.addEventListener("pointerup", clearLongPress);
+    box.addEventListener("pointercancel", clearLongPress);
   }
 
   function openTool(id) {
@@ -3407,7 +3438,7 @@
       if (item.market) item.market = twName(item.market);
       const tip = watchLabel(item);
       return '<button type="button" class="watch-mini-card" data-watch-row="' + idx +
-        '" data-open-watch="' + idx + '" data-price="" title="長按可上下排序 · ' + esc(tip) + '">' +
+        '" data-open-watch="' + idx + '" data-price="" title="長按可移動位置 · ' + esc(tip) + '">' +
         '<span class="watch-mini-main">' +
         '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
@@ -3423,8 +3454,8 @@
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-pin watch-pin-2">成交</th>' +
-      '<th>漲跌</th><th>幅度</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
-      '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th><th>買價</th>' +
+      '<th class="watch-col-chg">漲跌</th><th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th><th>股數</th>' +
+      '<th class="watch-col-lamp">燈</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th><th></th><th>通知</th><th class="watch-col-cost">買價</th>' +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
@@ -3443,7 +3474,7 @@
         return '<tr data-watch-row="' + idx + '" data-price="">' +
           '<td class="watch-name watch-pin">' +
           '<button type="button" class="watch-link" data-open-watch="' + idx +
-          '" title="長按可上下排序 · ' + esc(label) + '">' +
+          '" title="長按可移動位置 · ' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
           '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
           watchNetBarHtml(idx) +

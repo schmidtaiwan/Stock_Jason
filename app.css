@@ -1607,19 +1607,51 @@ html.sj-privacy #watch-total-pnl {
 .watch-table .watch-col-lamp {
   text-align: center;
 }
-.watch-table tr.is-dragging,
-.watch-mini-card.is-dragging {
-  opacity: 0.55;
-  outline: 1px dashed var(--accent, #7eb8ff);
+.watch-move-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
-.watch-table tr[data-watch-row],
-.watch-mini-card[data-watch-row] {
-  touch-action: pan-y;
+.watch-move-sheet[hidden] {
+  display: none !important;
 }
-.watch-table tr.is-dragging,
-.watch-mini-card.is-dragging {
-  touch-action: none;
-  cursor: grabbing;
+.watch-move-card {
+  width: min(100%, 380px);
+  background: #1a222b;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+}
+.watch-move-title {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.watch-move-pos {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.watch-move-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.watch-move-actions button {
+  min-height: 44px;
+  font-size: 15px;
+}
+.watch-move-done {
+  width: 100%;
+  min-height: 44px;
 }
 .watch-pin {
   position: sticky;
@@ -1705,7 +1737,7 @@ html.sj-privacy #watch-total-pnl {
   width: 120px;
   min-width: 120px;
   max-width: 120px;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
   vertical-align: middle;
   overflow: hidden;
@@ -1723,6 +1755,22 @@ html.sj-privacy #watch-total-pnl {
 .watch-col-pct {
   width: 96px;
   min-width: 96px;
+}
+/* 成交／漲跌／幅度／買價靠左（與商品同側對齊） */
+.watch-table th.watch-pin-2,
+.watch-table td.watch-col-price,
+.watch-table .watch-col-chg,
+.watch-table .watch-col-pct,
+.watch-table th.watch-col-cost,
+.watch-table td.watch-col-cost {
+  text-align: left !important;
+}
+.watch-table thead th:nth-child(3),
+.watch-table thead th:nth-child(4) {
+  text-align: left !important;
+}
+.watch-col-cost .watch-input {
+  text-align: left;
 }
 .watch-col-chg,
 .watch-col-pct,
@@ -1772,7 +1820,7 @@ html.sj-privacy #watch-total-pnl {
   font-size: 22px;
   font-weight: 800;
   line-height: 1.1;
-  text-align: right;
+  text-align: left;
 }
 .watch-table .watch-px small {
   display: none;
