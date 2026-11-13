@@ -3648,7 +3648,7 @@
     return out;
   }
 
-  // 外資台指期淨未平倉（口數）
+  // 外資台指期淨未平倉／空單口數
   async function txForeignFutSeries(days) {
     const key = "tx|foreign|" + days;
     if (cache.has(key)) return cache.get(key);
@@ -3658,18 +3658,77 @@
       if (!/外資/.test(String(row.institutional_investors || ""))) return;
       const longOi = num(row.long_open_interest_balance_volume) || 0;
       const shortOi = num(row.short_open_interest_balance_volume) || 0;
-      byDay[row.date] = { date: row.date, netOi: longOi - shortOi };
+      byDay[row.date] = { date: row.date, netOi: longOi - shortOi, longOi: longOi, shortOi: shortOi };
     });
     const daysSorted = Object.keys(byDay).sort();
     const out = [];
     let prev = null;
     daysSorted.forEach(function (d) {
-      const net = byDay[d].netOi;
-      out.push({ date: d, netOi: net, delta: prev == null ? null : net - prev });
+      const row = byDay[d];
+      const net = row.netOi;
+      out.push({
+        date: d,
+        netOi: net,
+        longOi: row.longOi,
+        shortOi: row.shortOi,
+        delta: prev == null ? null : net - prev
+      });
       prev = net;
     });
     cache.set(key, out);
     return out;
+  }
+
+  const FLOW_SERIES = [
+    { id: "short", name: "空單", color: "#94a3b8" },
+    { id: "buy", name: "外資買超", color: "#f87171" },
+    { id: "sell", name: "賣超", color: "#4ade80" }
+  ];
+
+  function flowKeepCount(rangeId, window) {
+    if (window && window.from && window.to) {
+      return Math.min(1300, Math.max(1, spanDays(window.from, window.to) + 5));
+    }
+    const spec = RANGES[rangeId] || {};
+    if (spec.days) return Math.max(1, spec.days);
+    if (spec.klt === 101) return Math.max(1, spec.lmt || 20);
+    if (spec.klt === 102) return Math.min(1300, Math.max(60, (spec.lmt || 160) * 5));
+    if (rangeId === "1d") return 1;
+    return 20;
+  }
+
+  function levelBars(rows) {
+    return rows.map(function (row) {
+      const v = row.v;
+      return { t: row.t, o: v, h: v, l: v, c: v };
+    }).filter(function (b) { return b.c != null && isFinite(b.c); });
+  }
+
+  // 空單口數／外資現貨買超／賣超（億）日線，供大盤線圖疊加
+  async function flowBars(kind, rangeId, window) {
+    const id = String(kind || "");
+    const keep = flowKeepCount(rangeId, window);
+    const from = window && window.from;
+    const to = window && window.to;
+    let rows = [];
+    if (id === "short") {
+      const series = await txForeignFutSeries(Math.max(keep + 40, 80));
+      rows = levelBars(series.map(function (r) {
+        return { t: r.date, v: r.shortOi };
+      }));
+    } else if (id === "buy" || id === "sell") {
+      const all = await foreignInvestorRows();
+      rows = levelBars(all.map(function (r) {
+        return { t: r.date, v: id === "buy" ? r.buyYi : r.sellYi };
+      }));
+    } else {
+      throw new Error("未知籌碼曲線");
+    }
+    if (from && to) {
+      const cut = clipBars(rows, from, to);
+      if (cut.length) return cut;
+    }
+    return rows.slice(-Math.max(1, keep));
   }
 
   // 選擇權 PCR（成交口數 Put/Call），TXO 近月附近彙總
@@ -6081,6 +6140,9 @@
     foreignNets: foreignNets,
     foreignSpotDay: foreignSpotDay,
     txForeignOiLatest: txForeignOiLatest,
+    FLOW_SERIES: FLOW_SERIES,
+    flowBars: flowBars,
+    txForeignFutSeries: txForeignFutSeries,
     stockDetail: stockDetail,
     stockDisclose: stockDisclose,
     stockNews: stockNews,

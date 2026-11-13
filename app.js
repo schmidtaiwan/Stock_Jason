@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 191;
+  const PAGE_BUILD = 192;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -51,6 +51,7 @@
   const state = {
     range: "1d",
     on: { dji: false, spx: false, ndx: true, tw: true, jp: false, kr: false, sox: true, fx: true, txf: false },
+    flowOn: { short: false, buy: false, sell: false },
     focus: null,
     focusFrom: null,
     stock: null,
@@ -2275,15 +2276,20 @@
       const sellYi = spot && spot.sellYi != null ? spot.sellYi : null;
       const tip = [
         oi && oi.date ? ("空單日期 " + oi.date) : "",
-        spot && spot.date ? ("現貨日期 " + spot.date) : ""
+        spot && spot.date ? ("現貨日期 " + spot.date) : "",
+        "點選可疊加歷史曲線（五日以上線圖）"
       ].filter(Boolean).join(" · ");
       box.title = tip || "";
+      const flow = state.flowOn || {};
       box.innerHTML =
-        '<span class="market-flow-chip" title="外資台指期空單未平倉">空單口數 ' + esc(shortTxt) + "</span>" +
-        '<span class="market-flow-chip up" title="外資現貨當日買超（億元）">外資買超 ' +
-        esc(buyYi == null ? "—" : moneyText(buyYi)) + "</span>" +
-        '<span class="market-flow-chip down" title="外資現貨當日賣超（億元）">賣超 ' +
-        esc(sellYi == null ? "—" : moneyText(sellYi)) + "</span>";
+        '<button type="button" class="market-flow-chip" data-flow="short" aria-pressed="' +
+        !!flow.short + '" title="外資台指期空單未平倉（點選顯示歷史曲線）">空單口數 ' + esc(shortTxt) + "</button>" +
+        '<button type="button" class="market-flow-chip up" data-flow="buy" aria-pressed="' +
+        !!flow.buy + '" title="外資現貨當日買超（億元；點選顯示歷史曲線）">外資買超 ' +
+        esc(buyYi == null ? "—" : moneyText(buyYi)) + "</button>" +
+        '<button type="button" class="market-flow-chip down" data-flow="sell" aria-pressed="' +
+        !!flow.sell + '" title="外資現貨當日賣超（億元；點選顯示歷史曲線）">賣超 ' +
+        esc(sellYi == null ? "—" : moneyText(sellYi)) + "</button>";
     } catch (err) {
       if (gen === renderMarketFlow.gen) {
         box.innerHTML = '<span class="note">空單／買賣超暫讀不到</span>';
@@ -2301,12 +2307,17 @@
       let items = [];
       let statusNote = "";
       const win = plotWindow();
-      const align = win
+      let align = win
         ? ((Date.parse(win.to) - Date.parse(win.from)) / 86400000 <= 5 ? "index" : "date")
         : ((M.RANGES[state.range] || {}).align || "date");
       const picked = M.MARKETS.filter(function (m) { return state.on[m.id]; });
-      if (!picked.length) {
-        $("chart-status").textContent = "至少選擇一個市場。";
+      const flowSpecs = (M.FLOW_SERIES || []).filter(function (f) {
+        return state.flowOn && state.flowOn[f.id];
+      });
+      const candle = state.chartStyle === "candle";
+      const oneDay = isOneDayRange();
+      if (!picked.length && !flowSpecs.length) {
+        $("chart-status").textContent = "至少選擇一個市場或籌碼曲線。";
         renderKPatterns(null);
         return;
       }
@@ -2317,16 +2328,38 @@
       if (gen !== state.chartGen) return;
       items = got.filter(function (row) { return row.bars && row.bars.length; });
       const bad = got.filter(function (row) { return !row.bars; }).map(function (row) { return row.name; });
-      if (!items.length) throw new Error("行情暫時讀不到");
       statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
+      if (flowSpecs.length) {
+        if (candle) {
+          statusNote = (statusNote ? statusNote + " " : "") + "K線不疊加空單／買賣超。";
+        } else if (oneDay) {
+          statusNote = (statusNote ? statusNote + " " : "") + "空單／買賣超為日資料，請改五日以上。";
+        } else if (M.flowBars) {
+          const flowGot = await Promise.all(flowSpecs.map(async function (f) {
+            try {
+              return { name: f.name, color: f.color, bars: await M.flowBars(f.id, state.range, win), flow: true };
+            } catch (err) {
+              return { name: f.name, error: err.message || "失敗" };
+            }
+          }));
+          if (gen !== state.chartGen) return;
+          const flowOk = flowGot.filter(function (row) { return row.bars && row.bars.length; });
+          const flowBad = flowGot.filter(function (row) { return !row.bars; }).map(function (row) { return row.name; });
+          items = items.concat(flowOk);
+          if (flowBad.length) {
+            statusNote = (statusNote ? statusNote + " " : "") + flowBad.join("、") + " 這次沒讀到。";
+          }
+          if (flowOk.length) align = "date";
+        }
+      }
+      if (!items.length) throw new Error("行情暫時讀不到");
       if (gen !== state.chartGen) return;
-      const candle = state.chartStyle === "candle";
       if (candle && items.length > 1) {
         const tw = items.find(function (row) { return row.name === "台股"; });
         items = [tw || items[0]];
         statusNote = (statusNote ? statusNote + " " : "") + "K線只顯示 " + items[0].name + "。";
       }
-      if (isOneDayRange()) {
+      if (oneDay) {
         statusNote = (statusNote ? statusNote + " " : "") +
           (candle ? "單日五分 K。" : "單日線圖（五分價）。");
       }
@@ -5261,6 +5294,14 @@
     } else if (t.dataset.market) {
       state.on[t.dataset.market] = t.getAttribute("aria-pressed") !== "true";
       buildToggles();
+      loadChart();
+    } else if (t.dataset.flow) {
+      if (!state.flowOn) state.flowOn = { short: false, buy: false, sell: false };
+      state.flowOn[t.dataset.flow] = t.getAttribute("aria-pressed") !== "true";
+      if (state.flowOn[t.dataset.flow] && state.chartStyle === "candle") {
+        state.chartStyle = "line";
+        buildToggles();
+      }
       loadChart();
     } else if (t.dataset.chartStyle) {
       setChartStyle(t.dataset.chartStyle);
