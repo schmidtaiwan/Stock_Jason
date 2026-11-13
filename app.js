@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 166;
+  const PAGE_BUILD = 167;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -4139,7 +4139,8 @@
           ok.push(hit.code || parts[i]);
         }
         state.picks.watch = null;
-        $("watch-pick").textContent = "可用逗號一次加入多檔，例如 2330,2308；或點搜尋結果後再加入。";
+        $("watch-pick").textContent = "";
+        $("watch-pick").hidden = true;
         $("watch-q").value = "";
         $("watch-shares").value = "";
         $("watch-cost").value = "";
@@ -4169,7 +4170,8 @@
         cost: cost
       });
       state.picks.watch = null;
-      $("watch-pick").textContent = "可用逗號一次加入多檔，例如 2330,2308；或點搜尋結果後再加入。";
+      $("watch-pick").textContent = "";
+      $("watch-pick").hidden = true;
       $("watch-q").value = "";
       $("watch-shares").value = "";
       $("watch-cost").value = "";
@@ -4881,7 +4883,8 @@
     const key = btn.getAttribute("data-pick");
     if (key === "watch") {
       state.picks.watch = row;
-      $("watch-pick").textContent = row.name + " " + row.code + " · 填好買價與股數後按加入";
+      $("watch-pick").textContent = row.name + " " + row.code;
+      $("watch-pick").hidden = false;
       $("watch-hits").innerHTML = "";
       $("watch-q").value = row.code + " " + row.name;
       $("watch-cost").focus();
