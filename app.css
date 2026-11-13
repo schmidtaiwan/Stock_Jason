@@ -1338,9 +1338,9 @@ html.sj-privacy.sj-privacy-depth #watch-total-pnl {
 }
 /* 防窺・同色：文字／圖案同色灰，亮暗由 --sj-same-ink 控制 */
 html.sj-privacy.sj-privacy-same {
-  --sj-same-ink: #5c6673;
+  --sj-same-ink: #868e9b;
   --sj-same-bg: #12181f;
-  --sj-same-img-bright: 0.62;
+  --sj-same-img-bright: 0.73;
   --up: var(--sj-same-ink);
   --down: var(--sj-same-ink);
   --accent: var(--sj-same-ink);
@@ -1442,7 +1442,7 @@ html.sj-privacy.sj-privacy-same .watch-lamp-chip,
 html.sj-privacy.sj-privacy-same .watch-net-bar,
 html.sj-privacy.sj-privacy-same .header-bias,
 html.sj-privacy.sj-privacy-same .twii-box {
-  filter: grayscale(1) brightness(var(--sj-same-img-bright, 0.62)) contrast(0.9) !important;
+  filter: grayscale(1) brightness(var(--sj-same-img-bright, 0.73)) contrast(0.9) !important;
 }
 html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   background: #2a3340 !important;

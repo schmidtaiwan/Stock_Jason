@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 176;
+  const PAGE_BUILD = 177;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -96,7 +96,7 @@
       watchPrivacy: false,
       watchPrivacyGray: 100,
       watchPrivacyMode: "depth",
-      watchPrivacySameBright: 35,
+      watchPrivacySameBright: 80,
       holdings: [],
       journal: [],
       capital: 1000000,
@@ -218,7 +218,7 @@
       watchPrivacyMode: src.watchPrivacyMode === "same" ? "same" : "depth",
       watchPrivacySameBright: (function () {
         const n = Number(src.watchPrivacySameBright);
-        if (!isFinite(n)) return 35;
+        if (!isFinite(n)) return 80;
         return Math.max(0, Math.min(100, Math.round(n)));
       })(),
       holdings: Array.isArray(src.holdings) ? src.holdings.map(fixRow) : [],
@@ -272,7 +272,7 @@
 
   function privacySameBrightOf() {
     const n = Number(book.watchPrivacySameBright);
-    if (!isFinite(n)) return 35;
+    if (!isFinite(n)) return 80;
     return Math.max(0, Math.min(100, Math.round(n)));
   }
 
