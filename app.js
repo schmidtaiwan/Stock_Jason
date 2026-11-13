@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 187;
+  const PAGE_BUILD = 188;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2303,19 +2303,15 @@
       if (!items.length) throw new Error("行情暫時讀不到");
       statusNote = bad.length ? bad.join("、") + " 這次沒讀到。" : "";
       if (gen !== state.chartGen) return;
-      // 單日區間強制 K 線（五分）
-      if (isOneDayRange() && state.chartStyle !== "candle") {
-        state.chartStyle = "candle";
-        buildToggles();
-      }
       const candle = state.chartStyle === "candle";
       if (candle && items.length > 1) {
         const tw = items.find(function (row) { return row.name === "台股"; });
         items = [tw || items[0]];
         statusNote = (statusNote ? statusNote + " " : "") + "K線只顯示 " + items[0].name + "。";
       }
-      if (candle && isOneDayRange()) {
-        statusNote = (statusNote ? statusNote + " " : "") + "單日五分 K。";
+      if (isOneDayRange()) {
+        statusNote = (statusNote ? statusNote + " " : "") +
+          (candle ? "單日五分 K。" : "單日線圖（五分價）。");
       }
       const mode = candle || items.length === 1 ? "price" : "pct";
       state.plot = buildPlot(items, mode, align);
