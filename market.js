@@ -794,18 +794,17 @@
     const missed = [];
     const need = [];
     const now = Date.now();
-    const forceMis = isMisForceWindow();
     ids.forEach(function (id) {
       const hit = quoteFresh.get(id);
-      // 強制 MIS 時段：台股不沿用非 MIS 快取
-      if (hit && now - hit.at < 60000 && !(forceMis && String(id).indexOf("tw.") === 0 && hit.quote && hit.quote.source !== "mis")) {
+      // 台股只用 MIS：不沿用非 MIS 快取
+      if (hit && now - hit.at < 60000 && !(String(id).indexOf("tw.") === 0 && hit.quote && hit.quote.source !== "mis")) {
         out[id] = hit.quote;
       } else need.push(id);
     });
     const yahooNeed = [];
     const misNeed = [];
     need.forEach(function (id) {
-      if (forceMis && String(id).indexOf("tw.") === 0) misNeed.push(id);
+      if (String(id).indexOf("tw.") === 0) misNeed.push(id);
       else yahooNeed.push(id);
     });
     await mapPool(yahooNeed, 4, async function (id) {
@@ -854,23 +853,13 @@
       });
     }
     if (tw.length) {
+      // 台股即時只留證交所 MIS，不改走鉅亨／Yahoo
       const codes = tw.map(function (id) { return id.slice(3); });
       let board = {};
       try {
-        board = isMisForceWindow()
-          ? await misQuotesForced(codes)
-          : await misQuotes(codes);
-      } catch (err) { board = {}; }
-      const miss = codes.filter(function (c) {
-        const id = String(c || "").toUpperCase();
-        return !(board[id] && board[id].price > 0);
-      });
-      // 08:00～14:00 不改走鉅亨；其餘時段缺資料才補
-      if (miss.length && !isMisForceWindow()) {
-        try {
-          const cnyes = await cnyesQuotes(miss);
-          Object.keys(cnyes).forEach(function (code) { board[code] = cnyes[code]; });
-        } catch (err) { /* ignore */ }
+        board = await misQuotesForced(codes);
+      } catch (err) {
+        try { board = await misQuotes(codes); } catch (err2) { board = {}; }
       }
       Object.keys(board).forEach(function (code) {
         const row = board[code];
@@ -3237,7 +3226,7 @@
   async function watchBoard(items) {
     const list = items || [];
     if (!list.length) return [];
-    // 台股自選：證交所 MIS 即時 → 鉅亨 → Yahoo；一律用代號對齊
+    // 台股自選即時：只留證交所 MIS
     const codes = [];
     const secids = [];
     list.forEach(function (item) {
@@ -3255,45 +3244,14 @@
     });
     bustLiveCaches(secids);
     let byCode = {};
-    if (isMisForceWindow()) {
-      // 台灣 08:00～14:00：只抓 MIS，失敗就間隔重試，不轉鉅亨／Yahoo
-      try {
-        byCode = await misQuotesForced(codes) || {};
-      } catch (err) {
-        byCode = {};
-      }
-    } else {
-      // 其餘時段：MIS 與鉅亨並行，逾時就先用已有結果
-      const misP = withTimeout(misQuotes(codes), 8000).catch(function () { return {}; });
-      const cnyesP = codes.length
-        ? cnyesQuotes(codes).catch(function () { return {}; })
-        : Promise.resolve({});
-      try {
-        const got = await Promise.all([misP, cnyesP]);
-        const fromMis = got[0] || {};
-        const fromCnyes = got[1] || {};
-        Object.keys(fromCnyes).forEach(function (c) {
-          if (fromCnyes[c] && fromCnyes[c].price > 0) byCode[c] = fromCnyes[c];
-        });
-        Object.keys(fromMis).forEach(function (c) {
-          if (fromMis[c] && fromMis[c].price > 0) byCode[c] = fromMis[c];
-        });
-      } catch (err) {
-        byCode = {};
-      }
-    }
-    const needYahoo = isMisForceWindow() ? [] : list.filter(function (item) {
-      const code = watchItemCode(item);
-      return !(byCode[code] && byCode[code].price > 0);
-    }).map(function (item) { return watchItemSecid(item); }).filter(Boolean);
-    let bySecid = {};
-    if (needYahoo.length) {
-      try { bySecid = await quoteMap(needYahoo); } catch (err) { bySecid = {}; }
+    try {
+      byCode = await misQuotesForced(codes) || {};
+    } catch (err) {
+      try { byCode = await misQuotes(codes) || {}; } catch (err2) { byCode = {}; }
     }
     return list.map(function (item) {
       const code = watchItemCode(item);
-      const secid = watchItemSecid(item);
-      const q = (code && byCode[code]) || (secid && bySecid[secid]) || null;
+      const q = (code && byCode[code]) || null;
       const price = q && q.price != null && isFinite(q.price) ? q.price : null;
       const pct = q && q.pct != null && isFinite(q.pct) ? q.pct : null;
       const change = q && q.change != null && isFinite(q.change)
@@ -3320,7 +3278,7 @@
         breakout: null,
         support: null,
         asOf: q && q.asOf != null ? q.asOf : null,
-        source: q && q.source ? q.source : (q ? (byCode[code] ? (byCode[code].source || "cnyes") : "yahoo") : "")
+        source: q && q.price > 0 ? "mis" : ""
       };
     });
   }
@@ -3334,90 +3292,15 @@
   }
 
   async function twiiQuote() {
-    if (isMisForceWindow()) {
-      // 台灣 08:00～14:00：強制 MIS，抓不到就重試，绝不改走其它來源
-      for (let i = 0; i < MIS_FORCE_ATTEMPTS; i++) {
-        try {
-          const mis = await misTwiiQuote();
-          if (mis && mis.price > 0) return mis;
-        } catch (errMis) { /* 下一輪 */ }
-        if (i < MIS_FORCE_ATTEMPTS - 1) await sleep(MIS_FORCE_RETRY_MS);
-      }
-      throw new Error("MIS 加權讀取失敗，稍後重試");
+    // 加權即時只留證交所 MIS，不改走 Yahoo／鉅亨
+    for (let i = 0; i < MIS_FORCE_ATTEMPTS; i++) {
+      try {
+        const mis = await misTwiiQuote();
+        if (mis && mis.price > 0) return mis;
+      } catch (errMis) { /* 下一輪 */ }
+      if (i < MIS_FORCE_ATTEMPTS - 1) await sleep(MIS_FORCE_RETRY_MS);
     }
-    // 其餘時段：優先 MIS；最多等 6 秒，逾時改 Yahoo
-    try {
-      const mis = await withTimeout(misTwiiQuote(), 6000);
-      if (mis && mis.price > 0) return mis;
-    } catch (errMis) { /* 改走 Yahoo */ }
-    // ^TWII 的 meta.previousClose 常是舊值（會算出 +3000 點這種錯漲跌），改用近兩日日線
-    try {
-      const json = await yahooChart("^TWII", "interval=1d&range=10d");
-      const result = json && json.chart && json.chart.result && json.chart.result[0];
-      if (result) {
-        const meta = result.meta || {};
-        const closes = (((result.indicators || {}).quote || [])[0] || {}).close || [];
-        const good = closes.filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
-          .map(Number);
-        let price = num(meta.regularMarketPrice) || good[good.length - 1] || 0;
-        const prev = good.length >= 2 ? good[good.length - 2] : num(meta.previousClose);
-        let asOf = yahooAsOfMs(meta);
-        let delayMin = num(meta.exchangeDataDelayedBy);
-        // 盤中再用 1 分 K 校正現價與時間戳，才能估延遲
-        try {
-          const live = await yahooChart("^TWII", "interval=1m&range=1d");
-          const liveRes = live && live.chart && live.chart.result && live.chart.result[0];
-          if (liveRes) {
-            const liveMeta = liveRes.meta || {};
-            const liveCloses = ((((liveRes.indicators || {}).quote || [])[0] || {}).close || [])
-              .filter(function (v) { return v != null && isFinite(Number(v)) && Number(v) > 0; })
-              .map(Number);
-            if (liveCloses.length) price = liveCloses[liveCloses.length - 1];
-            else if (num(liveMeta.regularMarketPrice) > 0) price = num(liveMeta.regularMarketPrice);
-            const stamps = liveRes.timestamp || [];
-            const lastTs = stamps.length ? num(stamps[stamps.length - 1]) : null;
-            if (lastTs != null) asOf = lastTs > 1e12 ? lastTs : lastTs * 1000;
-            else asOf = yahooAsOfMs(liveMeta) || asOf;
-            if (num(liveMeta.exchangeDataDelayedBy) != null) delayMin = num(liveMeta.exchangeDataDelayedBy);
-          }
-        } catch (errLive) { /* 保留日線結果 */ }
-        if (price > 0 && prev > 0) {
-          const change = price - prev;
-          return {
-            price: price,
-            change: change,
-            pct: change / prev * 100,
-            name: "加權指數",
-            asOf: asOf,
-            delayMin: delayMin,
-            source: "yahoo"
-          };
-        }
-      }
-    } catch (err) { /* 改走通用報價 */ }
-    const q = await yahooQuote("100.TWII");
-    if (!q || !(q.price > 0)) throw new Error("加權指數讀不到");
-    let change = q.change;
-    let pct = q.pct;
-    // 若 Yahoo 百分比與 previousClose 推得差太多，改信百分比（避免紅框顯示假大漲）
-    if (pct != null && isFinite(pct) && q.price > 0) {
-      const impliedPrev = q.price / (1 + pct / 100);
-      const impliedChg = q.price - impliedPrev;
-      if (change == null || !isFinite(change) || Math.abs(change - impliedChg) > Math.max(50, Math.abs(impliedChg) * 0.25)) {
-        change = impliedChg;
-      }
-    } else if (change == null && pct != null) {
-      change = q.price * pct / (100 + pct);
-    }
-    return {
-      price: q.price,
-      change: change,
-      pct: pct,
-      name: "加權指數",
-      asOf: q.asOf || null,
-      delayMin: q.delayMin != null ? q.delayMin : null,
-      source: q.source || "yahoo"
-    };
+    throw new Error("MIS 加權讀取失敗，稍後重試");
   }
 
   async function stockDetail(secid, code) {

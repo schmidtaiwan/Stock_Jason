@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 158;
+  const PAGE_BUILD = 159;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -393,19 +393,15 @@
   let twiiSeq = 0;
   function twiiSourceLabel(source) {
     const key = String(source || "").toLowerCase();
-    if (key === "mis") return "證交所 MIS";
-    if (key === "yahoo") return "Yahoo";
-    if (key === "cnyes") return "鉅亨";
-    return source ? String(source) : "—";
+    if (key === "mis" || !key) return "證交所 MIS";
+    return source ? String(source) : "證交所 MIS";
   }
 
   function paintTwiiSource(q) {
     const srcEl = $("twii-src");
     if (!srcEl) return;
-    srcEl.textContent = "來源 " + twiiSourceLabel(q && q.source);
-    srcEl.title = q && q.source === "mis"
-      ? "台灣證交所基本市況報導（約 5 秒快照）"
-      : (q && q.source === "yahoo" ? "Yahoo Finance" : "股價資料來源");
+    srcEl.textContent = "來源 證交所 MIS";
+    srcEl.title = "台灣證交所基本市況報導（台股即時只走 MIS）";
   }
 
   function formatTwiiLag(q) {
