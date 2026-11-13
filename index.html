@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=201">
+  <link rel="stylesheet" href="app.css?v=202">
 </head>
 <body>
   <section id="gate" class="gate">
@@ -78,13 +78,13 @@
               </div>
             </div>
             <label class="span-date">
-              <span>起</span>
-              <input id="range-from" type="date" inputmode="numeric">
+              <span class="span-date-show" data-date-show="range-from">—</span>
+              <input id="range-from" type="date" inputmode="numeric" aria-label="起始日期">
             </label>
             <span class="span-sep">～</span>
             <label class="span-date">
-              <span>迄</span>
-              <input id="range-to" type="date" inputmode="numeric">
+              <span class="span-date-show" data-date-show="range-to">—</span>
+              <input id="range-to" type="date" inputmode="numeric" aria-label="結束日期">
             </label>
           </div>
         </div>
@@ -121,13 +121,13 @@
             <div id="stock-ranges" class="ranges"></div>
             <div class="span-dates" aria-label="個股區間日期">
               <label class="span-date">
-                <span>起</span>
-                <input id="stock-from" type="date" inputmode="numeric">
+                <span class="span-date-show" data-date-show="stock-from">—</span>
+                <input id="stock-from" type="date" inputmode="numeric" aria-label="起始日期">
               </label>
               <span class="span-sep">～</span>
               <label class="span-date">
-                <span>迄</span>
-                <input id="stock-to" type="date" inputmode="numeric">
+                <span class="span-date-show" data-date-show="stock-to">—</span>
+                <input id="stock-to" type="date" inputmode="numeric" aria-label="結束日期">
               </label>
             </div>
           </div>
@@ -157,13 +157,13 @@
               <strong class="stock-k-title">K 線</strong>
               <div class="span-dates stock-k-dates" aria-label="K線區間日期">
                 <label class="span-date">
-                  <span>起</span>
-                  <input id="stock-k-from" type="date" inputmode="numeric">
+                  <span class="span-date-show" data-date-show="stock-k-from">—</span>
+                  <input id="stock-k-from" type="date" inputmode="numeric" aria-label="起始日期">
                 </label>
                 <span class="span-sep">～</span>
                 <label class="span-date">
-                  <span>迄</span>
-                  <input id="stock-k-to" type="date" inputmode="numeric">
+                  <span class="span-date-show" data-date-show="stock-k-to">—</span>
+                  <input id="stock-k-to" type="date" inputmode="numeric" aria-label="結束日期">
                 </label>
               </div>
             </div>
@@ -596,11 +596,11 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=201"></script>
-  <script src="drive.js?v=201"></script>
-  <script src="sakata.js?v=201"></script>
-  <script src="market.js?v=201"></script>
-  <script src="chips.js?v=201"></script>
-  <script src="app.js?v=201"></script>
+  <script src="google_config.js?v=202"></script>
+  <script src="drive.js?v=202"></script>
+  <script src="sakata.js?v=202"></script>
+  <script src="market.js?v=202"></script>
+  <script src="chips.js?v=202"></script>
+  <script src="app.js?v=202"></script>
 </body>
 </html>

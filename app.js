@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 201;
+  const PAGE_BUILD = 202;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -1670,15 +1670,62 @@
     syncStockKPickUi();
   }
 
+  function dateMdText(iso) {
+    const s = String(iso || "");
+    if (s.length < 10) return "—";
+    return s.slice(5, 7) + "/" + s.slice(8, 10);
+  }
+
+  function dateYmdText(iso) {
+    const s = String(iso || "");
+    if (s.length < 10) return "—";
+    return s.slice(0, 4) + "/" + s.slice(5, 7) + "/" + s.slice(8, 10);
+  }
+
+  function paintDateShow(inputId, iso, focused) {
+    const show = document.querySelector('[data-date-show="' + inputId + '"]');
+    const input = $(inputId);
+    const label = input && input.closest ? input.closest(".span-date") : null;
+    if (show) show.textContent = focused ? dateYmdText(iso) : dateMdText(iso);
+    if (label) {
+      label.classList.toggle("is-focus", !!focused);
+      if (input) label.classList.toggle("is-custom", input.classList.contains("custom"));
+    }
+  }
+
+  function syncDateShowForInput(input) {
+    if (!input || !input.id) return;
+    const focused = document.activeElement === input;
+    paintDateShow(input.id, input.value, focused);
+  }
+
+  function bindCompactDateInputs(ids) {
+    (ids || []).forEach(function (id) {
+      const el = $(id);
+      if (!el || el.dataset.compactDateBound) return;
+      el.dataset.compactDateBound = "1";
+      el.addEventListener("focus", function () { syncDateShowForInput(el); });
+      el.addEventListener("blur", function () { syncDateShowForInput(el); });
+      el.addEventListener("input", function () { syncDateShowForInput(el); });
+      el.addEventListener("change", function () { syncDateShowForInput(el); });
+      syncDateShowForInput(el);
+    });
+  }
+
   function syncDateInputs() {
     const from = $("range-from");
     const to = $("range-to");
     if (!from || !to) return;
-    if (document.activeElement === from || document.activeElement === to) return;
+    if (document.activeElement === from || document.activeElement === to) {
+      syncDateShowForInput(document.activeElement);
+      return;
+    }
     if (state.from) from.value = state.from;
     if (state.to) to.value = state.to;
     from.classList.toggle("custom", !!state.custom);
     to.classList.toggle("custom", !!state.custom);
+    paintDateShow("range-from", from.value, false);
+    paintDateShow("range-to", to.value, false);
   }
 
   function syncStockDateInputs() {
@@ -1690,11 +1737,16 @@
       const from = pair[0];
       const to = pair[1];
       if (!from || !to) return;
-      if (document.activeElement === from || document.activeElement === to) return;
+      if (document.activeElement === from || document.activeElement === to) {
+        syncDateShowForInput(document.activeElement);
+        return;
+      }
       if (state.stockDateFrom) from.value = state.stockDateFrom;
       if (state.stockDateTo) to.value = state.stockDateTo;
       from.classList.toggle("custom", !!state.stockCustom);
       to.classList.toggle("custom", !!state.stockCustom);
+      paintDateShow(from.id, from.value, false);
+      paintDateShow(to.id, to.value, false);
     });
   }
 
@@ -5439,6 +5491,7 @@
     if (ext) ext.hidden = true;
   }
 
+  bindCompactDateInputs(["range-from", "range-to", "stock-from", "stock-to", "stock-k-from", "stock-k-to"]);
   $("range-from").addEventListener("change", applyCustomDates);
   $("range-to").addEventListener("change", applyCustomDates);
   $("login").addEventListener("click", doLogin);
