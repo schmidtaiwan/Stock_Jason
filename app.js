@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 183;
+  const PAGE_BUILD = 184;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -468,16 +468,10 @@
 
   let twiiBusy = false;
   let twiiSeq = 0;
-  function twiiSourceLabel(source) {
-    const key = String(source || "").toLowerCase();
-    if (key === "mis" || !key) return "證交所 MIS";
-    return source ? String(source) : "證交所 MIS";
-  }
-
-  function paintTwiiSource(q) {
+  function paintTwiiSource() {
     const srcEl = $("twii-src");
     if (!srcEl) return;
-    srcEl.textContent = "來源 證交所 MIS";
+    srcEl.textContent = "證交所";
     srcEl.title = "台灣證交所基本市況報導（台股即時只走 MIS）";
   }
 
@@ -547,9 +541,9 @@
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
-      if ($("twii-src")) $("twii-src").textContent = "來源 …";
+      if ($("twii-src")) $("twii-src").textContent = "證交所";
     } else if (force && $("twii-src") && !hadPrice) {
-      $("twii-src").textContent = "來源 …";
+      $("twii-src").textContent = "證交所";
     }
     try {
       const q = await M.twiiQuote();
@@ -573,7 +567,7 @@
         priceEl.className = "";
         chgEl.className = "twii-chg";
         chgEl.textContent = forceMis ? "MIS 重試中" : "加權讀取失敗";
-        if ($("twii-src")) $("twii-src").textContent = forceMis ? "來源 證交所 MIS" : "來源 —";
+        if ($("twii-src")) $("twii-src").textContent = forceMis ? "證交所" : "—";
       } else {
         chgEl.textContent = (chgEl.textContent || "").replace(/（更新失敗|MIS 重試中）$/, "") +
           (forceMis ? "（MIS 重試中）" : "（更新失敗）");
