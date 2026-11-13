@@ -18,10 +18,10 @@
 html, body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
+  height: 100%;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 body {
@@ -30,7 +30,7 @@ body {
   line-height: 1.5;
   color: var(--ink);
   background: #0c1015;
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -43,15 +43,18 @@ button:active { transform: translateY(1px); }
   max-width: 560px;
   margin: 0 auto;
   background: var(--bg);
-  min-height: 100dvh;
-  overflow-x: hidden;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .gate {
-  display: flex;
-  flex-direction: column;
   justify-content: center;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
 }
 
@@ -97,8 +100,8 @@ a.gate-ext {
 a.gate-ext[hidden] { display: none !important; }
 
 .top {
-  position: sticky;
-  top: 0;
+  position: relative;
+  flex: 0 0 auto;
   z-index: 2;
   background: rgba(16, 21, 27, 0.94);
   backdrop-filter: blur(8px);
@@ -299,9 +302,13 @@ a.gate-ext[hidden] { display: none !important; }
 }
 
 main {
-  padding: 12px 14px calc(108px + env(safe-area-inset-bottom, 0px));
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px 14px 16px;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .chips, .ranges {
@@ -939,14 +946,11 @@ canvas {
 }
 
 .dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  flex: 0 0 auto;
   z-index: 40;
   width: 100%;
-  max-width: 560px;
-  margin: 0 auto;
+  margin: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
@@ -956,29 +960,11 @@ canvas {
   box-sizing: border-box;
 }
 
-/* 自選：整頁鎖高，只有列表往下捲；底欄固定可見 */
-html.sj-watch-scroll,
-html.sj-watch-scroll body {
-  height: 100%;
-  overflow: hidden;
-}
-html.sj-watch-scroll .app {
-  height: 100dvh;
-  max-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-html.sj-watch-scroll .top {
-  flex: 0 0 auto;
-}
+/* 自選：中欄鎖高，只有列表往下捲；底欄仍在 flex 底部 */
 html.sj-watch-scroll main {
-  flex: 1 1 auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 html.sj-watch-scroll #view-watch {
   flex: 1 1 auto;
