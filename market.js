@@ -4110,6 +4110,15 @@
       const trust = twseNum(r[10]);
       const dealer = twseNum(r[11]);
       const total = twseNum(r[18]);
+      // 買進／賣出股數（外陸資＋外資自營＋投信＋自營自行＋自營避險）
+      const buyShares = [r[2], r[5], r[8], r[12], r[15]].reduce(function (s, v) {
+        const n = twseNum(v);
+        return s + (n != null ? n : 0);
+      }, 0);
+      const sellShares = [r[3], r[6], r[9], r[13], r[16]].reduce(function (s, v) {
+        const n = twseNum(v);
+        return s + (n != null ? n : 0);
+      }, 0);
       return {
         code: String(r[0] || "").trim(),
         name: String(r[1] || "").trim(),
@@ -4117,7 +4126,9 @@
         foreignOnly: foreign,
         trustNet: trust,
         dealerNet: dealer,
-        instNet: total
+        instNet: total,
+        instBuy: buyShares,
+        instSell: sellShares
       };
     }).filter(function (row) { return row.code; });
     const out = { ok: true, date: String(json.date || dateYmd), rows: rows };

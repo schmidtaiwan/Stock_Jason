@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 142;
+  const PAGE_BUILD = 143;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -2688,6 +2688,11 @@
     return name + (item.code || "");
   }
 
+  function watchNetBarHtml(idx) {
+    return '<span class="watch-net-bar" data-watch-netbar="' + idx +
+      '" hidden title="三大法人買賣超"><i class="buy"></i><i class="sell"></i></span>';
+  }
+
   function watchMiniNameHtml(item) {
     const name = M.preferTwName
       ? M.preferTwName(item.name, "", item.code)
@@ -2695,6 +2700,43 @@
     const title = name || String(item.code || "");
     return '<span class="watch-mini-title">' + esc(title) + "</span>" +
       '<span class="watch-mini-state" data-watch-state-slot hidden></span>';
+  }
+
+  function paintWatchNetBar(el, row, dateLabel) {
+    if (!el) return;
+    const buy = row && row.instBuy != null ? Number(row.instBuy) : null;
+    const sell = row && row.instSell != null ? Number(row.instSell) : null;
+    const net = row && row.instNet != null
+      ? Number(row.instNet)
+      : (row ? ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0)) : null);
+    let buyPct = 50;
+    if (buy != null && sell != null && buy + sell > 0) {
+      buyPct = buy / (buy + sell) * 100;
+    } else if (net != null && isFinite(net)) {
+      // 僅有買賣超時：以淨額推估偏向（±5000 張≈拉滿）
+      const lots = net / 1000;
+      const skew = Math.max(-0.45, Math.min(0.45, lots / 5000));
+      buyPct = 50 + skew * 100;
+    } else {
+      el.hidden = true;
+      el.removeAttribute("title");
+      return;
+    }
+    buyPct = Math.max(4, Math.min(96, buyPct));
+    const sellPct = 100 - buyPct;
+    const buyEl = el.querySelector("i.buy");
+    const sellEl = el.querySelector("i.sell");
+    if (buyEl) buyEl.style.width = buyPct.toFixed(1) + "%";
+    if (sellEl) sellEl.style.width = sellPct.toFixed(1) + "%";
+    el.hidden = false;
+    const buyLots = buy != null ? Math.round(buy / 1000) : null;
+    const sellLots = sell != null ? Math.round(sell / 1000) : null;
+    const netLots = net != null ? Math.round(net / 1000) : null;
+    el.title = "三大法人買賣超" + (dateLabel ? " " + dateLabel : "") +
+      (buyLots != null && sellLots != null
+        ? ("｜買 " + buyLots.toLocaleString("zh-Hant") + "／賣 " + sellLots.toLocaleString("zh-Hant") + " 張")
+        : "") +
+      (netLots != null ? ("｜淨 " + (netLots > 0 ? "+" : "") + netLots.toLocaleString("zh-Hant") + " 張") : "");
   }
 
   function paintWatchSessionTags(box, quotes, levels) {
@@ -2924,7 +2966,6 @@
           if (!mini) paintWatchLevelRows(box, levels);
           paintWatchSessionTags(box, watchLastQuotes, levels);
         });
-      if (mini) return;
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve(null), 15000, null)
         .then(function (chips) {
           if (gen !== paintWatchQuotes.gen || !chips) return;
@@ -2946,6 +2987,7 @@
         '<span class="watch-mini-top">' +
         '<span class="watch-mini-name" data-watch-name="' + idx + '">' + watchMiniNameHtml(item) + "</span>" +
         "</span>" +
+        watchNetBarHtml(idx) +
         '<span class="watch-mini-ops" data-watch-ops="' + idx + '" hidden></span>' +
         "</span>" +
         '<span class="watch-px watch-num watch-mini-px" data-watch-price="' + idx + '"><span class="note">…</span></span>' +
@@ -2978,7 +3020,9 @@
           '<button type="button" class="watch-link" data-open-watch="' + idx +
           '" title="' + esc(label) + '">' +
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
-          '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button></td>' +
+          '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
+          watchNetBarHtml(idx) +
+          "</td>" +
           '<td class="watch-col-price watch-pin watch-pin-2">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
@@ -3054,7 +3098,6 @@
           if (!mini) paintWatchLevelRows(box, levels || []);
           paintWatchSessionTags(box, watchLastQuotes, watchLastLevels);
         });
-      if (mini) return;
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve({ date: "", byCode: {} }), 15000, { date: "", byCode: {} })
         .then(function (chips) {
           if (gen !== renderWatch.gen) return;
@@ -3085,7 +3128,8 @@
       const foreignEl = box.querySelector('[data-watch-foreign="' + idx + '"]');
       const trustEl = box.querySelector('[data-watch-trust="' + idx + '"]');
       const dealerEl = box.querySelector('[data-watch-dealer="' + idx + '"]');
-      if (!lampEl && !foreignEl && !trustEl && !dealerEl) return;
+      const netBarEl = box.querySelector('[data-watch-netbar="' + idx + '"]');
+      if (!lampEl && !foreignEl && !trustEl && !dealerEl && !netBarEl) return;
       const code = String(item && item.code || "").toUpperCase();
       const row = code && byCode[code];
       const empty = function (el) {
@@ -3103,6 +3147,10 @@
         empty(foreignEl);
         empty(trustEl);
         empty(dealerEl);
+        if (netBarEl) {
+          netBarEl.hidden = true;
+          netBarEl.removeAttribute("title");
+        }
         return;
       }
       const net = row.instNet != null ? row.instNet : ((row.foreignNet || 0) + (row.trustNet || 0) + (row.dealerNet || 0));
@@ -3112,6 +3160,7 @@
         lampEl.textContent = lamp && lamp.label ? lamp.label : "—";
         lampEl.title = titleBase;
       }
+      paintWatchNetBar(netBarEl, row, dateLabel);
       [
         [foreignEl, row.foreignNet, "外資買賣超"],
         [trustEl, row.trustNet, "投信買賣超"],

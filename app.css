@@ -1210,6 +1210,35 @@ textarea { min-height: 120px; resize: vertical; }
   line-height: 1.25;
   color: inherit;
 }
+.watch-net-bar {
+  display: flex;
+  width: 100%;
+  max-width: 7.5em;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #1a222c;
+  flex: 0 0 auto;
+}
+.watch-net-bar[hidden] { display: none !important; }
+.watch-net-bar i {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+.watch-net-bar i.buy { background: #22c55e; }
+.watch-net-bar i.sell { background: #dc2626; }
+.watch-table .watch-name .watch-net-bar {
+  max-width: 6.5em;
+  margin-top: 5px;
+}
+.watch-table .watch-name .watch-link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
 .watch-mini-state {
   font-size: 12px;
   font-weight: 600;
