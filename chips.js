@@ -11,6 +11,7 @@
     { symbol: "^DJI", name: "道瓊", key: "dji" },
     { symbol: "^GSPC", name: "標普", key: "spx" },
     { symbol: "TXNIGHT", name: "台指期夜盤", key: "txnight", special: "txnight" },
+    { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
     { symbol: "AAPL", name: "蘋果", key: "aapl" },
     { symbol: "MSFT", name: "微軟", key: "msft" },
     { symbol: "AMD", name: "超微", key: "amd" },
