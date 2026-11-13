@@ -13,7 +13,7 @@
     { symbol: "TXNIGHT", name: "台指期夜盤", key: "txnight", special: "txnight" },
     { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
     { symbol: "AAPL", name: "蘋果", key: "aapl" },
-    { symbol: "MSFT", name: "微軟", key: "msft" },
+    { symbol: "MARGIN", name: "融資", key: "margin", special: "margin" },
     { symbol: "FLOWSHORT", name: "空單", key: "flowshort", special: "flowshort" },
     { symbol: "FLOWBUY", name: "外資買超", key: "flowbuy", special: "flowbuy" },
     { symbol: "FLOWSELL", name: "外資賣超", key: "flowsell", special: "flowsell" },
@@ -539,6 +539,26 @@
   async function usBoardOne(item) {
     const M = global.SJMarket;
     try {
+      if (item.special === "margin") {
+        const series = M && M.marginSeries
+          ? await M.marginSeries(10).catch(function () { return []; })
+          : [];
+        const last = series && series.length ? series[series.length - 1] : null;
+        const bal = last && last.balance != null ? last.balance : null;
+        const chgPct = last && last.chg != null ? last.chg * 100 : null;
+        return {
+          symbol: item.symbol,
+          name: item.name,
+          key: item.key,
+          core: !!item.core,
+          price: bal != null ? bal / 1e8 : null,
+          pct: chgPct,
+          ok: bal != null && isFinite(bal),
+          flow: "margin",
+          flowUnit: "億股",
+          meta: last || null
+        };
+      }
       if (item.special === "flowshort" || item.special === "flowbuy" || item.special === "flowsell") {
         const pack = await loadFlowBoardPack();
         if (item.special === "flowshort") {

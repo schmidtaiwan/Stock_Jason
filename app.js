@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 194;
+  const PAGE_BUILD = 195;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -5882,6 +5882,10 @@
         if (row.flow === "short") {
           priceTxt = Math.round(row.price).toLocaleString("zh-Hant");
           unitTxt = "口" + (row.pct == null ? "" : (" · " + (row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%"));
+          cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
+        } else if (row.flow === "margin") {
+          priceTxt = Number(row.price).toFixed(0);
+          unitTxt = "億股" + (row.pct == null ? "" : (" · " + (row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%"));
           cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
         } else if (row.flow === "buy") {
           priceTxt = (row.price > 0 ? "+" : "") + Number(row.price).toFixed(1);

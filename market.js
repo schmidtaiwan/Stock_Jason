@@ -6143,6 +6143,7 @@
     FLOW_SERIES: FLOW_SERIES,
     flowBars: flowBars,
     txForeignFutSeries: txForeignFutSeries,
+    marginSeries: marginSeries,
     stockDetail: stockDetail,
     stockDisclose: stockDisclose,
     stockNews: stockNews,
