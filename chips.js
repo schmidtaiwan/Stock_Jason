@@ -14,13 +14,57 @@
     { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
     { symbol: "AAPL", name: "蘋果", key: "aapl" },
     { symbol: "MSFT", name: "微軟", key: "msft" },
-    { symbol: "AMD", name: "超微", key: "amd" },
-    { symbol: "META", name: "Meta", key: "meta" },
-    { symbol: "GOOGL", name: "Google", key: "googl" },
-    { symbol: "AMZN", name: "亞馬遜", key: "amzn" },
+    { symbol: "FLOWSHORT", name: "空單", key: "flowshort", special: "flowshort" },
+    { symbol: "FLOWBUY", name: "外資買超", key: "flowbuy", special: "flowbuy" },
+    { symbol: "FLOWSELL", name: "外資賣超", key: "flowsell", special: "flowsell" },
     { symbol: "QQQ", name: "QQQ", key: "qqq" },
     { symbol: "SPY", name: "SPY", key: "spy" }
   ];
+
+  let flowBoardPack = null;
+  let flowBoardAt = 0;
+  let flowBoardInflight = null;
+
+  async function loadFlowBoardPack() {
+    if (flowBoardPack && (Date.now() - flowBoardAt) < 45000) return flowBoardPack;
+    if (flowBoardInflight) return flowBoardInflight;
+    flowBoardInflight = (async function () {
+      const M = global.SJMarket;
+      const pack = { shortOi: null, buyYi: null, sellYi: null, shortDelta: null, date: "" };
+      if (!M) return pack;
+      try {
+        const oi = M.txForeignOiLatest ? await M.txForeignOiLatest().catch(function () { return null; }) : null;
+        const spot = M.foreignSpotDay ? await M.foreignSpotDay().catch(function () { return null; }) : null;
+        if (oi && oi.shortOi != null) {
+          pack.shortOi = oi.shortOi;
+          pack.date = oi.date || pack.date;
+          if (M.txForeignFutSeries) {
+            const series = await M.txForeignFutSeries(8).catch(function () { return []; });
+            if (series && series.length >= 2) {
+              const last = series[series.length - 1];
+              const prev = series[series.length - 2];
+              if (last && prev && prev.shortOi > 0) {
+                pack.shortDelta = (last.shortOi / prev.shortOi - 1) * 100;
+              }
+            }
+          }
+        }
+        if (spot) {
+          if (spot.buyYi != null) pack.buyYi = spot.buyYi;
+          if (spot.sellYi != null) pack.sellYi = spot.sellYi;
+          pack.date = spot.date || pack.date;
+        }
+      } catch (err) { /* ignore */ }
+      flowBoardPack = pack;
+      flowBoardAt = Date.now();
+      return pack;
+    })();
+    try {
+      return await flowBoardInflight;
+    } finally {
+      flowBoardInflight = null;
+    }
+  }
 
   function num(v) {
     if (v == null || v === "") return null;
@@ -495,6 +539,49 @@
   async function usBoardOne(item) {
     const M = global.SJMarket;
     try {
+      if (item.special === "flowshort" || item.special === "flowbuy" || item.special === "flowsell") {
+        const pack = await loadFlowBoardPack();
+        if (item.special === "flowshort") {
+          return {
+            symbol: item.symbol,
+            name: item.name,
+            key: item.key,
+            core: !!item.core,
+            price: pack.shortOi,
+            pct: pack.shortDelta,
+            ok: pack.shortOi != null && isFinite(pack.shortOi),
+            flow: "short",
+            flowUnit: "口",
+            meta: pack
+          };
+        }
+        if (item.special === "flowbuy") {
+          return {
+            symbol: item.symbol,
+            name: item.name,
+            key: item.key,
+            core: !!item.core,
+            price: pack.buyYi,
+            pct: null,
+            ok: pack.buyYi != null && isFinite(pack.buyYi),
+            flow: "buy",
+            flowUnit: "億",
+            meta: pack
+          };
+        }
+        return {
+          symbol: item.symbol,
+          name: item.name,
+          key: item.key,
+          core: !!item.core,
+          price: pack.sellYi,
+          pct: null,
+          ok: pack.sellYi != null && isFinite(pack.sellYi),
+          flow: "sell",
+          flowUnit: "億",
+          meta: pack
+        };
+      }
       if (item.special === "txnight") {
         const night = M && typeof M.txNightLatest === "function"
           ? await M.txNightLatest().catch(function () { return null; })

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 193;
+  const PAGE_BUILD = 194;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -5874,6 +5874,27 @@
       if (!row.ok) {
         return '<div class="us-cell' + coreCls + '" data-us-key="' + esc(row.key || "") +
           '"><span>' + esc(row.name) + '</span><strong>—</strong></div>';
+      }
+      if (row.flow) {
+        let priceTxt = "—";
+        let unitTxt = row.flowUnit || "";
+        let cls = "";
+        if (row.flow === "short") {
+          priceTxt = Math.round(row.price).toLocaleString("zh-Hant");
+          unitTxt = "口" + (row.pct == null ? "" : (" · " + (row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%"));
+          cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
+        } else if (row.flow === "buy") {
+          priceTxt = (row.price > 0 ? "+" : "") + Number(row.price).toFixed(1);
+          unitTxt = "億";
+          cls = "up";
+        } else if (row.flow === "sell") {
+          priceTxt = (row.price > 0 ? "+" : "") + Number(row.price).toFixed(1);
+          unitTxt = "億";
+          cls = "down";
+        }
+        return '<div class="us-cell us-cell-flow' + coreCls + '" data-us-key="' + esc(row.key || "") +
+          '"><span>' + esc(row.name) + '</span><strong class="' + cls + '">' +
+          priceTxt + '</strong><small class="' + cls + '">' + esc(unitTxt) + "</small></div>";
       }
       const cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
       let priceTxt = fmt(row.price);
