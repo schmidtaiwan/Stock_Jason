@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 150;
+  const PAGE_BUILD = 151;
   const PAGE_DATE = "2026-11-13";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -21,6 +21,8 @@
   let chartSessionGen = 0;
   let watchLastQuotes = [];
   let watchLastLevels = [];
+  let watchLastChips = null;
+  const watchQuoteCache = Object.create(null);
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -3086,6 +3088,57 @@
     });
   }
 
+  function watchCodeOf(item) {
+    if (!item) return "";
+    const c = String(item.code || "").trim().toUpperCase();
+    if (c) return c;
+    const sec = String(item.secid || "");
+    const m = sec.match(/(?:^|[._])(\d{4,6})(?:\.|$)/i) || sec.match(/(\d{4,6})/);
+    return m ? String(m[1]).toUpperCase() : "";
+  }
+
+  function rememberWatchQuote(idx, m) {
+    const item = book.watch[idx];
+    const code = watchCodeOf(item);
+    const good = m && m.price != null && isFinite(m.price) && Number(m.price) > 0;
+    if (good) {
+      if (code) watchQuoteCache[code] = m;
+      return m;
+    }
+    if (code && watchQuoteCache[code]) return watchQuoteCache[code];
+    if (watchLastQuotes[idx] && watchLastQuotes[idx].price > 0) return watchLastQuotes[idx];
+    return m;
+  }
+
+  function watchQuotesFromCache() {
+    return book.watch.map(function (item, idx) {
+      const code = watchCodeOf(item);
+      return (code && watchQuoteCache[code]) || watchLastQuotes[idx] || null;
+    });
+  }
+
+  function applyCachedWatchQuotes(box) {
+    if (!box || !book.watch.length) return false;
+    let any = false;
+    book.watch.forEach(function (item, idx) {
+      const code = watchCodeOf(item);
+      const m = (code && watchQuoteCache[code]) || watchLastQuotes[idx] || null;
+      if (m && m.price != null && isFinite(m.price) && Number(m.price) > 0) {
+        applyWatchQuoteRow(box, m, idx);
+        any = true;
+      }
+    });
+    if (!isWatchMini() && watchLastLevels && watchLastLevels.length) {
+      paintWatchLevelRows(box, watchLastLevels);
+    }
+    if (watchLastChips) paintWatchChipRows(box, watchLastChips);
+    if (any) {
+      paintWatchSessionTags(box, watchQuotesFromCache(), watchLastLevels);
+      paintWatchTotal();
+    }
+    return any;
+  }
+
   // 先畫報價，籌碼／突支背景補；避免被慢請求卡住只顯示「…」
   async function paintWatchQuotes() {
     const box = $("watch-list");
@@ -3100,19 +3153,16 @@
       const rows = await withWatchTimeout(M.watchBoard(book.watch), 20000, null);
       if (gen !== paintWatchQuotes.gen) return;
       if (!rows) {
-        const miniPx = isWatchMini() ? " watch-mini-px" : "";
-        box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
-          cell.className = "watch-px watch-num" + miniPx;
-          cell.textContent = "—";
-        });
-        paintWatchTotal();
+        // 逾時／失敗：保留畫面上次報價，不要改成 —
+        applyCachedWatchQuotes(box);
         return;
       }
-      watchLastQuotes = rows;
-      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
+      const merged = rows.map(function (m, idx) { return rememberWatchQuote(idx, m); });
+      watchLastQuotes = merged;
+      merged.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
-      checkWatchAlertsFromRows(book.watch, rows);
-      paintWatchSessionTags(box, rows, watchLastLevels);
+      checkWatchAlertsFromRows(book.watch, merged);
+      paintWatchSessionTags(box, merged, watchLastLevels);
       withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve(null), 20000, null)
         .then(function (levels) {
           if (gen !== paintWatchQuotes.gen || !levels) return;
@@ -3123,11 +3173,12 @@
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve(null), 15000, null)
         .then(function (chips) {
           if (gen !== paintWatchQuotes.gen || !chips) return;
+          watchLastChips = chips;
           paintWatchChipRows(box, chips);
         });
     } catch (err) {
       if (gen !== paintWatchQuotes.gen) return;
-      paintWatchTotal();
+      applyCachedWatchQuotes(box);
     }
   }
 
@@ -3225,26 +3276,22 @@
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
-    watchLastQuotes = [];
-    watchLastLevels = [];
     if (mini) renderWatchMini(box);
     else renderWatchFull(box);
+    // 切極簡／進出個股重建時先套用上次報價，避免整排變「…」
+    applyCachedWatchQuotes(box);
     withWatchTimeout(M.watchBoard(book.watch), 20000, null).then(function (rows) {
       if (gen !== renderWatch.gen) return;
       if (!rows) {
-        const miniPx = isWatchMini() ? " watch-mini-px" : "";
-        box.querySelectorAll("[data-watch-price]").forEach(function (cell) {
-          cell.className = "watch-px watch-num" + miniPx;
-          cell.textContent = "—";
-        });
-        paintWatchTotal();
+        applyCachedWatchQuotes(box);
         return;
       }
-      watchLastQuotes = rows;
-      rows.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
+      const merged = rows.map(function (m, idx) { return rememberWatchQuote(idx, m); });
+      watchLastQuotes = merged;
+      merged.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
       paintWatchTotal();
-      checkWatchAlertsFromRows(book.watch, rows);
-      paintWatchSessionTags(box, rows, watchLastLevels);
+      checkWatchAlertsFromRows(book.watch, merged);
+      paintWatchSessionTags(box, merged, watchLastLevels);
       withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve([]), 20000, [])
         .then(function (levels) {
           if (gen !== renderWatch.gen) return;
@@ -3255,7 +3302,8 @@
       withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve({ date: "", byCode: {} }), 15000, { date: "", byCode: {} })
         .then(function (chips) {
           if (gen !== renderWatch.gen) return;
-          paintWatchChipRows(box, chips || { date: "", byCode: {} });
+          watchLastChips = chips || { date: "", byCode: {} };
+          paintWatchChipRows(box, watchLastChips);
         });
     });
   }
