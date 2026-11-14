@@ -1248,37 +1248,11 @@ textarea { min-height: 120px; resize: vertical; }
   outline: none;
   color: var(--accent);
 }
-.watch-pnl-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin: 0;
-  padding: 2px 6px;
-  min-height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 11px;
-  user-select: none;
-  cursor: pointer;
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-.watch-pnl-toggle input {
-  width: 12px;
-  height: 12px;
-  min-height: 0;
-  margin: 0;
-  accent-color: var(--accent);
-}
-.watch-pnl-toggle:has(input:checked) {
-  border-color: var(--accent);
-  color: var(--ink);
-}
 #watch-board.watch-hide-pnl .watch-total,
 #watch-board.watch-hide-pnl .watch-col-pnl {
   display: none !important;
 }
+.watch-toolbar #watch-pnl-toggle,
 .watch-toolbar #watch-privacy-toggle,
 .watch-toolbar #watch-wake-toggle,
 .watch-toolbar #watch-open-add {
@@ -1289,6 +1263,7 @@ textarea { min-height: 120px; resize: vertical; }
   font-size: 11px;
   white-space: nowrap;
 }
+#watch-pnl-toggle[aria-pressed="true"],
 #watch-privacy-toggle[aria-pressed="true"],
 #watch-wake-toggle[aria-pressed="true"] {
   border-color: var(--accent);

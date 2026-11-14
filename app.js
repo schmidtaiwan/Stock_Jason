@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 210;
+  const PAGE_BUILD = 211;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 500;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -329,8 +329,12 @@
 
   function syncWatchPnlUi() {
     const on = isWatchShowPnl();
-    const cb = $("watch-pnl-toggle");
-    if (cb) cb.checked = on;
+    const btn = $("watch-pnl-toggle");
+    if (btn) {
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.textContent = "損益";
+      btn.title = on ? "隱藏列損益與合計" : "顯示列損益與合計";
+    }
     const board = $("watch-board");
     if (board) board.classList.toggle("watch-hide-pnl", !on);
     const total = $("watch-total");
@@ -1313,8 +1317,7 @@
   }
 
   function toggleWatchShowPnl() {
-    const cb = $("watch-pnl-toggle");
-    book.watchShowPnl = !!(cb && cb.checked);
+    book.watchShowPnl = !isWatchShowPnl();
     scheduleSave();
     syncWatchPnlUi();
     if (book.watchShowPnl) paintWatchTotal();
@@ -5848,7 +5851,7 @@
     scheduleSave();
   });
   if ($("watch-pnl-toggle")) {
-    $("watch-pnl-toggle").addEventListener("change", toggleWatchShowPnl);
+    $("watch-pnl-toggle").addEventListener("click", toggleWatchShowPnl);
   }
   if ($("watch-group-select")) {
     $("watch-group-select").addEventListener("change", function () {
