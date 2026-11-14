@@ -922,6 +922,23 @@ canvas {
   font-size: 11px;
   vertical-align: middle;
 }
+.tape-brief-preamble {
+  margin: 6px 0 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text, #e8eef7);
+}
+.tape-brief-list li {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.tape-brief-table td {
+  vertical-align: top;
+  text-align: left !important;
+}
+.tape-brief-table th {
+  text-align: left !important;
+}
 .tape-sample-toolbar {
   display: flex;
   flex-wrap: wrap;

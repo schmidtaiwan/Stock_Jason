@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 252;
+  const PAGE_BUILD = 253;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -5010,18 +5010,51 @@
         '<div class="tape-sample-toolbar">' +
         '<button type="button" class="secondary tape-copy-btn" data-copy-tape="tsv">複製表格（Excel）</button>' +
         '<button type="button" class="ghost tape-copy-btn" data-copy-tape="csv">複製 CSV</button>' +
+        '<button type="button" class="ghost tape-copy-btn" data-copy-tape="brief">複製全文分析</button>' +
         '<span class="fine" data-copy-tape-status></span></div>' +
         '<div class="tape-sample-wrap"><table class="tape-sample-table">' +
         "<thead><tr><th>#</th><th>時間</th><th>成交</th><th>張</th><th>向</th></tr></thead>" +
         "<tbody>" + tickRows + "</tbody></table></div>" +
         '<p class="fine">也可長按／拖曳選取上表文字後複製。</p></details>'
       : "";
+    const brief = pack.brief || null;
+    const briefOpen = !!(box.querySelector("[data-tape-brief-fold]") &&
+      box.querySelector("[data-tape-brief-fold]").open);
+    let briefHtml = "";
+    if (brief) {
+      const narr = (brief.narratives || []).map(function (n) {
+        return "<li><strong>" + esc(n.title) + "</strong><br><span class=\"fine\">" +
+          esc(n.body) + "</span></li>";
+      }).join("");
+      const tl = (brief.timeline || []).map(function (r) {
+        return "<tr><td>" + esc(r.time) + "</td><td>" + esc(r.price) +
+          "</td><td>" + esc(r.volume) + "</td><td><strong>" + esc(r.force) +
+          "</strong><br><span class=\"fine\">" + esc(r.intent) + "</span></td></tr>";
+      }).join("");
+      const ver = (brief.verify || []).map(function (line) {
+        return "<li>" + esc(line) + "</li>";
+      }).join("");
+      briefHtml =
+        '<details class="session-subfold" data-tape-brief-fold' +
+        (briefOpen || !box.querySelector("[data-tape-brief-fold]") ? " open" : "") + ">" +
+        "<summary>盤中行為推演與時段對照</summary>" +
+        '<p class="tape-brief-preamble">' + esc(brief.preamble || "") + "</p>" +
+        (narr ? "<h4>各類參與者推演</h4><ul class=\"session-list tape-brief-list\">" + narr + "</ul>" : "") +
+        (tl
+          ? "<h4>關鍵時段對照</h4><div class=\"tape-sample-wrap\"><table class=\"tape-sample-table tape-brief-table\">" +
+            "<thead><tr><th>時間</th><th>價格</th><th>量能</th><th>推測主導</th></tr></thead><tbody>" +
+            tl + "</tbody></table></div>"
+          : "") +
+        (ver ? "<h4>如何驗證</h4><ul class=\"session-list\">" + ver + "</ul>" : "") +
+        "</details>";
+    }
     box.innerHTML = '<article class="card stock-actors-card">' +
       '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
       '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
       '<span class="tag ' + ((pack.actors[0] && pack.actors[0].tone) || "") + '">' + esc(pack.bias || "") + "</span>" +
       '<span class="fine">樣本 ' + sampleN + " 筆" + (wantFubon ? " · 富邦" : "") + dayTag + "</span></summary>" +
       '<div class="session-fold-body">' +
+      briefHtml +
       sampleFold +
       "<h4>可能活躍者</h4><ul class=\"stat-list actor-list\">" + rows + "</ul>" +
       (sig ? "<h4>即時訊號</h4><ul class=\"session-list\">" + sig + "</ul>" : "") +
@@ -5038,19 +5071,60 @@
         ev.stopPropagation();
         const mode = btn.getAttribute("data-copy-tape") || "tsv";
         const ticksNow = Array.isArray(stockLiveTape) ? stockLiveTape.slice() : [];
-        let text = tapeSampleTsv(ticksNow, meta);
-        if (mode === "csv") {
-          text = text.split("\n").map(function (line) {
-            return line.split("\t").map(function (cell) {
-              const c = String(cell == null ? "" : cell);
-              return /["\n,]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
-            }).join(",");
-          }).join("\r\n");
+        let text = "";
+        if (mode === "brief") {
+          const b = pack.brief;
+          if (!b) {
+            flashStatus("尚無推演文案可複製");
+            return;
+          }
+          const parts = [];
+          parts.push("【盤中足跡行為推演】");
+          if (state.stock) {
+            parts.push((state.stock.name || "") + " " + (state.stock.code || "") +
+              (meta.tapeDate ? (" · " + meta.tapeDate) : ""));
+          }
+          parts.push("");
+          parts.push(b.preamble || "");
+          parts.push("");
+          parts.push("■ 各類參與者推演");
+          (b.narratives || []).forEach(function (n) {
+            parts.push("・" + n.title);
+            parts.push(n.body);
+            parts.push("");
+          });
+          parts.push("■ 關鍵時段對照");
+          parts.push(["時間", "價格", "量能", "推測主導", "意圖"].join("\t"));
+          (b.timeline || []).forEach(function (r) {
+            parts.push([r.time, r.price, r.volume, r.force, r.intent].join("\t"));
+          });
+          parts.push("");
+          parts.push("■ 如何驗證");
+          (b.verify || []).forEach(function (line, i) {
+            parts.push((i + 1) + ". " + line);
+          });
+          parts.push("");
+          parts.push(pack.note || "");
+          text = parts.join("\n");
+        } else {
+          text = tapeSampleTsv(ticksNow, meta);
+          if (mode === "csv") {
+            text = text.split("\n").map(function (line) {
+              return line.split("\t").map(function (cell) {
+                const c = String(cell == null ? "" : cell);
+                return /["\n,]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
+              }).join(",");
+            }).join("\r\n");
+          }
         }
         const status = box.querySelector("[data-copy-tape-status]");
         copyTextToClipboard(text).then(function () {
-          if (status) status.textContent = "已複製 " + ticksNow.length + " 筆";
-          flashStatus("足跡樣本已複製（可貼到 Excel／記事本）");
+          if (status) {
+            status.textContent = mode === "brief"
+              ? "已複製分析全文"
+              : ("已複製 " + ticksNow.length + " 筆");
+          }
+          flashStatus(mode === "brief" ? "行為推演已複製" : "足跡樣本已複製（可貼到 Excel／記事本）");
           setTimeout(function () {
             if (status && status.textContent.indexOf("已複製") === 0) status.textContent = "";
           }, 2500);

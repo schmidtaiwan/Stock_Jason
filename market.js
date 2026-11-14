@@ -3683,6 +3683,12 @@
       ? ("偏 " + lead.name)
       : "足跡不明顯";
 
+    const brief = buildTapeSessionBrief(ticks, ctx, {
+      actors: actors,
+      topLots: topLots,
+      vwapHint: null
+    });
+
     return {
       ok: true,
       sample: n,
@@ -3690,7 +3696,275 @@
       actors: actors,
       signals: signals,
       topLots: topLots.slice(0, 5),
+      brief: brief,
       note: "依單筆張數規律、成交時段、價位推升／壓低近似判讀；非真實分點歸戶，規則試算非投資建議。"
+    };
+  }
+
+  /**
+   * 類似盤後敘事分析：時段對照、參與者推演、驗證建議。
+   * 僅行為推論，非歸戶。
+   */
+  function buildTapeSessionBrief(ticks, ctx, pack) {
+    ctx = ctx || {};
+    pack = pack || {};
+    if (!ticks || ticks.length < 4) return null;
+
+    let sumPV = 0;
+    let sumV = 0;
+    let hi = -Infinity;
+    let lo = Infinity;
+    ticks.forEach(function (t) {
+      sumPV += t.price * t.lots;
+      sumV += t.lots;
+      if (t.price > hi) hi = t.price;
+      if (t.price < lo) lo = t.price;
+    });
+    const vwap = sumV > 0 ? sumPV / sumV : null;
+    const openPx = ticks[0].price;
+    const closePx = ticks[ticks.length - 1].price;
+    const avgLot = sumV / ticks.length;
+    const bigThreshold = Math.max(80, avgLot * 2.5);
+
+    function sliceWindow(h0, m0, h1, m1) {
+      return ticks.filter(function (t) {
+        return inTapeWindow(t.sec, h0, m0, h1, m1);
+      });
+    }
+
+    function describeSlice(seg) {
+      if (!seg || seg.length < 2) return null;
+      const p0 = seg[0].price;
+      const p1 = seg[seg.length - 1].price;
+      const sHi = seg.reduce(function (m, t) { return Math.max(m, t.price); }, -Infinity);
+      const sLo = seg.reduce(function (m, t) { return Math.min(m, t.price); }, Infinity);
+      const lots = seg.map(function (t) { return t.lots; }).sort(function (a, b) { return b - a; });
+      const maxLot = lots[0];
+      const top3 = lots.slice(0, 3).map(function (x) {
+        return (Math.round(x * 10) / 10);
+      });
+      const bigN = seg.filter(function (t) { return t.lots >= bigThreshold; }).length;
+      const midN = seg.filter(function (t) {
+        return t.lots >= 30 && t.lots < bigThreshold;
+      }).length;
+      const smallN = seg.filter(function (t) { return t.lots > 0 && t.lots < 20; }).length;
+      const buyN = seg.filter(function (t) { return t.side > 0; }).length;
+      const sellN = seg.filter(function (t) { return t.side < 0; }).length;
+      const vol = seg.reduce(function (s, t) { return s + t.lots; }, 0);
+      return {
+        n: seg.length,
+        p0: p0,
+        p1: p1,
+        sHi: sHi,
+        sLo: sLo,
+        maxLot: maxLot,
+        top3: top3,
+        bigN: bigN,
+        midN: midN,
+        smallN: smallN,
+        buyN: buyN,
+        sellN: sellN,
+        vol: vol,
+        up: p1 > p0 + 1e-9,
+        down: p1 < p0 - 1e-9
+      };
+    }
+
+    function fmtPxLocal(p) {
+      if (!(p > 0)) return "—";
+      if (p >= 100) return String(Math.round(p * 10) / 10);
+      if (p >= 10) return String(Math.round(p * 100) / 100);
+      return String(Math.round(p * 1000) / 1000);
+    }
+
+    function guessForce(d, label) {
+      if (!d) return { force: "不明", intent: "樣本不足" };
+      const rise = d.up && (d.sHi - d.p0) / d.p0 > 0.01;
+      const dump = d.down || (d.sellN > d.buyN * 1.2);
+      const bigLift = d.bigN >= 2 && rise;
+      const crash = d.bigN >= 2 && d.down && d.maxLot >= bigThreshold;
+      const grind = d.midN >= Math.max(3, d.n * 0.35) && Math.abs(d.p1 - d.p0) / d.p0 < 0.02;
+      const retail = d.smallN >= d.n * 0.45 && d.bigN === 0;
+
+      if (label.indexOf("09:00") === 0 && bigLift) {
+        return {
+          force: "隔日沖／短線主力",
+          intent: "開盤點火拉高，營造強勢以利後續出貨或誘多。"
+        };
+      }
+      if ((label.indexOf("10:") === 0 || label.indexOf("11:") === 0) && crash) {
+        return {
+          force: "當沖空單／停損盤",
+          intent: "帶量下殺（或摜破均價／關卡），觸發追殺與停損。"
+        };
+      }
+      if (label.indexOf("11:5") === 0 || label.indexOf("12:0") === 0) {
+        if (crash || (d.bigN >= 1 && d.down)) {
+          return {
+            force: "當沖回補／逢低買盤",
+            intent: "相對低點爆量換手；空單停利與低接交戰。"
+          };
+        }
+      }
+      if ((label.indexOf("12:") === 0 || label.indexOf("13:0") === 0 || label.indexOf("13:1") === 0) && grind) {
+        return {
+          force: "法人／實戶低接",
+          intent: "中小單穩步承接，降低市場衝擊。"
+        };
+      }
+      if (label.indexOf("13:2") === 0 || label.indexOf("13:3") === 0) {
+        if (d.bigN >= 1 && (d.up || d.maxLot >= bigThreshold)) {
+          return {
+            force: "機構法人作價／護盤",
+            intent: "尾盤大單急拉或守關，常見作帳／護盤特徵。"
+          };
+        }
+      }
+      if (retail) {
+        return {
+          force: "散戶為主",
+          intent: "大戶退場，零碎單承接或停損。"
+        };
+      }
+      if (bigLift) {
+        return { force: "短線多頭主力", intent: "大單推升。" };
+      }
+      if (crash) {
+        return { force: "短線空頭／停損", intent: "大單壓低。" };
+      }
+      if (grind) {
+        return { force: "法人／實戶", intent: "穩步進出。" };
+      }
+      return {
+        force: dump ? "偏賣壓" : (rise ? "偏買盤" : "觀望換手"),
+        intent: "量能特徵未達強烈門檻。"
+      };
+    }
+
+    const windows = [
+      { label: "09:00–09:32", h0: 9, m0: 0, h1: 9, m1: 32 },
+      { label: "09:32–10:20", h0: 9, m0: 32, h1: 10, m1: 20 },
+      { label: "10:18–10:40", h0: 10, m0: 18, h1: 10, m1: 40 },
+      { label: "11:30–12:10", h0: 11, m0: 30, h1: 12, m1: 10 },
+      { label: "12:04–13:10", h0: 12, m0: 4, h1: 13, m1: 10 },
+      { label: "13:20–13:30", h0: 13, m0: 20, h1: 13, m1: 30 }
+    ];
+
+    const timeline = [];
+    windows.forEach(function (w) {
+      const seg = sliceWindow(w.h0, w.m0, w.h1, w.m1);
+      const d = describeSlice(seg);
+      if (!d || d.n < 2) return;
+      const g = guessForce(d, w.label);
+      const lotHint = d.top3.length
+        ? ("最大 " + d.top3.map(function (x) { return x + "張"; }).join("／") +
+          (d.bigN ? "，大單 " + d.bigN + " 筆" : ""))
+        : "—";
+      timeline.push({
+        time: w.label,
+        price: fmtPxLocal(d.p0) + " → " + fmtPxLocal(d.p1) +
+          "（高 " + fmtPxLocal(d.sHi) + "／低 " + fmtPxLocal(d.sLo) + "）",
+        volume: lotHint,
+        force: g.force,
+        intent: g.intent,
+        n: d.n
+      });
+    });
+
+    const narratives = [];
+    const openSeg = describeSlice(sliceWindow(9, 0, 9, 32));
+    if (openSeg && openSeg.bigN >= 2 && openSeg.up) {
+      narratives.push({
+        title: "隔日沖／短線主力（開盤衝高）",
+        body: "開盤附近由 " + fmtPxLocal(openSeg.p0) + " 推至區間高 " +
+          fmtPxLocal(openSeg.sHi) + "，出現 " + openSeg.bigN +
+          " 筆偏大單（最大約 " + Math.round(openSeg.maxLot) +
+          " 張）。若隨後轉賣壓，符合「拉高誘多／倒貨」常見節奏。"
+      });
+    }
+    const midCrash = describeSlice(sliceWindow(10, 0, 11, 0));
+    if (midCrash && midCrash.bigN >= 1 && midCrash.down) {
+      const vwapTxt = vwap ? ("（當日均價約 " + fmtPxLocal(vwap) + "）") : "";
+      narratives.push({
+        title: "當沖客（帶量下殺／破關）",
+        body: "10 點前後價格由 " + fmtPxLocal(midCrash.p0) + " 移向 " +
+          fmtPxLocal(midCrash.p1) + vwapTxt + "，大單 " + midCrash.bigN +
+          " 筆、最大約 " + Math.round(midCrash.maxLot) +
+          " 張，偏當沖空單追殺或多方停損潮。"
+      });
+    }
+    const noon = describeSlice(sliceWindow(11, 40, 12, 20));
+    if (noon && noon.n >= 3 && (noon.bigN >= 1 || noon.down)) {
+      narratives.push({
+        title: "底部換手（當沖回補／低接）",
+        body: "近午間低檔區（低 " + fmtPxLocal(noon.sLo) + "）出現放量換手，最大約 " +
+          Math.round(noon.maxLot) + " 張，常見空單停利與逢低買盤交會。"
+      });
+    }
+    const pm = describeSlice(sliceWindow(12, 0, 13, 15));
+    if (pm && pm.midN >= 3 && Math.abs(pm.p1 - pm.p0) / pm.p0 < 0.025) {
+      narratives.push({
+        title: "法人／實戶（盤中穩步承接）",
+        body: "午盤後價格於 " + fmtPxLocal(pm.sLo) + "–" + fmtPxLocal(pm.sHi) +
+          " 緩步移動，中單偏多（約 " + pm.midN + " 筆），較像降低衝擊的分批進出。"
+      });
+    }
+    const closeSeg = describeSlice(sliceWindow(13, 15, 13, 30));
+    if (closeSeg && closeSeg.bigN >= 1) {
+      narratives.push({
+        title: "尾盤大單（作價／護盤嫌疑）",
+        body: "尾盤最大約 " + Math.round(closeSeg.maxLot) + " 張，價格 " +
+          fmtPxLocal(closeSeg.p0) + " → " + fmtPxLocal(closeSeg.p1) +
+          "。最後一盤急拉／急殺常帶有作帳或守關意圖，需盤後法人數據驗證。"
+      });
+    }
+    const smallShare = ticks.filter(function (t) { return t.lots > 0 && t.lots <= 10; }).length / ticks.length;
+    if (smallShare >= 0.25) {
+      narratives.push({
+        title: "散戶痕跡（小單穿插）",
+        body: "約 " + Math.round(smallShare * 100) +
+          "% 筆數為偏小單（≤10 張），多出現在大戶退場後的橫盤或高檔盤跌，屬零星追價／停損。"
+      });
+    }
+    if (!narratives.length) {
+      narratives.push({
+        title: "綜合",
+        body: "樣本可見價量變化，但尚未形成強烈「開盤拉抬／摜破／尾盤作價」等典型段落；請搭配下方時段表觀察。"
+      });
+    }
+
+    const preamble =
+      "單憑分時成交明細無法確認特定外資、投信或券商分點身分；僅能依「單筆張數（大單 vs 小單）」與「時段價量慣性」推敲當沖、隔日沖、法人與散戶痕跡。" +
+      "明細通常只有時間、價格、張數與漲跌方向，不含下單券商。" +
+      (vwap ? (" 本段估算均價（VWAP）約 " + fmtPxLocal(vwap) + " 元。") : "") +
+      " 區間約 " + fmtPxLocal(lo) + "–" + fmtPxLocal(hi) +
+      "，開 " + fmtPxLocal(openPx) + " → 末 " + fmtPxLocal(closePx) + "。";
+
+    const verify = [
+      "三大法人買賣超日報：核對低接段與尾盤大單是否對得上外資／投信實際買賣超。",
+      "券商分點進出：查買超／賣超前列分點，驗證開盤衝高是否為隔日沖券商倒貨。",
+      "當沖交易統計：若當沖占比偏高且損益偏虧，早盤追價多方可能在急殺段被洗。"
+    ];
+
+    // 活躍者補強敘事
+    (pack.actors || []).filter(function (a) { return a && a.active; }).slice(0, 3).forEach(function (a) {
+      if (narratives.some(function (n) { return n.title.indexOf(a.name) >= 0; })) return;
+      narratives.push({
+        title: a.name + "（評級 " + a.level + "）",
+        body: a.detail || "特徵觸發。"
+      });
+    });
+
+    return {
+      preamble: preamble,
+      vwap: vwap,
+      hi: hi,
+      lo: lo,
+      open: openPx,
+      close: closePx,
+      narratives: narratives,
+      timeline: timeline,
+      verify: verify
     };
   }
 
