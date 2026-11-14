@@ -2893,12 +2893,19 @@
     return D;
   }
 
+  function fubonLiveBridgeApi() {
+    const B = global.SJLiveBridge;
+    if (!B || !B.canUse || !B.canUse()) return null;
+    if (!B.readFubonLive) return null;
+    return B;
+  }
+
   const FUBON_DRIVE_MAX_AGE_MS = 60_000;
   const FUBON_DRIVE_SEED_MAX_AGE_MS = 30 * 60_000;
   let fubonDriveSnap = null;
   let fubonDriveReadAt = 0;
 
-  function slimFubonQuote(q) {
+  function slimFubonQuote(q, sourceTag) {
     if (!q || !(q.price > 0)) return null;
     return {
       code: q.code || "",
@@ -2915,23 +2922,24 @@
       volumeLots: q.volumeLots,
       asOf: q.asOf,
       tradeTime: q.asOf || "",
-      source: "fubon-drive"
+      source: sourceTag || "fubon-drive"
     };
   }
 
-  function applyFubonDriveSnap(snap, preferAgeMs) {
+  function applyFubonDriveSnap(snap, preferAgeMs, sourceTag) {
     if (!snap || !snap.byCode || typeof snap.byCode !== "object") return 0;
     const age = snap.at != null ? Date.now() - Number(snap.at) : Infinity;
     if (!(age >= 0) || age > (preferAgeMs != null ? preferAgeMs : FUBON_DRIVE_MAX_AGE_MS)) return 0;
     const cacheAt = Number(snap.at) || Date.now();
+    const tag = sourceTag || "fubon-drive";
     let n = 0;
     Object.keys(snap.byCode).forEach(function (code) {
       const id = String(code || "").toUpperCase();
-      const q = slimFubonQuote(snap.byCode[code]);
+      const q = slimFubonQuote(snap.byCode[code], tag);
       if (!id || !q) return;
       q.code = id;
       const hit = misQuoteCache.get(id);
-      // 富邦雲端較新才覆寫；本機剛抓的 MIS／富邦不覆蓋
+      // 富邦橋較新才覆寫；本機剛抓的 MIS／富邦不覆蓋
       if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
       if (hit && hit.fromFubonDrive && hit.at >= cacheAt) return;
       misQuoteCache.set(id, { at: cacheAt, quote: q, fromDrive: true, fromFubonDrive: true });
@@ -2943,23 +2951,43 @@
 
   async function hydrateFubonFromDrive(needIds, opts) {
     opts = opts || {};
-    const D = fubonDriveApi();
-    if (!D || !(needIds && needIds.length)) return 0;
+    if (!(needIds && needIds.length)) return 0;
     const now = Date.now();
     if (!opts.force && now - fubonDriveReadAt < 5000 && fubonDriveSnap) {
       return applyFubonDriveSnap(fubonDriveSnap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS);
     }
     fubonDriveReadAt = now;
+
+    // 優先 Tailscale Live Bridge，其次 Google Drive
+    const B = fubonLiveBridgeApi();
+    if (B) {
+      try {
+        const snap = await B.readFubonLive();
+        if (snap) {
+          return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS, "fubon-tailscale");
+        }
+      } catch (err) { /* fall through */ }
+    }
+
+    const D = fubonDriveApi();
+    if (!D) return 0;
     try {
       const snap = await D.readFubonLive();
       if (!snap) return 0;
-      return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS);
+      return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS, "fubon-drive");
     } catch (err) {
       return 0;
     }
   }
 
   async function fetchFubonTapeFromDrive(code, dateYmd) {
+    const B = fubonLiveBridgeApi();
+    if (B && B.readFubonTape) {
+      try {
+        const tape = await B.readFubonTape(code, dateYmd);
+        if (tape) return tape;
+      } catch (err) { /* fall through */ }
+    }
     const D = fubonDriveApi();
     if (!D || !D.readFubonTape) return null;
     try {

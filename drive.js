@@ -685,6 +685,9 @@
     login: login,
     logout: logout,
     account: function () { return account; },
+    accessToken: function () {
+      return (token && exp > Date.now()) ? token : "";
+    },
     fetchAccount: fetchAccount,
     allowedEmails: allowedEmails,
     isAllowed: isAllowed,

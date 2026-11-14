@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 226;
+  const PAGE_BUILD = 227;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -4594,7 +4594,7 @@
               ask: row.ask,
               volumeLots: row.volumeLots,
               tradeTime: row.asOf || live.asOf || "",
-              source: "fubon-drive",
+              source: row.source === "fubon" ? "fubon-bridge" : "fubon-drive",
               bids: [],
               asks: []
             };
@@ -4612,7 +4612,7 @@
           };
         }).filter(function (t) { return t.price > 0 && t.lots > 0; });
         if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
-        stockLiveLastKey = "fubon-drive|" + code + "|" + (fubonTape.at || stockLiveTape.length);
+        stockLiveLastKey = "fubon-bridge|" + code + "|" + (fubonTape.at || stockLiveTape.length);
       }
       if (fubonTape && Array.isArray(fubonTape.volumes) && fubonTape.volumes.length) {
         stockLivePv = stockLivePv || { code: code, rows: [], open: null, high: null, low: null };
@@ -4646,11 +4646,12 @@
         if (bookQ.low != null) stockLivePv.low = bookQ.low;
       }
       const rows = mergePriceVolume(stockLivePv, stockLiveTape);
-      if (bookQ && bookQ.source === "fubon-drive") {
-        bookQ.tradeTime = (bookQ.tradeTime || "") + (bookQ.tradeTime ? " · " : "") + "富邦雲端";
+      if (bookQ && (bookQ.source === "fubon-drive" || bookQ.source === "fubon-bridge" || bookQ.source === "fubon-tailscale")) {
+        const tag = bookQ.source === "fubon-drive" ? "富邦雲端" : "富邦橋";
+        bookQ.tradeTime = (bookQ.tradeTime || "") + (bookQ.tradeTime ? " · " : "") + tag;
       } else if (fubonTape && fubonTape.asOf) {
         if (!bookQ) bookQ = { price: null, change: null, pct: null, bids: [], asks: [] };
-        bookQ.tradeTime = (bookQ.tradeTime || "—") + " · 分時雲端 " + fubonTape.asOf;
+        bookQ.tradeTime = (bookQ.tradeTime || "—") + " · 分時橋 " + fubonTape.asOf;
       }
       renderStockLive(bookQ, rows);
       renderStockActors(bookQ);
