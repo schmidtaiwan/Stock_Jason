@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 215;
+  const PAGE_BUILD = 216;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 500;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -399,23 +399,58 @@
     if ($("gate-ver")) $("gate-ver").textContent = text;
     if ($("pageVer")) $("pageVer").textContent = text;
     checkFreshBuild();
+    if (!showVer._poll) {
+      showVer._poll = setInterval(checkFreshBuild, 45000);
+    }
   }
 
-  // 手機常快取舊 index：偵測 build.json 較新就強制重整一次
+  function hardReloadToBuild(remote) {
+    const url = new URL(location.href);
+    url.searchParams.set("v", String(remote || PAGE_BUILD));
+    url.searchParams.set("_", String(Date.now()));
+    location.replace(url.toString());
+  }
+
+  function paintStaleBuild(remote) {
+    const msg = "有更新版本" + remote + "請重新整理後登入";
+    const ver = $("pageVer");
+    if (ver) {
+      ver.textContent = String(PAGE_BUILD);
+      ver.classList.add("page-ver-stale");
+      ver.title = msg + "（點此重整）";
+      ver.style.cursor = "pointer";
+      ver.onclick = function () { hardReloadToBuild(remote); };
+    }
+    const gateVer = $("gate-ver");
+    if (gateVer) {
+      gateVer.classList.add("page-ver-stale");
+      gateVer.title = msg + "（點此重整）";
+      gateVer.style.cursor = "pointer";
+      gateVer.onclick = function () { hardReloadToBuild(remote); };
+    }
+    if ($("gate-msg")) $("gate-msg").textContent = msg;
+    return msg;
+  }
+
+  // 手機常快取舊 index：偵測 build.json 較新 → 跳出提示並強制重整
   function checkFreshBuild() {
-    const key = "sj-build-reload";
     fetch("build.json?t=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
       .then(function (res) { return res && res.ok ? res.json() : null; })
       .then(function (j) {
         const remote = j && Number(j.build);
         if (!(remote > PAGE_BUILD)) return;
+        const msg = paintStaleBuild(remote);
+        const alertKey = "sj-build-alert";
+        const token = String(remote) + "@" + PAGE_BUILD;
+        let didAlert = false;
         try {
-          if (sessionStorage.getItem(key) === String(remote)) return;
-          sessionStorage.setItem(key, String(remote));
+          didAlert = sessionStorage.getItem(alertKey) === token;
+          if (!didAlert) sessionStorage.setItem(alertKey, token);
         } catch (err) { /* ignore */ }
-        const url = new URL(location.href);
-        url.searchParams.set("v", String(remote));
-        location.replace(url.toString());
+        if (!didAlert) {
+          try { window.alert(msg); } catch (err) { /* ignore */ }
+          hardReloadToBuild(remote);
+        }
       })
       .catch(function () { /* offline／舊站無 build.json */ });
   }

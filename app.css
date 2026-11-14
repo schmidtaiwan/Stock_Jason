@@ -76,6 +76,10 @@ h3 { font-size: 16px; margin: 16px 0 6px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.page-ver.page-ver-stale {
+  color: #ffeb3b;
+  font-weight: 700;
+}
 
 .primary, .secondary, .ghost {
   border: 0;
