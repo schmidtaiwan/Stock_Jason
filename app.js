@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 243;
+  const PAGE_BUILD = 244;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -2004,44 +2004,68 @@
     return true;
   }
 
+  async function afterLoginSuccess(account) {
+    if (!account || !D.isAllowed(account.email)) {
+      const want = D.allowedEmails().join(" 或 ");
+      const email = account && account.email ? account.email : "";
+      $("gate-msg").textContent = email
+        ? ("現在登入的是 " + email + "。請改用 " + want + "。")
+        : ("請用 " + want + " 登入。");
+      D.logout();
+      paintChrome();
+      return false;
+    }
+    // 先顯示主畫面，避免雲端／行情等待時看起來像登入後白屏卡住
+    stopGuestCountdown();
+    clearGuestDeadline();
+    $("gate-msg").textContent = "";
+    $("gate").hidden = true;
+    $("app").hidden = false;
+    paintChrome(true);
+    flashStatus("正在同步自選…");
+    paintTwii(true).catch(function () { /* 失敗時 paintTwii 已寫狀態 */ });
+    try {
+      await loadBook();
+    } catch (bookErr) {
+      book = emptyBook();
+      flashStatus("讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr));
+    }
+    ensureLiveHoldingsTimer();
+    paintChrome(true);
+    if (state.view === "chart") loadChart();
+    else if (state.view === "pulse") loadPulse();
+    else if (state.view === "watch") renderWatch(true);
+    return true;
+  }
+
   async function doLogin() {
     if (warnEmbeddedLogin()) return;
-    $("gate-msg").textContent = "正在開啟 Google 登入…";
+    if (D.isInAppBrowser && D.isInAppBrowser()) {
+      const url = (D.liveUrl && D.liveUrl()) || "https://schmidtaiwan.github.io/Stock_Jason/";
+      const msg = "請用 Safari／Chrome 開啟再登入（LINE／FB 內建瀏覽器會失敗）：" + url;
+      if ($("gate-msg")) $("gate-msg").textContent = msg;
+      const ext = $("gate-open-browser");
+      if (ext) ext.hidden = false;
+      flashStatus(msg);
+      return;
+    }
+    const useRedirect = !!(D.preferRedirectLogin && D.preferRedirectLogin());
+    $("gate-msg").textContent = useRedirect ? "正在前往 Google 登入…" : "正在開啟 Google 登入…";
     $("gate-login").disabled = true;
     const headerLogin = $("login");
     if (headerLogin) headerLogin.disabled = true;
     try {
+      // 手機：login() 內會 location.assign，通常不會回到這裡
       const account = await D.login({ prompt: "select_account", hint: "" });
-      if (!D.isAllowed(account.email)) {
-        const want = D.allowedEmails().join(" 或 ");
-        $("gate-msg").textContent = "現在登入的是 " + account.email + "。請改用 " + want + "。";
-        D.logout();
-        paintChrome();
-        return;
-      }
-      // 先顯示主畫面，避免雲端／行情等待時看起來像登入後白屏卡住
-      stopGuestCountdown();
-      clearGuestDeadline();
-      $("gate-msg").textContent = "";
-      $("gate").hidden = true;
-      $("app").hidden = false;
-      paintChrome(true);
-      flashStatus("正在同步自選…");
-      paintTwii(true).catch(function () { /* 失敗時 paintTwii 已寫狀態 */ });
-      try {
-        await loadBook();
-      } catch (bookErr) {
-        book = emptyBook();
-        flashStatus("讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr));
-      }
-      ensureLiveHoldingsTimer();
-      paintChrome(true);
-      if (state.view === "chart") loadChart();
-      else if (state.view === "pulse") loadPulse();
-      else if (state.view === "watch") renderWatch(true);
+      if (!account) return;
+      await afterLoginSuccess(account);
     } catch (err) {
       $("gate-msg").textContent = D.friendly(err);
       if ($("app") && !$("app").hidden) flashStatus(D.friendly(err));
+      if (/重新導向 URI/i.test(String((err && err.message) || ""))) {
+        const ext = $("gate-open-browser");
+        if (ext) ext.hidden = false;
+      }
     } finally {
       $("gate-login").disabled = false;
       if (headerLogin) headerLogin.disabled = false;
@@ -6255,6 +6279,12 @@
     // Cursor 右側預覽：直接進站方便調版面（登入仍請用系統瀏覽器）
     if ($("gate") && !$("gate").hidden) showApp();
     if (!D.account()) flashStatus("右側預覽可調版面（登入請用 Chrome）");
+  } else if (D.isInAppBrowser && D.isInAppBrowser()) {
+    const ext = $("gate-open-browser");
+    if (ext) ext.hidden = false;
+    if ($("gate-msg")) {
+      $("gate-msg").textContent = "偵測到 App 內建瀏覽器：請用右上方連結以 Safari／Chrome 開啟後再登入。";
+    }
   } else {
     const ext = $("gate-open-browser");
     if (ext) ext.hidden = true;
@@ -7235,17 +7265,38 @@
   bindWatchReorder();
   bindPrivacyLongPress();
   D.ready().catch(function () { /* 登入時再提示 */ });
-  if (D.account()) {
-    $("gate").hidden = true;
-    $("app").hidden = false;
+
+  function finishBoot() {
+    if (D.account()) {
+      $("gate").hidden = true;
+      $("app").hidden = false;
+    }
+    loadBook();
+    paintChrome(true);
+    if (D.account() && !D.account().picture && D.fetchAccount) {
+      D.fetchAccount().then(function () { paintChrome(true); }).catch(function () { /* 頭像可略過 */ });
+    }
+    paintTwii(true);
+    startLiveClock();
+    syncUsBoardFoldUi();
+    initWakeLock();
   }
-  loadBook();
-  paintChrome(true);
-  if (D.account() && !D.account().picture && D.fetchAccount) {
-    D.fetchAccount().then(function () { paintChrome(true); }).catch(function () { /* 頭像可略過 */ });
+
+  // Google 整頁 redirect 回來（?code=）：先換 token 再進站
+  if (D.completeRedirectLogin) {
+    if ($("gate-msg") && /[?&]code=/.test(location.search || "")) {
+      $("gate-msg").textContent = "正在完成 Google 登入…";
+    }
+    D.completeRedirectLogin().then(function (account) {
+      if (account) {
+        return afterLoginSuccess(account).then(function () { finishBoot(); });
+      }
+      finishBoot();
+    }).catch(function (err) {
+      if ($("gate-msg")) $("gate-msg").textContent = D.friendly(err);
+      finishBoot();
+    });
+  } else {
+    finishBoot();
   }
-  paintTwii(true);
-  startLiveClock();
-  syncUsBoardFoldUi();
-  initWakeLock();
 })();

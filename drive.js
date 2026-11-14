@@ -19,6 +19,9 @@
   let readyPromise = null;
 
   const LIVE_URL = "https://schmidtaiwan.github.io/Stock_Jason/";
+  const OAUTH_STATE = "sj_oauth_redir";
+  const PKCE_KEY = "sj-pkce-verifier";
+  const OAUTH_PENDING_KEY = "sj-oauth-pending";
 
   function preferredEmail() {
     return String(cfg.preferredEmail || "").trim().toLowerCase();
@@ -37,8 +40,47 @@
     return false;
   }
 
+  /** 手機／WebView：彈窗登入常被擋，改走整頁 redirect。 */
+  function preferRedirectLogin() {
+    if (isEmbeddedBrowser()) return false;
+    const ua = navigator.userAgent || "";
+    if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+    if (/Line\/|FBAN|FBAV|Instagram|MicroMessenger|Twitter|WhatsApp/i.test(ua)) return true;
+    try {
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function isInAppBrowser() {
+    const ua = navigator.userAgent || "";
+    return /Line\/|FBAN|FBAV|Instagram|MicroMessenger|Twitter|WhatsApp|FB_IAB/i.test(ua);
+  }
+
   function liveUrl() {
     return LIVE_URL;
+  }
+
+  /** Google Console「已授權的重新導向 URI」必須與此完全一致（含結尾 /）。 */
+  function oauthRedirectUri() {
+    return LIVE_URL;
+  }
+
+  function b64url(buf) {
+    const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+    let s = "";
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function randomVerifier() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return b64url(bytes);
+  }
+
+  function sha256b64url(text) {
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(b64url);
   }
 
   function accountEmail() {
@@ -666,6 +708,141 @@
     return account;
   }
 
+  function clearLoginState() {
+    token = "";
+    exp = 0;
+    account = null;
+    folderId = "";
+    fileCache = new Map();
+    clearSession();
+  }
+
+  /** 整頁導向 Google（手機／彈窗失敗時用）；呼叫後會離開本頁。 */
+  function loginRedirect(opts) {
+    opts = opts || {};
+    if (isEmbeddedBrowser()) {
+      return Promise.reject(new Error(
+        "Cursor／IDE 右側瀏覽器無法顯示 Google 登入（會變白頁）。請用 Chrome 或 Edge 開啟 " + LIVE_URL + " 再登入。"
+      ));
+    }
+    if (isInAppBrowser()) {
+      return Promise.reject(new Error(
+        "請用系統瀏覽器開啟（Safari／Chrome），LINE／FB 內建瀏覽器無法完成 Google 登入：" + LIVE_URL
+      ));
+    }
+    const id = String(cfg.clientId || "").trim();
+    if (!id) return Promise.reject(new Error("尚未設定 Google 用戶端 ID"));
+    if (!global.crypto || !crypto.subtle || !crypto.getRandomValues) {
+      return Promise.reject(new Error("此瀏覽器不支援安全登入（需要 HTTPS 與 WebCrypto）"));
+    }
+    clearLoginState();
+    const verifier = randomVerifier();
+    try {
+      sessionStorage.setItem(PKCE_KEY, verifier);
+      sessionStorage.setItem(OAUTH_PENDING_KEY, "1");
+    } catch (e) {
+      return Promise.reject(new Error("無法寫入登入狀態（請關閉無痕模式後再試）"));
+    }
+    return sha256b64url(verifier).then(function (challenge) {
+      const params = new URLSearchParams();
+      params.set("client_id", id);
+      params.set("redirect_uri", oauthRedirectUri());
+      params.set("response_type", "code");
+      params.set("scope", SCOPES);
+      params.set("state", OAUTH_STATE);
+      params.set("code_challenge", challenge);
+      params.set("code_challenge_method", "S256");
+      params.set("include_granted_scopes", "true");
+      params.set("prompt", opts.prompt != null ? String(opts.prompt) : "select_account");
+      // 同步導向，保留使用者手勢
+      location.assign("https://accounts.google.com/o/oauth2/v2/auth?" + params.toString());
+      return new Promise(function () { /* 導向後不再 resolve */ });
+    });
+  }
+
+  /** 從 Google redirect 回來時交換 code → access_token；無 pending 則回 null。 */
+  function completeRedirectLogin() {
+    let search = "";
+    try { search = String(location.search || ""); } catch (e) { search = ""; }
+    const q = new URLSearchParams(search.charAt(0) === "?" ? search.slice(1) : search);
+    let pending = false;
+    try { pending = sessionStorage.getItem(OAUTH_PENDING_KEY) === "1"; } catch (e) { pending = false; }
+    const state = q.get("state") || "";
+    const code = q.get("code") || "";
+    const err = q.get("error") || "";
+    const looksLikeReturn = !!(code || err) && (pending || state === OAUTH_STATE);
+    if (!looksLikeReturn) return Promise.resolve(null);
+
+    function cleanUrl() {
+      try {
+        const url = new URL(location.href);
+        url.searchParams.delete("code");
+        url.searchParams.delete("state");
+        url.searchParams.delete("scope");
+        url.searchParams.delete("authuser");
+        url.searchParams.delete("prompt");
+        url.searchParams.delete("error");
+        url.searchParams.delete("error_description");
+        history.replaceState(null, "", url.pathname + (url.search || "") + (url.hash || ""));
+      } catch (e) { /* ignore */ }
+    }
+
+    cleanUrl();
+    try {
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+    } catch (e) { /* ignore */ }
+
+    if (err) {
+      try { sessionStorage.removeItem(PKCE_KEY); } catch (e2) { /* ignore */ }
+      const desc = q.get("error_description") || err;
+      if (/access_denied/i.test(err)) return Promise.reject(new Error("已取消登入"));
+      if (/redirect_uri_mismatch/i.test(desc + err)) {
+        return Promise.reject(new Error(
+          "Google Console 尚未加入重新導向 URI：" + oauthRedirectUri() +
+          "（類型：網頁應用程式 → 已授權的重新導向 URI）"
+        ));
+      }
+      return Promise.reject(new Error(desc || "登入未完成"));
+    }
+    if (!code) return Promise.resolve(null);
+
+    let verifier = "";
+    try { verifier = sessionStorage.getItem(PKCE_KEY) || ""; sessionStorage.removeItem(PKCE_KEY); } catch (e) { verifier = ""; }
+    if (!verifier) {
+      return Promise.reject(new Error("登入狀態遺失，請再按一次「用 Google 登入」"));
+    }
+
+    const body = new URLSearchParams();
+    body.set("client_id", String(cfg.clientId || "").trim());
+    body.set("code", code);
+    body.set("code_verifier", verifier);
+    body.set("grant_type", "authorization_code");
+    body.set("redirect_uri", oauthRedirectUri());
+
+    return fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString()
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok || !data || !data.access_token) {
+          const msg = (data && (data.error_description || data.error)) || ("HTTP " + res.status);
+          if (/redirect_uri/i.test(String(msg))) {
+            throw new Error(
+              "Google Console 尚未加入重新導向 URI：" + oauthRedirectUri() +
+              "（類型：網頁應用程式 → 已授權的重新導向 URI）"
+            );
+          }
+          throw new Error(msg || "換取登入權杖失敗");
+        }
+        token = data.access_token;
+        const sec = Number(data.expires_in) || 3600;
+        exp = Date.now() + Math.max(60, sec - 120) * 1000;
+        return fetchAccount();
+      });
+    });
+  }
+
   function login(opts) {
     opts = opts || {};
     if (isEmbeddedBrowser()) {
@@ -673,24 +850,35 @@
         "Cursor／IDE 右側瀏覽器無法顯示 Google 登入（會變白頁）。請用 Chrome 或 Edge 開啟 " + LIVE_URL + " 再登入。"
       ));
     }
+    if (isInAppBrowser()) {
+      return Promise.reject(new Error(
+        "請用系統瀏覽器開啟（Safari／Chrome），LINE／FB 內建瀏覽器無法完成 Google 登入：" + LIVE_URL
+      ));
+    }
+    // 手機優先整頁 redirect（彈窗在 iOS／Android 常被擋）
+    if (opts.forcePopup !== true && (opts.forceRedirect === true || preferRedirectLogin())) {
+      return loginRedirect(opts);
+    }
     // 不可先 await：手機上離開點擊同步堆疊後彈窗會被擋
     if (!tokenClient) {
       return init().then(function () {
         throw new Error("登入元件剛就緒，請再按一次「用 Google 登入」。");
       });
     }
-    token = "";
-    exp = 0;
-    account = null;
-    folderId = "";
-    fileCache = new Map();
-    clearSession();
+    clearLoginState();
     // select_account 不要帶主帳 hint，否則編輯者帳號常被鎖住或回調卡住
     const prompt = opts.prompt != null ? opts.prompt : "select_account";
     const hint = opts.hint != null ? opts.hint
       : (prompt === "select_account" ? "" : (preferredEmail() || ""));
     return requestToken(prompt, hint).then(function () {
       return fetchAccount();
+    }).catch(function (err) {
+      const msg = (err && err.message) || "";
+      // 彈窗失敗 → 自動改整頁登入
+      if (/popup_failed|無法開啟 Google|登入逾時|popup/i.test(msg)) {
+        return loginRedirect(opts);
+      }
+      throw err;
     });
   }
 
@@ -709,13 +897,14 @@
 
   function friendly(err) {
     const msg = (err && err.message) || "";
-    if (/Cursor|IDE 右側|內建瀏覽器|變白頁/i.test(msg)) return msg;
-    if (/idpiframe|origin|authorized javascript origins|redirect_uri/i.test(msg)) {
+    if (/Cursor|IDE 右側|內建瀏覽器|變白頁|系統瀏覽器|LINE／FB/i.test(msg)) return msg;
+    if (/重新導向 URI|redirect_uri/i.test(msg)) return msg;
+    if (/idpiframe|origin|authorized javascript origins/i.test(msg)) {
       return "這個網址還沒加入 Google 登入允許清單。請用 " + LIVE_URL + " 開啟。";
     }
     if (/popup_closed|access_denied|user_cancel|cancelled|已取消/i.test(msg)) return "已取消登入";
     if (/popup_failed|無法開啟 Google|登入逾時/i.test(msg)) {
-      return "無法開啟 Google 登入視窗。請改用 Chrome／Edge 開啟 " + LIVE_URL + "（Cursor 右側預覽常會白頁）。";
+      return "無法開啟 Google 登入視窗。請再按一次改走整頁登入，或用 Chrome／Safari 開啟 " + LIVE_URL;
     }
     return msg || "登入失敗";
   }
@@ -727,6 +916,10 @@
   global.SJDrive = {
     ready: init,
     login: login,
+    loginRedirect: loginRedirect,
+    completeRedirectLogin: completeRedirectLogin,
+    preferRedirectLogin: preferRedirectLogin,
+    isInAppBrowser: isInAppBrowser,
     logout: logout,
     account: function () { return account; },
     accessToken: function () {
@@ -748,6 +941,7 @@
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,
-    liveUrl: liveUrl
+    liveUrl: liveUrl,
+    oauthRedirectUri: oauthRedirectUri
   };
 })(window);

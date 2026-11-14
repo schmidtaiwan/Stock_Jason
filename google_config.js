@@ -1,5 +1,8 @@
 /* 與 JasonHome 同一個 Google OAuth 網頁用戶端。
  * 已授權的 JavaScript 來源含 https://schmidtaiwan.github.io ，路徑不用另加。
+ * 手機整頁登入還需要「已授權的重新導向 URI」精确為：
+ *   https://schmidtaiwan.github.io/Stock_Jason/
+ * （Google Cloud → API 和服務 → 憑證 → 該 OAuth 用戶端）
  * 自選股、持股、交易日誌只寫入 preferredEmail 的雲端硬碟 / StockJason。
  * 檔名帶登入的 Gmail，所以每個帳號讀自己的那一份。
  */
