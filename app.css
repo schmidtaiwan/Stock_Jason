@@ -79,6 +79,40 @@ h3 { font-size: 16px; margin: 16px 0 6px; }
 .page-ver.page-ver-stale {
   color: #ffeb3b;
   font-weight: 700;
+  animation: login-countdown-blink 1s ease-in-out infinite;
+}
+
+.build-update-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: #7a1212;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.build-update-bar[hidden] {
+  display: none !important;
+}
+.build-update-bar button {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffeb3b;
+  color: #1a1a1a;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 /* 未登入試看倒數：紅色閃爍提醒 */

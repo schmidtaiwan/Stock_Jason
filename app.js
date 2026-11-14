@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 236;
+  const PAGE_BUILD = 237;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -475,20 +475,48 @@
     if ($("pageVer")) $("pageVer").textContent = text;
     checkFreshBuild();
     if (!showVer._poll) {
-      showVer._poll = setInterval(checkFreshBuild, 45000);
+      showVer._poll = setInterval(checkFreshBuild, 15000);
     }
   }
 
   function hardReloadToBuild(remote) {
-    const url = new URL(location.href);
-    url.searchParams.set("v", String(remote || PAGE_BUILD));
-    url.searchParams.set("_", String(Date.now()));
-    location.replace(url.toString());
+    const go = function () {
+      const url = new URL(location.href);
+      url.searchParams.set("v", String(remote || PAGE_BUILD));
+      url.searchParams.set("_", String(Date.now()));
+      location.replace(url.toString());
+    };
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }).then(go, go);
+      return;
+    }
+    go();
+  }
+
+  function showUpdateBanner(remote) {
+    let bar = $("build-update-bar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "build-update-bar";
+      bar.className = "build-update-bar";
+      document.body.appendChild(bar);
+    }
+    bar.hidden = false;
+    bar.innerHTML =
+      "<span>發現新版 " + remote + "（目前 " + PAGE_BUILD + "）</span>" +
+      '<button type="button" id="build-update-btn">立即更新</button>';
+    const btn = $("build-update-btn");
+    if (btn) {
+      btn.onclick = function () { hardReloadToBuild(remote); };
+    }
   }
 
   function paintStaleBuild(remote) {
-    const msg = "有更新版本 " + remote + "，請重新整理後登入";
+    const msg = "有更新版本 " + remote + "，請點「立即更新」或重新整理";
     const label = String(PAGE_BUILD) + "→" + String(remote);
+    showUpdateBanner(remote);
     const ver = $("pageVer");
     if (ver) {
       ver.textContent = label;
@@ -509,27 +537,44 @@
     return msg;
   }
 
-  // 手機常快取舊 index：偵測 build.json 較新 → 跳出提示並強制重整
+  function fetchBuildJson() {
+    const bust = "?_=" + Date.now() + "&r=" + Math.random();
+    const urls = [
+      "build.json" + bust,
+      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust,
+      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust
+    ];
+    function one(i) {
+      if (i >= urls.length) return Promise.resolve(null);
+      return fetch(urls[i], { cache: "no-store", mode: "cors", credentials: "omit" })
+        .then(function (res) { return res && res.ok ? res.json() : null; })
+        .then(function (j) {
+          const remote = j && Number(j.build);
+          if (remote > 0) return remote;
+          return one(i + 1);
+        })
+        .catch(function () { return one(i + 1); });
+    }
+    return one(0);
+  }
+
+  // 手機常快取舊檔：多來源讀 build.json → 頂部紅條＋可點更新（不依賴 alert）
   function checkFreshBuild() {
-    fetch("build.json?t=" + Date.now(), { cache: "no-store", credentials: "same-origin" })
-      .then(function (res) { return res && res.ok ? res.json() : null; })
-      .then(function (j) {
-        const remote = j && Number(j.build);
-        if (!(remote > PAGE_BUILD)) return;
-        const msg = paintStaleBuild(remote);
-        const alertKey = "sj-build-alert";
-        const token = String(remote) + "@" + PAGE_BUILD;
-        let didAlert = false;
-        try {
-          didAlert = sessionStorage.getItem(alertKey) === token;
-          if (!didAlert) sessionStorage.setItem(alertKey, token);
-        } catch (err) { /* ignore */ }
-        if (!didAlert) {
-          try { window.alert(msg); } catch (err) { /* ignore */ }
-          hardReloadToBuild(remote);
-        }
-      })
-      .catch(function () { /* offline／舊站無 build.json */ });
+    fetchBuildJson().then(function (remote) {
+      if (!(remote > PAGE_BUILD)) return;
+      paintStaleBuild(remote);
+      const alertKey = "sj-build-alert";
+      const token = String(remote) + "@" + PAGE_BUILD;
+      let didAlert = false;
+      try {
+        didAlert = sessionStorage.getItem(alertKey) === token;
+        if (!didAlert) sessionStorage.setItem(alertKey, token);
+      } catch (err) { /* ignore */ }
+      // iOS 常擋 alert；改為頂部紅條，並自動嘗試重整一次
+      if (!didAlert) {
+        hardReloadToBuild(remote);
+      }
+    }).catch(function () { /* offline */ });
   }
 
   function guestDeadline() {
