@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 208;
+  const PAGE_BUILD = 209;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 500;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -1539,7 +1539,7 @@
     btn.title = !wakeSupported()
       ? "此瀏覽器不支援螢幕常亮（可改用 Chrome／Safari，或到系統設定關閉自動鎖定）"
       : (on ? "關閉螢幕常亮" : "保持螢幕常亮，避免看盤時鎖屏");
-    btn.textContent = on ? "常亮中" : "常亮";
+    btn.textContent = on ? "常亮" : "正常";
   }
 
   async function releaseWakeLock() {
