@@ -1233,10 +1233,10 @@ textarea { min-height: 120px; resize: vertical; }
   padding: 2px 18px 2px 2px;
   border: 0;
   border-radius: 0;
-  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 12 8'%3E%3Cpath fill='%2393a0b0' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 2px center / 10px 6px;
-  color: var(--ink);
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffeb3b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 2px center / 10px 6px;
+  color: #ffeb3b;
   font: inherit;
-  font-size: 14px;
+  font-size: calc(14px - 2pt);
   font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
@@ -1246,7 +1246,7 @@ textarea { min-height: 120px; resize: vertical; }
 }
 .watch-group-title:focus {
   outline: none;
-  color: var(--accent);
+  color: #fff176;
 }
 #watch-board.watch-hide-pnl .watch-total,
 #watch-board.watch-hide-pnl .watch-col-pnl {
