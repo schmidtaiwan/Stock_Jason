@@ -2885,6 +2885,90 @@
     return D;
   }
 
+  function fubonDriveApi() {
+    const D = global.SJDrive;
+    if (!D || !D.account || !D.account()) return null;
+    if (D.isAllowed && !D.isAllowed((D.account().email) || "")) return null;
+    if (!D.readFubonLive) return null;
+    return D;
+  }
+
+  const FUBON_DRIVE_MAX_AGE_MS = 60_000;
+  const FUBON_DRIVE_SEED_MAX_AGE_MS = 30 * 60_000;
+  let fubonDriveSnap = null;
+  let fubonDriveReadAt = 0;
+
+  function slimFubonQuote(q) {
+    if (!q || !(q.price > 0)) return null;
+    return {
+      code: q.code || "",
+      name: q.name || "",
+      price: q.price,
+      change: q.change,
+      pct: q.pct,
+      open: q.open,
+      high: q.high,
+      low: q.low,
+      ref: q.ref,
+      bid: q.bid,
+      ask: q.ask,
+      volumeLots: q.volumeLots,
+      asOf: q.asOf,
+      tradeTime: q.asOf || "",
+      source: "fubon-drive"
+    };
+  }
+
+  function applyFubonDriveSnap(snap, preferAgeMs) {
+    if (!snap || !snap.byCode || typeof snap.byCode !== "object") return 0;
+    const age = snap.at != null ? Date.now() - Number(snap.at) : Infinity;
+    if (!(age >= 0) || age > (preferAgeMs != null ? preferAgeMs : FUBON_DRIVE_MAX_AGE_MS)) return 0;
+    const cacheAt = Number(snap.at) || Date.now();
+    let n = 0;
+    Object.keys(snap.byCode).forEach(function (code) {
+      const id = String(code || "").toUpperCase();
+      const q = slimFubonQuote(snap.byCode[code]);
+      if (!id || !q) return;
+      q.code = id;
+      const hit = misQuoteCache.get(id);
+      // 富邦雲端較新才覆寫；本機剛抓的 MIS／富邦不覆蓋
+      if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
+      if (hit && hit.fromFubonDrive && hit.at >= cacheAt) return;
+      misQuoteCache.set(id, { at: cacheAt, quote: q, fromDrive: true, fromFubonDrive: true });
+      n += 1;
+    });
+    fubonDriveSnap = snap;
+    return n;
+  }
+
+  async function hydrateFubonFromDrive(needIds, opts) {
+    opts = opts || {};
+    const D = fubonDriveApi();
+    if (!D || !(needIds && needIds.length)) return 0;
+    const now = Date.now();
+    if (!opts.force && now - fubonDriveReadAt < 5000 && fubonDriveSnap) {
+      return applyFubonDriveSnap(fubonDriveSnap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS);
+    }
+    fubonDriveReadAt = now;
+    try {
+      const snap = await D.readFubonLive();
+      if (!snap) return 0;
+      return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS);
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  async function fetchFubonTapeFromDrive(code, dateYmd) {
+    const D = fubonDriveApi();
+    if (!D || !D.readFubonTape) return null;
+    try {
+      return await D.readFubonTape(code, dateYmd);
+    } catch (err) {
+      return null;
+    }
+  }
+
   function slimMisQuote(q) {
     if (!q || !(q.price > 0)) return null;
     return {
@@ -3569,7 +3653,8 @@
     });
     if (!need.length) return out;
 
-    // 登入者先吃雲端最新快照，減少各裝置重複打 MIS
+    // 登入者先吃雲端最新快照：優先富邦橋接（近 60 秒），再 MIS
+    await hydrateFubonFromDrive(need, { maxAgeMs: FUBON_DRIVE_MAX_AGE_MS });
     await hydrateMisFromDrive(need);
     need = need.filter(function (id) {
       if (out[id]) return false;
@@ -3693,7 +3778,13 @@
     });
     const forceMis = isMisForceWindow();
     if (forceMis) bustLiveCaches(secids);
-    // 登入／盤後：先讀雲端 mis-live.json（可接受較舊），立刻有成交價
+    // 登入／盤後：先讀雲端富邦橋接與 mis-live（可接受較舊），立刻有成交價
+    try {
+      await hydrateFubonFromDrive(codes, {
+        maxAgeMs: FUBON_DRIVE_SEED_MAX_AGE_MS,
+        force: true
+      });
+    } catch (errFb) { /* ignore */ }
     try {
       await hydrateMisFromDrive(codes, {
         maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
@@ -6553,6 +6644,8 @@
     misBook: misBook,
     stockPriceVolume: stockPriceVolume,
     analyzeTapeActors: analyzeTapeActors,
+    hydrateFubonFromDrive: hydrateFubonFromDrive,
+    fetchFubonTapeFromDrive: fetchFubonTapeFromDrive,
     misTwiiQuote: misTwiiQuote,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,

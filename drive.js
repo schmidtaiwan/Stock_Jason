@@ -558,6 +558,56 @@
     return run;
   }
 
+  // 桌面 EXE 上傳：fubon-live.json（最新報價）／fubon-tape/YYYY-MM-DD/{code}.json（分時＋分價）
+  const FUBON_LIVE_NAME = "fubon-live.json";
+
+  async function findNestedFileId(relativePath) {
+    const parts = String(relativePath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+    if (!parts.length) return null;
+    let parent = await ensureFolder();
+    for (let i = 0; i < parts.length; i++) {
+      const isLast = i === parts.length - 1;
+      let q = "name='" + qEscape(parts[i]) + "' and trashed=false and '" + parent + "' in parents";
+      if (!isLast) q += " and mimeType='application/vnd.google-apps.folder'";
+      const found = await listFiles(q);
+      if (!found.length) return null;
+      if (isLast) return found[0].id;
+      parent = found[0].id;
+    }
+    return null;
+  }
+
+  async function readJsonByFileId(id) {
+    if (!id) return null;
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?alt=media&supportsAllDrives=true"
+    );
+    if (!res.ok) await readErr(res, "讀取雲端 JSON 失敗");
+    return res.json();
+  }
+
+  async function readFubonLive() {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const id = await findBookFile(FUBON_LIVE_NAME);
+    if (!id) return null;
+    return readJsonByFileId(id);
+  }
+
+  async function readFubonTape(code, dateYmd) {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const idCode = String(code || "").trim().toUpperCase();
+    if (!idCode) return null;
+    let day = String(dateYmd || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      const d = new Date();
+      day = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+    }
+    const id = await findNestedFileId("fubon-tape/" + day + "/" + idCode + ".json");
+    if (!id) return null;
+    return readJsonByFileId(id);
+  }
+
   async function fetchAccount() {
     const info = await driveFetch("https://www.googleapis.com/oauth2/v2/userinfo");
     if (!info.ok) await readErr(info, "無法讀取 Google 帳號");
@@ -645,6 +695,8 @@
     bookScore: bookScore,
     readMisSnapshot: readMisSnapshot,
     writeMisSnapshot: writeMisSnapshot,
+    readFubonLive: readFubonLive,
+    readFubonTape: readFubonTape,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

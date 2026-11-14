@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 225;
+  const PAGE_BUILD = 226;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -4570,8 +4570,59 @@
       if (M.misBook) {
         try { bookQ = await M.misBook(code); } catch (err) { bookQ = null; }
       }
+      // 雲端富邦橋接：報價／完整分時／分價（桌面 EXE 上傳）
+      let fubonTape = null;
+      if (M.fetchFubonTapeFromDrive) {
+        try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
+      }
+      if (M.hydrateFubonFromDrive) {
+        try { await M.hydrateFubonFromDrive([code], { maxAgeMs: 60_000, force: true }); } catch (err) { /* ignore */ }
+      }
+      if ((!bookQ || !(bookQ.price > 0)) && window.SJDrive && SJDrive.readFubonLive) {
+        try {
+          const live = await SJDrive.readFubonLive();
+          const row = live && live.byCode && live.byCode[code];
+          if (row && row.price > 0 && live.at && Date.now() - Number(live.at) < 120_000) {
+            bookQ = {
+              price: row.price,
+              change: row.change,
+              pct: row.pct,
+              open: row.open,
+              high: row.high,
+              low: row.low,
+              bid: row.bid,
+              ask: row.ask,
+              volumeLots: row.volumeLots,
+              tradeTime: row.asOf || live.asOf || "",
+              source: "fubon-drive",
+              bids: [],
+              asks: []
+            };
+          }
+        } catch (err) { /* ignore */ }
+      }
+      if (fubonTape && Array.isArray(fubonTape.ticks) && fubonTape.ticks.length) {
+        stockLiveTape = fubonTape.ticks.map(function (t) {
+          return {
+            time: t.time || "",
+            price: t.price,
+            lots: t.lots,
+            change: t.change,
+            cum: null
+          };
+        }).filter(function (t) { return t.price > 0 && t.lots > 0; });
+        if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
+        stockLiveLastKey = "fubon-drive|" + code + "|" + (fubonTape.at || stockLiveTape.length);
+      }
+      if (fubonTape && Array.isArray(fubonTape.volumes) && fubonTape.volumes.length) {
+        stockLivePv = stockLivePv || { code: code, rows: [], open: null, high: null, low: null };
+        stockLivePv.rows = fubonTape.volumes.map(function (v) {
+          return { price: v.price, lots: v.lots };
+        }).filter(function (v) { return v.price > 0 && v.lots > 0; })
+          .sort(function (a, b) { return b.price - a.price; });
+      }
       if (!state.stock || String(state.stock.code || "").toUpperCase() !== code) return;
-      if (bookQ && bookQ.price > 0) {
+      if (bookQ && bookQ.price > 0 && !(fubonTape && fubonTape.ticks && fubonTape.ticks.length)) {
         const key = String(bookQ.tradeTime || "") + "|" + bookQ.price + "|" + (bookQ.lastLot || "") + "|" +
           (bookQ.volumeLots || "");
         if (key !== stockLiveLastKey) {
@@ -4595,6 +4646,12 @@
         if (bookQ.low != null) stockLivePv.low = bookQ.low;
       }
       const rows = mergePriceVolume(stockLivePv, stockLiveTape);
+      if (bookQ && bookQ.source === "fubon-drive") {
+        bookQ.tradeTime = (bookQ.tradeTime || "") + (bookQ.tradeTime ? " · " : "") + "富邦雲端";
+      } else if (fubonTape && fubonTape.asOf) {
+        if (!bookQ) bookQ = { price: null, change: null, pct: null, bids: [], asks: [] };
+        bookQ.tradeTime = (bookQ.tradeTime || "—") + " · 分時雲端 " + fubonTape.asOf;
+      }
       renderStockLive(bookQ, rows);
       renderStockActors(bookQ);
     } catch (err) {
