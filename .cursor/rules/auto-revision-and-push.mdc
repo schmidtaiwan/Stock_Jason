@@ -1,5 +1,5 @@
 ---
-description: 股票分析改完必須加版次並推上 GitHub
+description: 股票分析改完必須加版次並推上 GitHub，且把對話備份到 private chats repo
 alwaysApply: true
 ---
 
@@ -13,7 +13,13 @@ alwaysApply: true
 2. `index.html` 裡 css/js 的 `?v=` 改成同一個數字。
 3. `git add` 這次相關檔，commit，然後 `git push origin main`。
 4. 不要 force push。不要提交收據、券商截圖、PDF、`catalog.json`、憑證或 token。
-5. 回報版次號碼與線上網址，並請使用者 Ctrl+F5。
+5. **對話備份（必做）**：把**本場 Cursor 對話**推到 private repo  
+   https://github.com/schmidtaiwan/StockJason-chats （`main`）。  
+   - 資料夾命名：`YYYY-MM-DD-vN/`（N＝這次 `PAGE_BUILD`），內含簡短 `README.md`（這版做了什麼）＋ `chat-raw.jsonl.zip`（本場 transcript）。  
+   - **禁止**把對話全文 commit 進公開的 `Stock_Jason`。  
+   - clone／sparse 更新該 private repo → add → commit（訊息含版次）→ `git push origin main`。  
+   - 若 repo 尚不存在：用 `gh repo create schmidtaiwan/StockJason-chats --private` 再建。  
+6. 回報版次號碼、線上網址、以及 chats 備份路徑；請使用者 Ctrl+F5。
 
-僅回答問題、沒改網頁檔案：不必加版次、不必 push。
-使用者當次說不要推或不要加版次：遵從當次指示。
+僅回答問題、沒改網頁檔案：不必加版次、不必 push、不必備份對話。
+使用者當次說不要推或不要加版次：遵從當次指示（含不要備份對話）。
