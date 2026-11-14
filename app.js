@@ -1,6 +1,9 @@
 (function () {
-  const PAGE_BUILD = 228;
+  const PAGE_BUILD = 229;
   const PAGE_DATE = "2026-11-14";
+  const JASON_EMAIL = "jason660803@gmail.com";
+  const FUBON_GROUP_ID = "fubon-holdings";
+  const FUBON_GROUP_NAME = "富邦庫存";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
   let guestTimer = 0;
@@ -232,6 +235,38 @@
       profile: src.profile || "穩健",
       toolOrder: normalizeToolOrder(src.toolOrder)
     };
+  }
+
+  function isJasonAccount() {
+    const a = D.account && D.account();
+    return !!(a && String(a.email || "").trim().toLowerCase() === JASON_EMAIL);
+  }
+
+  function isFubonHoldingsGroup(g) {
+    if (!g) return false;
+    return g.id === FUBON_GROUP_ID ||
+      g.locked === "fubon" ||
+      String(g.name || "").trim() === FUBON_GROUP_NAME;
+  }
+
+  function ensureFubonHoldingsGroup() {
+    if (!isJasonAccount()) return null;
+    if (!Array.isArray(book.watchGroups)) book.watchGroups = [];
+    let g = book.watchGroups.find(function (row) { return row.id === FUBON_GROUP_ID; });
+    if (!g) {
+      g = book.watchGroups.find(function (row) {
+        return String(row.name || "").trim() === FUBON_GROUP_NAME;
+      });
+      if (g) g.id = FUBON_GROUP_ID;
+    }
+    if (!g) {
+      g = { id: FUBON_GROUP_ID, name: FUBON_GROUP_NAME, locked: "fubon", items: [] };
+      book.watchGroups.push(g);
+    }
+    g.name = FUBON_GROUP_NAME;
+    g.locked = "fubon";
+    if (!Array.isArray(g.items)) g.items = [];
+    return g;
   }
 
   function activeWatchGroup() {
@@ -981,6 +1016,10 @@
         const cur = Number(sheet.dataset.idx);
         if (!(cur >= 0)) return;
         if (action === "delete") {
+          if (isFubonHoldingsGroup(activeWatchGroup())) {
+            flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動刪除個股");
+            return;
+          }
           const row = book.watch[cur];
           const label = row ? ((row.name || row.code || "").trim() || "個股") : "個股";
           if (!window.confirm("從自選刪除「" + label + "」？")) return;
@@ -1367,7 +1406,10 @@
 
   function paintWatchGroups() {
     flushWatchToGroup();
+    if (isJasonAccount()) ensureFubonHoldingsGroup();
     const groups = book.watchGroups || [];
+    const curGroup = activeWatchGroup();
+    const fubonLocked = isFubonHoldingsGroup(curGroup);
     const sel = $("watch-group-select");
     if (sel) {
       const cur = book.watchGroupId;
@@ -1381,9 +1423,11 @@
     if (box) {
       box.innerHTML =
         '<button type="button" class="ghost watch-group-add watch-group-icon" id="watch-group-add" title="新增群組" aria-label="新增群組">+</button>' +
-        '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>' +
+        (fubonLocked
+          ? ""
+          : '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>') +
         '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
-        (groups.length > 1
+        (!fubonLocked && groups.length > 1
           ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
           : "");
     }
@@ -1426,6 +1470,10 @@
   function renameWatchGroup() {
     const g = activeWatchGroup();
     if (!g) return;
+    if (isFubonHoldingsGroup(g)) {
+      flashStatus("「富邦庫存」名稱固定，只能由 Live Bridge 同步更新");
+      return;
+    }
     const name = window.prompt("群組名稱", g.name || "");
     if (name == null) return;
     g.name = String(name).trim().slice(0, 16) || g.name;
@@ -1438,6 +1486,10 @@
     if (!(book.watchGroups || []).length || book.watchGroups.length <= 1) return;
     const g = activeWatchGroup();
     if (!g) return;
+    if (isFubonHoldingsGroup(g)) {
+      flashStatus("「富邦庫存」不能刪除，只能從 Live Bridge／雲端同步");
+      return;
+    }
     if (!window.confirm("刪除群組「" + g.name + "」？群組內標的一併移除。")) return;
     book.watchGroups = book.watchGroups.filter(function (row) { return row.id !== g.id; });
     book.watchGroupId = book.watchGroups[0].id;
@@ -1698,6 +1750,7 @@
       book = emptyBook();
       flashStatus("讀取雲端失敗：" + (err.message || err));
     }
+    if (isJasonAccount()) ensureFubonHoldingsGroup();
     syncMoney();
     renderWatch();
     paintToolMenu();
@@ -1708,7 +1761,7 @@
   async function syncHoldingsFromLiveBridge() {
     const LB = window.SJLiveBridge;
     if (!LB || typeof LB.readFubonHoldings !== "function" || !LB.isJason || !LB.isJason()) return;
-    if (!D.account()) return;
+    if (!D.account() || !isJasonAccount()) return;
     const data = await LB.readFubonHoldings();
     if (!data || !Array.isArray(data.holdings) || !data.holdings.length) return;
     const parsed = M.parseFubonHoldingsJson(data).map(function (row) {
@@ -1716,13 +1769,36 @@
     });
     if (!parsed.length) return;
     const rows = await resolveParsed(parsed);
-    let n = 0;
+    flushWatchToGroup();
+    const g = ensureFubonHoldingsGroup();
+    if (!g) return;
+    const items = [];
     rows.forEach(function (row) {
       if (!row.secid) return;
-      savePosition(row);
-      n += 1;
+      const item = {
+        secid: row.secid,
+        code: row.code,
+        name: twName(row.name || row.code || ""),
+        market: "台股",
+        shares: row.shares == null ? "" : String(row.shares).trim(),
+        cost: Number(row.cost) > 0 ? String(row.cost) : ""
+      };
+      items.push(item);
+      syncHolding(item);
     });
-    if (n) flashStatus("已從 Live Bridge 同步富邦庫存 " + n + " 檔");
+    g.items = items;
+    g.name = FUBON_GROUP_NAME;
+    g.locked = "fubon";
+    if (book.watchGroupId === FUBON_GROUP_ID) {
+      loadWatchFromGroup();
+      renderWatch(true);
+    } else {
+      paintWatchGroups();
+    }
+    scheduleSave();
+    if (items.length) {
+      flashStatus("已同步「富邦庫存」" + items.length + " 檔（僅能由 Live Bridge 更新）");
+    }
   }
 
   function ensureLiveHoldingsTimer() {
@@ -4105,7 +4181,11 @@
           '" inputmode="decimal" value="' + esc(cost) + '" placeholder="—" aria-label="買價"></td>' +
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
-          '<td class="watch-col-del"><button type="button" class="danger" data-del-watch="' + idx + '">移除</button></td>' +
+          '<td class="watch-col-del">' +
+          (isFubonHoldingsGroup(activeWatchGroup())
+            ? '<span class="fine" title="富邦庫存僅能由 Live Bridge 同步">同步</span>'
+            : '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button>') +
+          "</td>" +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
           '<label class="watch-alert-toggle"><input type="checkbox" data-watch-notify="' + idx + '"' +
           (item.notify ? " checked" : "") + "> 開</label>" +
@@ -5783,6 +5863,10 @@
     else if (t.dataset.watchGroup) switchWatchGroup(t.dataset.watchGroup);
     else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
+      if (isFubonHoldingsGroup(activeWatchGroup())) {
+        flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動移除");
+        return;
+      }
       const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
       if (removed) book.holdings = book.holdings.filter(function (item) { return item.secid !== removed.secid; });
       flushWatchToGroup();
