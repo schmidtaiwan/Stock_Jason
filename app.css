@@ -1225,7 +1225,7 @@ textarea { min-height: 120px; resize: vertical; }
   align-items: center;
   min-width: 0;
   flex: 0 1 auto;
-  max-width: 7.5em;
+  max-width: 9.5em;
   margin: 0;
 }
 .watch-group-title {
@@ -1234,13 +1234,13 @@ textarea { min-height: 120px; resize: vertical; }
   width: 100%;
   max-width: 100%;
   margin: 0;
-  padding: 2px 18px 2px 2px;
+  padding: 2px 16px 2px 2px;
   border: 0;
   border-radius: 0;
   background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 12 8'%3E%3Cpath fill='%23ffeb3b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 2px center / 10px 6px;
   color: #ffeb3b;
   font: inherit;
-  font-size: calc(14px - 2pt);
+  font-size: calc(14px - 4pt);
   font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
