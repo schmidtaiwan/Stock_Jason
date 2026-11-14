@@ -3023,17 +3023,21 @@
   }
 
   async function fetchFubonTapeFromDrive(code, dateYmd) {
+    function usable(tape) {
+      return !!(tape && Array.isArray(tape.ticks) && tape.ticks.length >= 4);
+    }
     const B = fubonLiveBridgeApi();
     if (B && B.readFubonTape) {
       try {
         const tape = await B.readFubonTape(code, dateYmd);
-        if (tape) return tape;
+        if (usable(tape)) return tape;
       } catch (err) { /* fall through */ }
     }
     const D = fubonDriveApi();
     if (!D || !D.readFubonTape) return null;
     try {
-      return await D.readFubonTape(code, dateYmd);
+      const tape = await D.readFubonTape(code, dateYmd);
+      return usable(tape) ? tape : null;
     } catch (err) {
       return null;
     }

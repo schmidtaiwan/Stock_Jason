@@ -608,14 +608,33 @@
     if (!account || !isAllowed(accountEmail())) return null;
     const idCode = String(code || "").trim().toUpperCase();
     if (!idCode) return null;
-    // 優先 latest（LiveBridge 上傳），再試指定日／近 10 日（週末不會卡在「今天沒檔」）
-    const latestId = await findNestedFileId("fubon-tape/latest/" + idCode + ".json");
-    if (latestId) {
+
+    async function tryId(id) {
+      if (!id) return null;
       try {
-        const latest = await readJsonByFileId(latestId);
-        if (latest && Array.isArray(latest.ticks) && latest.ticks.length) return latest;
-      } catch (err) { /* fall through */ }
+        const tape = await readJsonByFileId(id);
+        if (tape && Array.isArray(tape.ticks) && tape.ticks.length) return tape;
+      } catch (err) { /* ignore */ }
+      return null;
     }
+
+    // 1) 扁平檔（與 fubon-live.json 同層，最穩）
+    const flatName = "fubon-tape-" + idCode + ".json";
+    let hit = await tryId(await findBookFile(flatName));
+    if (hit) return hit;
+    try {
+      const any = await findBookFilesAnyFolder(flatName);
+      for (let i = 0; i < any.length; i++) {
+        hit = await tryId(any[i] && any[i].id);
+        if (hit) return hit;
+      }
+    } catch (err) { /* ignore */ }
+
+    // 2) latest 巢狀
+    hit = await tryId(await findNestedFileId("fubon-tape/latest/" + idCode + ".json"));
+    if (hit) return hit;
+
+    // 3) 近 10 日巢狀（週末不會卡在「今天沒檔」）
     const days = [];
     let day = String(dateYmd || "").trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days.push(day);
@@ -627,12 +646,8 @@
       if (days.indexOf(ymd) < 0) days.push(ymd);
     }
     for (let i = 0; i < days.length; i++) {
-      const id = await findNestedFileId("fubon-tape/" + days[i] + "/" + idCode + ".json");
-      if (!id) continue;
-      try {
-        const tape = await readJsonByFileId(id);
-        if (tape && Array.isArray(tape.ticks) && tape.ticks.length) return tape;
-      } catch (err) { /* try next day */ }
+      hit = await tryId(await findNestedFileId("fubon-tape/" + days[i] + "/" + idCode + ".json"));
+      if (hit) return hit;
     }
     return null;
   }

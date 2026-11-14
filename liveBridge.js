@@ -82,7 +82,10 @@
     const id = String(code || "").trim().toUpperCase();
     if (!id) return null;
     try {
-      return await fetchJson("/api/fubon-tape/" + encodeURIComponent(id));
+      const tape = await fetchJson("/api/fubon-tape/" + encodeURIComponent(id));
+      // 空 ticks 當失敗，讓呼叫端改走 Drive
+      if (!tape || !Array.isArray(tape.ticks) || tape.ticks.length < 4) return null;
+      return tape;
     } catch (err) {
       return null;
     }
