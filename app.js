@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 237;
+  const PAGE_BUILD = 238;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";

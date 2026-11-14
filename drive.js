@@ -608,15 +608,33 @@
     if (!account || !isAllowed(accountEmail())) return null;
     const idCode = String(code || "").trim().toUpperCase();
     if (!idCode) return null;
-    let day = String(dateYmd || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-      const d = new Date();
-      day = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
-        String(d.getDate()).padStart(2, "0");
+    // 優先 latest（LiveBridge 上傳），再試指定日／近 10 日（週末不會卡在「今天沒檔」）
+    const latestId = await findNestedFileId("fubon-tape/latest/" + idCode + ".json");
+    if (latestId) {
+      try {
+        const latest = await readJsonByFileId(latestId);
+        if (latest && Array.isArray(latest.ticks) && latest.ticks.length) return latest;
+      } catch (err) { /* fall through */ }
     }
-    const id = await findNestedFileId("fubon-tape/" + day + "/" + idCode + ".json");
-    if (!id) return null;
-    return readJsonByFileId(id);
+    const days = [];
+    let day = String(dateYmd || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days.push(day);
+    const base = new Date();
+    for (let i = 0; i < 10; i++) {
+      const d = new Date(base.getTime() - i * 86400000);
+      const ymd = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+      if (days.indexOf(ymd) < 0) days.push(ymd);
+    }
+    for (let i = 0; i < days.length; i++) {
+      const id = await findNestedFileId("fubon-tape/" + days[i] + "/" + idCode + ".json");
+      if (!id) continue;
+      try {
+        const tape = await readJsonByFileId(id);
+        if (tape && Array.isArray(tape.ticks) && tape.ticks.length) return tape;
+      } catch (err) { /* try next day */ }
+    }
+    return null;
   }
 
   async function fetchAccount() {

@@ -3432,7 +3432,9 @@
     const ticks = [];
     for (let i = 0; i < raw.length; i++) {
       const t = raw[i];
-      const lots = Math.round(Number(t.lots) * 10) / 10;
+      // 保留小數張（零股／1 分Ｋ合成）；勿先四捨五入成 0
+      const lots = Math.round(Number(t.lots) * 1000) / 1000;
+      if (!(lots > 0)) continue;
       const prev = ticks.length ? ticks[ticks.length - 1] : null;
       let side = 0;
       if (prev && t.price > prev.price + 1e-9) side = 1;
@@ -3472,7 +3474,8 @@
 
     const lotFreq = Object.create(null);
     ticks.forEach(function (t) {
-      const k = String(Math.round(t.lots));
+      const rounded = t.lots >= 1 ? Math.round(t.lots) : Math.round(t.lots * 10) / 10;
+      const k = String(rounded);
       lotFreq[k] = (lotFreq[k] || 0) + 1;
     });
     const topLots = Object.keys(lotFreq).map(function (k) {
