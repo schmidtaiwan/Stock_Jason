@@ -922,6 +922,17 @@ canvas {
   font-size: 11px;
   vertical-align: middle;
 }
+.tape-sample-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+.tape-sample-toolbar .tape-copy-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+}
 .tape-sample-wrap {
   max-height: min(52vh, 420px);
   overflow: auto;
@@ -929,12 +940,16 @@ canvas {
   border: 1px solid var(--line, #2a3340);
   border-radius: 8px;
   -webkit-overflow-scrolling: touch;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .tape-sample-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .tape-sample-table th,
 .tape-sample-table td {

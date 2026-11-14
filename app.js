@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 251;
+  const PAGE_BUILD = 252;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -4868,6 +4868,61 @@
     }).sort(function (a, b) { return b.price - a.price; });
   }
 
+  function copyTextToClipboard(text) {
+    const s = String(text || "");
+    if (!s) return Promise.reject(new Error("無內容"));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(s);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = s;
+        ta.setAttribute("readonly", "");
+        ta.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (ok) resolve();
+        else reject(new Error("copy failed"));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function tapeSampleTsv(ticks, meta) {
+    meta = meta || {};
+    const list = Array.isArray(ticks) ? ticks : [];
+    const head = ["#", "時間", "成交", "張", "向", "漲跌值"].join("\t");
+    const lines = list.map(function (t, i) {
+      const chg = Number(t.change);
+      let dir = "";
+      let chgVal = "";
+      if (isFinite(chg) && chg !== 0) {
+        dir = chg > 0 ? "漲" : "跌";
+        chgVal = String(chg);
+      }
+      return [
+        i + 1,
+        t.time || "",
+        t.price != null && isFinite(Number(t.price)) ? String(t.price) : "",
+        t.lots != null && isFinite(Number(t.lots)) ? String(t.lots) : "",
+        dir,
+        chgVal
+      ].join("\t");
+    });
+    const title = [
+      "代號\t" + (state.stock && state.stock.code ? state.stock.code : ""),
+      "名稱\t" + (state.stock && state.stock.name ? state.stock.name : ""),
+      "日期\t" + (meta.tapeDate || ""),
+      "筆數\t" + list.length,
+      ""
+    ].join("\n");
+    return title + head + "\n" + lines.join("\n");
+  }
+
   function renderStockActors(bookQ, meta) {
     const box = $("stock-actors");
     if (!box || !M || !M.analyzeTapeActors) return;
@@ -4952,9 +5007,14 @@
     const sampleFold = ticks.length
       ? '<details class="session-subfold" data-tape-sample-fold' + (sampleOpen ? " open" : "") + ">" +
         "<summary>逐筆樣本（" + sampleN + " 筆）· 點開展開／再點收合</summary>" +
+        '<div class="tape-sample-toolbar">' +
+        '<button type="button" class="secondary tape-copy-btn" data-copy-tape="tsv">複製表格（Excel）</button>' +
+        '<button type="button" class="ghost tape-copy-btn" data-copy-tape="csv">複製 CSV</button>' +
+        '<span class="fine" data-copy-tape-status></span></div>' +
         '<div class="tape-sample-wrap"><table class="tape-sample-table">' +
         "<thead><tr><th>#</th><th>時間</th><th>成交</th><th>張</th><th>向</th></tr></thead>" +
-        "<tbody>" + tickRows + "</tbody></table></div></details>"
+        "<tbody>" + tickRows + "</tbody></table></div>" +
+        '<p class="fine">也可長按／拖曳選取上表文字後複製。</p></details>'
       : "";
     box.innerHTML = '<article class="card stock-actors-card">' +
       '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
@@ -4968,6 +5028,38 @@
       (lotHint ? '<p class="fine">高頻張數：' + esc(lotHint) + "</p>" : "") +
       '<p class="fine">' + esc(pack.note || "") + "</p>" +
       "</div></details></article>";
+
+    if (!box._tapeCopyBound) {
+      box._tapeCopyBound = true;
+      box.addEventListener("click", function (ev) {
+        const btn = ev.target && ev.target.closest && ev.target.closest("[data-copy-tape]");
+        if (!btn) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const mode = btn.getAttribute("data-copy-tape") || "tsv";
+        const ticksNow = Array.isArray(stockLiveTape) ? stockLiveTape.slice() : [];
+        let text = tapeSampleTsv(ticksNow, meta);
+        if (mode === "csv") {
+          text = text.split("\n").map(function (line) {
+            return line.split("\t").map(function (cell) {
+              const c = String(cell == null ? "" : cell);
+              return /["\n,]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
+            }).join(",");
+          }).join("\r\n");
+        }
+        const status = box.querySelector("[data-copy-tape-status]");
+        copyTextToClipboard(text).then(function () {
+          if (status) status.textContent = "已複製 " + ticksNow.length + " 筆";
+          flashStatus("足跡樣本已複製（可貼到 Excel／記事本）");
+          setTimeout(function () {
+            if (status && status.textContent.indexOf("已複製") === 0) status.textContent = "";
+          }, 2500);
+        }).catch(function () {
+          if (status) status.textContent = "複製失敗，請改手動選取";
+          flashStatus("複製失敗，請長按表格手動選取複製");
+        });
+      });
+    }
   }
 
   function renderStockLive(bookQ, pvRows) {
