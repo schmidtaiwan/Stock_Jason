@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 218;
+  const PAGE_BUILD = 219;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -327,6 +327,22 @@
     });
   }
 
+  function syncWatchViewMenuBtn() {
+    const btn = $("watch-view-menu-btn");
+    if (!btn) return;
+    const on = isWatchShowPnl() || isWatchPrivacy() || !!wakeWanted;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.textContent = "顯示";
+  }
+
+  function setWatchViewMenuOpen(open) {
+    const panel = $("watch-view-menu-panel");
+    const btn = $("watch-view-menu-btn");
+    if (!panel || !btn) return;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
   function syncWatchPnlUi() {
     const on = isWatchShowPnl();
     const btn = $("watch-pnl-toggle");
@@ -339,6 +355,7 @@
     if (board) board.classList.toggle("watch-hide-pnl", !on);
     const total = $("watch-total");
     if (total) total.hidden = !on;
+    syncWatchViewMenuBtn();
   }
 
   function syncWatchPrivacyUi() {
@@ -365,6 +382,7 @@
       document.body.classList.toggle("sj-privacy-same", on && mode === "same");
       document.body.classList.toggle("sj-privacy-depth", on && mode === "depth");
     }
+    syncWatchViewMenuBtn();
     applyPrivacyGray();
     if (on && mode === "same") applyPrivacySameBright();
     else clearPrivacySameBright();
@@ -1579,6 +1597,7 @@
       ? "此瀏覽器不支援螢幕常亮（可改用 Chrome／Safari，或到系統設定關閉自動鎖定）"
       : (on ? "關閉螢幕常亮" : "保持螢幕常亮，避免看盤時鎖屏");
     btn.textContent = "常亮";
+    syncWatchViewMenuBtn();
   }
 
   async function releaseWakeLock() {
@@ -5573,6 +5592,10 @@
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
     else if (t.id === "watch-json-btn") $("watch-json").click();
+    else if (t.id === "watch-view-menu-btn") {
+      const panel = $("watch-view-menu-panel");
+      setWatchViewMenuOpen(!!(panel && panel.hidden));
+    }
     else if (t.id === "watch-privacy-toggle") {
       if (privacySkipClick) {
         privacySkipClick = false;
@@ -5889,6 +5912,15 @@
   if ($("watch-pnl-toggle")) {
     $("watch-pnl-toggle").addEventListener("click", toggleWatchShowPnl);
   }
+  document.addEventListener("pointerdown", function (ev) {
+    const panel = $("watch-view-menu-panel");
+    if (!panel || panel.hidden) return;
+    if (ev.target.closest && ev.target.closest(".watch-view-menu")) return;
+    setWatchViewMenuOpen(false);
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") setWatchViewMenuOpen(false);
+  });
   if ($("watch-group-select")) {
     $("watch-group-select").addEventListener("change", function () {
       switchWatchGroup($("watch-group-select").value);
