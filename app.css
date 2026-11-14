@@ -81,6 +81,19 @@ h3 { font-size: 16px; margin: 16px 0 6px; }
   font-weight: 700;
 }
 
+/* 未登入試看倒數：紅色閃爍提醒 */
+@keyframes login-countdown-blink {
+  0%, 100% { color: #ff4d4d; border-color: rgba(255, 77, 77, 0.85); opacity: 1; }
+  50% { color: #ffb3b3; border-color: rgba(255, 77, 77, 0.35); opacity: 0.72; }
+}
+#login.login-countdown {
+  color: #ff4d4d;
+  border-color: rgba(255, 77, 77, 0.85);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  animation: login-countdown-blink 1s ease-in-out infinite;
+}
+
 .primary, .secondary, .ghost {
   border: 0;
   border-radius: 12px;

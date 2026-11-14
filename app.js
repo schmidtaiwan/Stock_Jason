@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 231;
+  const PAGE_BUILD = 232;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -557,16 +557,19 @@
     if (!login) return;
     if (D && D.account && D.account()) {
       login.textContent = "登入";
+      login.classList.remove("login-countdown");
       login.removeAttribute("aria-label");
       return;
     }
     if (!$("app") || $("app").hidden) {
       login.textContent = "登入";
+      login.classList.remove("login-countdown");
       login.removeAttribute("aria-label");
       return;
     }
     const left = guestSecsLeft();
     login.textContent = String(left == null ? GUEST_VIEW_SECS : left);
+    login.classList.add("login-countdown");
     login.setAttribute("aria-label", "剩餘 " + login.textContent + " 秒，點擊登入");
   }
 
@@ -585,6 +588,7 @@
     const login = $("login");
     if (login) {
       login.textContent = "登入";
+      login.classList.remove("login-countdown");
       login.removeAttribute("aria-label");
     }
   }
@@ -606,7 +610,10 @@
       stopGuestCountdown();
       clearGuestDeadline();
       const login = $("login");
-      if (login) login.textContent = "登入";
+      if (login) {
+        login.textContent = "登入";
+        login.classList.remove("login-countdown");
+      }
       return;
     }
     let deadline = guestDeadline();
