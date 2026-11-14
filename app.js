@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 219;
+  const PAGE_BUILD = 220;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -335,12 +335,33 @@
     btn.textContent = "顯示";
   }
 
+  function placeWatchViewMenu() {
+    const panel = $("watch-view-menu-panel");
+    const btn = $("watch-view-menu-btn");
+    if (!panel || !btn || panel.hidden) return;
+    const r = btn.getBoundingClientRect();
+    const pad = 8;
+    const width = Math.max(panel.offsetWidth || 0, 104);
+    let left = r.left;
+    if (left + width > window.innerWidth - pad) left = window.innerWidth - pad - width;
+    if (left < pad) left = pad;
+    panel.style.left = left + "px";
+    panel.style.top = (r.bottom + 4) + "px";
+  }
+
   function setWatchViewMenuOpen(open) {
     const panel = $("watch-view-menu-panel");
     const btn = $("watch-view-menu-btn");
     if (!panel || !btn) return;
     panel.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      placeWatchViewMenu();
+      requestAnimationFrame(placeWatchViewMenu);
+    } else {
+      panel.style.left = "";
+      panel.style.top = "";
+    }
   }
 
   function syncWatchPnlUi() {
