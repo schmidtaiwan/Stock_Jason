@@ -79,15 +79,21 @@
     _onlineAt = Date.now();
   }
 
+  let _lastError = "";
+
+  function lastError() {
+    return _lastError || "";
+  }
+
   async function fetchJson(path, needAuth, timeoutMs) {
     const root = baseUrl();
     if (!root) return null;
     const headers = {};
     const token = accessToken();
+    // 重要：health／live／tape 不要帶 Authorization。
+    // 登入後若一律加 Bearer，手機會走 CORS 預檢＋Private Network，常被 Chrome 擋掉。
     if (needAuth) {
       if (!token) return null;
-      headers.Authorization = "Bearer " + token;
-    } else if (token) {
       headers.Authorization = "Bearer " + token;
     }
     const ms = timeoutMs > 0 ? timeoutMs : FETCH_MS;
@@ -99,20 +105,28 @@
       }, ms);
     }
     try {
-      const res = await fetch(root + path, {
+      const fetchOpts = {
         method: "GET",
         headers: headers,
         cache: "no-store",
         mode: "cors",
         signal: ctrl ? ctrl.signal : undefined
-      });
+      };
+      // Chromium：明示要打私網（Tailscale 100.x）
+      try { fetchOpts.targetAddressSpace = "private"; } catch (e) { /* ignore */ }
+      const res = await fetch(root + path, fetchOpts);
       markOnline(true);
+      _lastError = "";
       if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
       if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
       if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
       return res.json();
     } catch (err) {
       markOnline(false);
+      const name = err && err.name ? String(err.name) : "";
+      const msg = err && err.message ? String(err.message) : String(err || "fetch failed");
+      if (name === "AbortError") _lastError = "逾時 " + ms + "ms";
+      else _lastError = msg.slice(0, 120);
       throw err;
     } finally {
       if (timer) clearTimeout(timer);
@@ -149,7 +163,7 @@
         if (i > 0) {
           _online = null;
           _onlineAt = 0;
-          await new Promise(function (r) { setTimeout(r, 600 * i); });
+          await new Promise(function (r) { setTimeout(r, 800 * i); });
         }
         await fetchJson("/api/health", false, perTry);
         return true;
@@ -211,6 +225,7 @@
     canReach: canReach,
     isOnline: isOnline,
     probe: probe,
+    lastError: lastError,
     isJason: isJason,
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 247;
+  const PAGE_BUILD = 248;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -853,16 +853,18 @@
       return false;
     }
     const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
+    const detail = (window.SJLiveBridge && SJLiveBridge.lastError && SJLiveBridge.lastError()) || "";
+    const tip = detail ? ("（" + detail + "）") : "";
     let msg = "";
     if (!st.configured || !base) {
       msg = "尚未設定 LiveBridge 網址（Tailscale Serve）。富邦即時報價／庫存無法直連本機。";
     } else if (reason === "fubon") {
-      msg = "已選富邦，但連不到 LiveBridge。請確認手機 Tailscale 已連線且可開 " + base +
-        " ；首次連線請先打開 Tailscale App 喚醒。暫改讀雲端備援。";
+      msg = "已選富邦，但連不到 LiveBridge" + tip +
+        "。請確認 Tailscale→DNS／MagicDNS 開啟，並用瀏覽器開 " + base + "/api/health ；Chrome 若詢問「區域網路」請允許。暫改雲端備援。";
     } else if (reason === "holdings") {
-      msg = "連不到 LiveBridge（手機請開 Tailscale 並喚醒連到 Win11）。「富邦庫存」改讀雲端備援。";
+      msg = "連不到 LiveBridge" + tip + "。「富邦庫存」改讀雲端備援。";
     } else {
-      msg = "連不到 LiveBridge（請開 Tailscale、喚醒至 Win11，並確認 EXE 在跑）：" + base;
+      msg = "連不到 LiveBridge" + tip + "：" + base;
     }
     showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force });
     return true;
