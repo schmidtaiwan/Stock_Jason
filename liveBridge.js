@@ -51,14 +51,25 @@
     return true;
   }
 
-  async function fetchJson(path) {
+  /** 報價／分時：有 Tailscale URL 即可（免 Google token）；庫存仍要登入。 */
+  function canReach() {
+    return !!baseUrl();
+  }
+
+  async function fetchJson(path, needAuth) {
     const root = baseUrl();
     if (!root) return null;
+    const headers = {};
     const token = accessToken();
-    if (!token) return null;
+    if (needAuth) {
+      if (!token) return null;
+      headers.Authorization = "Bearer " + token;
+    } else if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
     const res = await fetch(root + path, {
       method: "GET",
-      headers: { Authorization: "Bearer " + token },
+      headers: headers,
       cache: "no-store",
       mode: "cors",
     });
@@ -69,21 +80,21 @@
   }
 
   async function readFubonLive() {
-    if (!canUse()) return null;
+    if (!canReach()) return null;
     try {
-      return await fetchJson("/api/fubon-live");
+      return await fetchJson("/api/fubon-live", false);
     } catch (err) {
       return null;
     }
   }
 
   async function readFubonTape(code, dateYmd) {
-    if (!canUse()) return null;
+    if (!canReach()) return null;
     const id = String(code || "").trim().toUpperCase();
     if (!id) return null;
     try {
-      const tape = await fetchJson("/api/fubon-tape/" + encodeURIComponent(id));
-      // 空 ticks 當失敗，讓呼叫端改走 Drive
+      const tape = await fetchJson("/api/fubon-tape/" + encodeURIComponent(id), false);
+      // 空 ticks 當失敗，讓呼叫端改走 Drive／live.focusTape
       if (!tape || !Array.isArray(tape.ticks) || tape.ticks.length < 4) return null;
       return tape;
     } catch (err) {
@@ -95,7 +106,7 @@
   async function readFubonHoldings() {
     if (!canUse() || !isJason()) return null;
     try {
-      return await fetchJson("/api/fubon-holdings");
+      return await fetchJson("/api/fubon-holdings", true);
     } catch (err) {
       return null;
     }
@@ -117,6 +128,7 @@
     baseUrl: baseUrl,
     setBaseUrl: setBaseUrl,
     canUse: canUse,
+    canReach: canReach,
     isJason: isJason,
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,

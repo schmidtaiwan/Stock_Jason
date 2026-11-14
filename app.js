@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 241;
+  const PAGE_BUILD = 242;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -4906,10 +4906,25 @@
       }
       const wantFubon = getTwiiSourcePref() === "fubon";
       const LB = window.SJLiveBridge;
-      const bridgeOk = !!(LB && LB.canUse && LB.canUse());
+      // 報價／分時：有 Tailscale URL 即可（免 Google token）；庫存仍用 canUse
+      const bridgeOk = !!(LB && ((LB.canReach && LB.canReach()) || (LB.canUse && LB.canUse())));
       let bookQ = null;
       let fubonTape = null;
       let tapeTried = false;
+
+      function tapeFromLiveSnap(live, idCode) {
+        if (!live || !idCode) return null;
+        const id = String(idCode).toUpperCase();
+        const ft = live.focusTape;
+        if (ft && Array.isArray(ft.ticks) && ft.ticks.length >= 4) {
+          const fc = String(live.focus || ft.code || "").toUpperCase();
+          if (!fc || fc === id) return ft;
+        }
+        if (live.tapes && live.tapes[id] && Array.isArray(live.tapes[id].ticks) && live.tapes[id].ticks.length >= 4) {
+          return live.tapes[id];
+        }
+        return null;
+      }
 
       function bookFromFubonRow(row, srcTag, asOf) {
         if (!row || !(row.price > 0)) return null;
@@ -4947,19 +4962,25 @@
             const row = live && live.byCode && live.byCode[code];
             const hit = bookFromFubonRow(row, "fubon-tailscale", live && live.asOf);
             if (hit) bookQ = hit;
+            const embedded = tapeFromLiveSnap(live, code);
+            if (embedded) fubonTape = embedded;
           } catch (err) { /* ignore */ }
         }
-        if ((!bookQ || !(bookQ.price > 0)) && window.SJDrive && SJDrive.readFubonLive) {
+        if ((!bookQ || !(bookQ.price > 0) || !fubonTape) && window.SJDrive && SJDrive.readFubonLive) {
           try {
             const live = await SJDrive.readFubonLive();
             const row = live && live.byCode && live.byCode[code];
             if (row && row.price > 0 && live.at && Date.now() - Number(live.at) < 300_000) {
               bookQ = bookFromFubonRow(row, "fubon-drive", live.asOf);
             }
+            if (!fubonTape) {
+              const embedded = tapeFromLiveSnap(live, code);
+              if (embedded) fubonTape = embedded;
+            }
           } catch (err) { /* ignore */ }
         }
-        // 先直連 LiveBridge 分時，再退 Drive latest／近幾日
-        if (LB && LB.readFubonTape && bridgeOk) {
+        // 直連 LiveBridge 分時，再退 Drive 扁平／巢狀檔
+        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length) && LB && LB.readFubonTape && bridgeOk) {
           tapeTried = true;
           try { fubonTape = await LB.readFubonTape(code); } catch (err) { fubonTape = null; }
         }
@@ -4967,6 +4988,7 @@
           tapeTried = true;
           try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
         }
+        if (fubonTape && fubonTape.ticks && fubonTape.ticks.length) tapeTried = true;
       }
 
       // 非富邦模式，或富邦缺五檔：再補 MIS
