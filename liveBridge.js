@@ -118,14 +118,16 @@
     }
   }
 
-  /** 短 timeout 探活；結果會快取幾秒，避免每次刷新都卡。 */
-  async function probe(timeoutMs) {
+  /** 短 timeout 探活；結果會快取幾秒，避免每次刷新都卡。force 則略過快取。 */
+  async function probe(timeoutMs, force) {
     if (!baseUrl()) {
       markOnline(false);
       return false;
     }
-    const known = isOnline();
-    if (known != null) return known;
+    if (!force) {
+      const known = isOnline();
+      if (known != null) return known;
+    }
     try {
       await fetchJson("/api/health", false, timeoutMs > 0 ? timeoutMs : 2500);
       return true;

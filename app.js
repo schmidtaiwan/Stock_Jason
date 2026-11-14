@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 244;
+  const PAGE_BUILD = 245;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -776,6 +776,85 @@
     }, 4000);
   }
 
+  let bridgeAlertAt = 0;
+  let bridgeAlertKind = "";
+
+  function hideBridgeAlert() {
+    const bar = $("bridge-alert-bar");
+    if (bar) {
+      bar.hidden = true;
+      bar.innerHTML = "";
+    }
+    document.body.classList.remove("has-bridge-alert");
+    bridgeAlertKind = "";
+  }
+
+  /** 頂部橘條：Tailscale／LiveBridge 未連線（可關閉；同類訊息有節流）。 */
+  function showBridgeAlert(kind, message, opts) {
+    opts = opts || {};
+    const force = !!opts.force;
+    const now = Date.now();
+    if (!force && kind && kind === bridgeAlertKind && now - bridgeAlertAt < 90_000) return;
+    const bar = $("bridge-alert-bar");
+    if (!bar) {
+      flashStatus(message);
+      return;
+    }
+    bridgeAlertAt = now;
+    bridgeAlertKind = kind || "tailscale";
+    bar.innerHTML =
+      "<span>" + esc(message) + "</span>" +
+      '<button type="button" data-bridge-alert-dismiss>知道了</button>';
+    bar.hidden = false;
+    document.body.classList.add("has-bridge-alert");
+    flashStatus(message);
+  }
+
+  async function probeLiveBridgeOnline(force) {
+    const LB = window.SJLiveBridge;
+    if (!LB || !LB.canReach || !LB.canReach()) return { configured: false, online: false };
+    if (LB.probe) {
+      try {
+        const online = !!(await LB.probe(2500, !!force));
+        return { configured: true, online: online };
+      } catch (err) {
+        return { configured: true, online: false };
+      }
+    }
+    if (LB.isOnline) {
+      const known = LB.isOnline();
+      if (known != null) return { configured: true, online: !!known };
+    }
+    return { configured: true, online: false };
+  }
+
+  /**
+   * 登入後用富邦／LiveBridge 時：Tailscale 連不上就跳出通知。
+   * reason: "fubon" | "livebridge" | "holdings"
+   */
+  async function warnIfTailscaleDown(reason, opts) {
+    opts = opts || {};
+    if (!D.account || !D.account()) return false;
+    const st = await probeLiveBridgeOnline(!!opts.force);
+    if (st.online) {
+      if (bridgeAlertKind) hideBridgeAlert();
+      return false;
+    }
+    const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
+    let msg = "";
+    if (!st.configured || !base) {
+      msg = "尚未設定 LiveBridge 網址（Tailscale Serve）。富邦即時報價／庫存無法直連本機。";
+    } else if (reason === "fubon") {
+      msg = "已選富邦，但 Tailscale／LiveBridge 未連線。請開啟 Tailscale 並確認本機 LiveBridge 在跑；暫改讀雲端備援（若有）。";
+    } else if (reason === "holdings") {
+      msg = "LiveBridge 未連線（Tailscale）。「富邦庫存」改讀雲端備援；即時成本請開 Tailscale 後再同步。";
+    } else {
+      msg = "LiveBridge 未連線（請開啟 Tailscale，並確認本機 EXE 在跑）：" + base;
+    }
+    showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force });
+    return true;
+  }
+
   let twiiBusy = false;
   let twiiSeq = 0;
 
@@ -836,9 +915,13 @@
         closeTwiiSourceMenu();
         // 選了就立刻改紅框文字，不等行情回來
         paintTwiiSource({ source: next === "fubon" ? "fubon" : "mis" });
-        flashStatus(next === "fubon"
-          ? "台股來源：富邦 API（報價＋足跡）"
-          : "台股來源：證交所 MIS");
+        if (next === "fubon") {
+          flashStatus("台股來源：富邦 API（報價＋足跡）");
+          warnIfTailscaleDown("fubon", { force: true }).catch(function () { /* ignore */ });
+        } else {
+          hideBridgeAlert();
+          flashStatus("台股來源：證交所 MIS");
+        }
         paintTwii(true).catch(function () { /* ignore */ });
         if (state.view === "watch") paintWatchQuotes();
         else if (state.view === "stock" && state.stock) {
@@ -1919,7 +2002,18 @@
     let data = null;
     let via = "";
     const LB = window.SJLiveBridge;
-    if (LB && typeof LB.readFubonHoldings === "function" && LB.isJason && LB.isJason()) {
+    const bridgeWanted = !!(LB && LB.canReach && LB.canReach() && LB.isJason && LB.isJason());
+    let bridgeOnline = false;
+    if (bridgeWanted) {
+      try {
+        const st = await probeLiveBridgeOnline(false);
+        bridgeOnline = !!st.online;
+        if (!bridgeOnline) {
+          warnIfTailscaleDown("holdings", { force: false }).catch(function () { /* ignore */ });
+        }
+      } catch (err) { bridgeOnline = false; }
+    }
+    if (bridgeWanted && bridgeOnline && typeof LB.readFubonHoldings === "function") {
       try {
         data = await LB.readFubonHoldings();
         if (data && Array.isArray(data.holdings) && data.holdings.length) via = "LiveBridge";
@@ -2035,6 +2129,12 @@
     if (state.view === "chart") loadChart();
     else if (state.view === "pulse") loadPulse();
     else if (state.view === "watch") renderWatch(true);
+    // 登入後：已選富邦或 Jason 會用 LiveBridge → 立刻探活 Tailscale
+    if (getTwiiSourcePref() === "fubon") {
+      warnIfTailscaleDown("fubon", { force: true }).catch(function () { /* ignore */ });
+    } else if (isJasonAccount()) {
+      warnIfTailscaleDown("livebridge", { force: true }).catch(function () { /* ignore */ });
+    }
     return true;
   }
 
@@ -2049,8 +2149,7 @@
       flashStatus(msg);
       return;
     }
-    const useRedirect = !!(D.preferRedirectLogin && D.preferRedirectLogin());
-    $("gate-msg").textContent = useRedirect ? "正在前往 Google 登入…" : "正在開啟 Google 登入…";
+    $("gate-msg").textContent = "正在開啟 Google 登入…";
     $("gate-login").disabled = true;
     const headerLogin = $("login");
     if (headerLogin) headerLogin.disabled = true;
@@ -4947,6 +5046,9 @@
       const bridgeOk = bridgeOnline;
       const driveReady = !!(window.SJDrive && SJDrive.account && SJDrive.account() &&
         SJDrive.readFubonLive && (!SJDrive.isAllowed || SJDrive.isAllowed((SJDrive.account().email) || "")));
+      if (wantFubon && D.account && D.account() && !bridgeOk) {
+        warnIfTailscaleDown("fubon", { force: false }).catch(function () { /* ignore */ });
+      }
       let bookQ = null;
       let fubonTape = null;
       let tapeTried = false;
@@ -6273,6 +6375,11 @@
   showVer();
   $("enter").addEventListener("click", function () { showApp(); });
   $("gate-login").addEventListener("click", doLogin);
+  document.addEventListener("click", function (ev) {
+    if (ev.target && ev.target.closest && ev.target.closest("[data-bridge-alert-dismiss]")) {
+      hideBridgeAlert();
+    }
+  });
   if (D.isEmbeddedBrowser && D.isEmbeddedBrowser()) {
     const ext = $("gate-open-browser");
     if (ext) ext.hidden = false;
@@ -7280,6 +7387,13 @@
     startLiveClock();
     syncUsBoardFoldUi();
     initWakeLock();
+    if (D.account()) {
+      if (getTwiiSourcePref() === "fubon") {
+        warnIfTailscaleDown("fubon", { force: true }).catch(function () { /* ignore */ });
+      } else if (isJasonAccount()) {
+        warnIfTailscaleDown("livebridge", { force: false }).catch(function () { /* ignore */ });
+      }
+    }
   }
 
   // Google 整頁 redirect 回來（?code=）：先換 token 再進站

@@ -115,6 +115,46 @@ h3 { font-size: 16px; margin: 16px 0 6px; }
   cursor: pointer;
 }
 
+/* Tailscale／LiveBridge 未連線 */
+.bridge-alert-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: #8a5a00;
+  color: #fff8e7;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.bridge-alert-bar[hidden] {
+  display: none !important;
+}
+.bridge-alert-bar button {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffe082;
+  color: #1a1a1a;
+  font-weight: 700;
+  cursor: pointer;
+}
+body.has-bridge-alert {
+  padding-top: calc(52px + env(safe-area-inset-top));
+}
+body.has-build-update.has-bridge-alert {
+  padding-top: calc(104px + env(safe-area-inset-top));
+}
+
 /* 未登入試看倒數：紅色閃爍提醒 */
 @keyframes login-countdown-blink {
   0%, 100% { color: #ff4d4d; border-color: rgba(255, 77, 77, 0.85); opacity: 1; }
