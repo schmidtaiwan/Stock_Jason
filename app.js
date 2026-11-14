@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 253;
-  const PAGE_DATE = "2026-11-14";
+  const PAGE_BUILD = 254;
+  const PAGE_DATE = "2026-11-15";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
   const FUBON_GROUP_NAME = "富邦庫存";
@@ -30,6 +30,9 @@
   let watchLastLevels = [];
   let watchLastChips = null;
   const watchQuoteCache = Object.create(null);
+  /** @type {Record<string,{at:number,hint:{text:string,tone:string,title:string}|null,busy?:boolean}>} */
+  const watchTapeCache = Object.create(null);
+  let watchTapeHintGen = 0;
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -4492,10 +4495,164 @@
     }).join("") + "</div>";
   }
 
+  function tapeActionShort(action) {
+    if (!action || !action.action) return null;
+    const a = String(action.action);
+    const why = (action.reasons && action.reasons[0]) || "";
+    const asOf = action.asOf ? ("截至 " + action.asOf + " ") : "";
+    const px = action.price != null ? ("現價約 " + fmtPx(action.price) + " ") : "";
+    const title = asOf + px + "→ " + a + (why ? "；" + why : "") +
+      "（足跡規則試算，非投資建議）";
+    if (/勿追|偏賣/.test(a)) return { text: "勿追", tone: "down", title: title };
+    if (/偏空/.test(a)) return { text: "偏空", tone: "down", title: title };
+    if (/偏買|可留意/.test(a)) return { text: "可買", tone: "up", title: title };
+    if (/偏多/.test(a)) return { text: "偏多", tone: "up", title: title };
+    return { text: "觀望", tone: "", title: title };
+  }
+
+  function hintFromTapeTicks(ticks, ctx) {
+    if (!M || !M.analyzeTapeActors || !ticks || ticks.length < 4) return null;
+    const pack = M.analyzeTapeActors(ticks, ctx || {});
+    if (!pack || !pack.ok || !pack.brief || !pack.brief.action) return null;
+    return tapeActionShort(pack.brief.action.current || pack.brief.action.at1000);
+  }
+
+  function paintWatchTapeCell(el, hint) {
+    if (!el) return;
+    if (!hint) {
+      el.className = "watch-tape-chip";
+      el.textContent = "—";
+      el.title = "尚無足夠分時足跡";
+      return;
+    }
+    el.className = "watch-tape-chip" + (hint.tone ? " " + hint.tone : "");
+    el.textContent = hint.text || "—";
+    el.title = hint.title || "";
+  }
+
+  function applyWatchTapeCacheToBox(box) {
+    if (!box) return;
+    book.watch.forEach(function (item, idx) {
+      const el = box.querySelector('[data-watch-tape="' + idx + '"]');
+      if (!el) return;
+      const code = String(item && item.code || "").toUpperCase();
+      const hit = code && watchTapeCache[code];
+      if (hit && hit.hint) paintWatchTapeCell(el, hit.hint);
+      else if (hit && hit.busy) {
+        el.className = "watch-tape-chip note";
+        el.textContent = "…";
+        el.title = "讀取足跡中";
+      } else if (!hit) {
+        el.className = "watch-tape-chip note";
+        el.textContent = "…";
+        el.title = "讀取足跡中";
+      } else {
+        paintWatchTapeCell(el, null);
+      }
+    });
+  }
+
+  async function refreshWatchTapeHints(box, gen) {
+    if (!box || !M || !book.watch.length) return;
+    const myGen = gen != null ? gen : ++watchTapeHintGen;
+    const focusCode = state.stock && state.stock.code
+      ? String(state.stock.code).toUpperCase() : "";
+    const now = Date.now();
+    const TTL = 90_000;
+
+    // 當前個股盤中足跡優先
+    if (focusCode && stockLiveTape && stockLiveTape.length >= 4) {
+      const hint = hintFromTapeTicks(stockLiveTape, {
+        price: state.stock && state.stock.price,
+        pct: state.stock && state.stock.pct
+      });
+      watchTapeCache[focusCode] = { at: now, hint: hint };
+    }
+
+    // 一次撈 live 內嵌 tapes（若有）
+    try {
+      const LB = window.SJLiveBridge;
+      let live = null;
+      if (LB && LB.readFubonLive && ((LB.isOnline && LB.isOnline() === true) ||
+          (LB.canReach && LB.canReach()))) {
+        live = await LB.readFubonLive();
+      }
+      if (!live && window.SJDrive && SJDrive.readFubonLive && SJDrive.account && SJDrive.account()) {
+        live = await SJDrive.readFubonLive();
+      }
+      if (live) {
+        const embed = function (id, tape) {
+          if (!id || !tape || !Array.isArray(tape.ticks) || tape.ticks.length < 4) return;
+          if (watchTapeCache[id] && watchTapeCache[id].at > now - TTL && watchTapeCache[id].hint) return;
+          const hint = hintFromTapeTicks(tape.ticks, {});
+          watchTapeCache[id] = { at: now, hint: hint };
+        };
+        if (live.focusTape) {
+          embed(String(live.focus || live.focusTape.code || "").toUpperCase(), live.focusTape);
+        }
+        if (live.tapes && typeof live.tapes === "object") {
+          Object.keys(live.tapes).forEach(function (k) {
+            embed(String(k).toUpperCase(), live.tapes[k]);
+          });
+        }
+      }
+    } catch (err) { /* ignore */ }
+
+    if (myGen !== watchTapeHintGen) return;
+    applyWatchTapeCacheToBox(box);
+
+    const need = [];
+    book.watch.forEach(function (item) {
+      const code = String(item && item.code || "").toUpperCase();
+      if (!code) return;
+      const hit = watchTapeCache[code];
+      if (hit && hit.at > now - TTL) return;
+      if (need.indexOf(code) < 0) need.push(code);
+    });
+    // 焦點代號先抓；其餘最多 10 檔避免拖垮
+    need.sort(function (a, b) {
+      if (a === focusCode) return -1;
+      if (b === focusCode) return 1;
+      return 0;
+    });
+    const queue = need.slice(0, 12);
+    queue.forEach(function (code) {
+      const prev = watchTapeCache[code] || { at: 0, hint: null };
+      watchTapeCache[code] = { at: prev.at, hint: prev.hint, busy: true };
+    });
+    applyWatchTapeCacheToBox(box);
+
+    let cursor = 0;
+    const workers = [];
+    const CONC = 3;
+    async function worker() {
+      while (cursor < queue.length) {
+        if (myGen !== watchTapeHintGen) return;
+        const i = cursor++;
+        const code = queue[i];
+        let tape = null;
+        try {
+          if (M.fetchFubonTapeFromDrive) tape = await M.fetchFubonTapeFromDrive(code);
+        } catch (err) { tape = null; }
+        const hint = tape && tape.ticks ? hintFromTapeTicks(tape.ticks, {}) : null;
+        watchTapeCache[code] = { at: Date.now(), hint: hint, busy: false };
+        if (box.isConnected) {
+          book.watch.forEach(function (item, idx) {
+            if (String(item && item.code || "").toUpperCase() !== code) return;
+            paintWatchTapeCell(box.querySelector('[data-watch-tape="' + idx + '"]'), hint);
+          });
+        }
+      }
+    }
+    for (let w = 0; w < CONC; w++) workers.push(worker());
+    await Promise.all(workers);
+  }
+
   function renderWatchFull(box) {
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
       '<th class="watch-pin">商品</th><th class="watch-col-price">成交</th>' +
-      '<th class="watch-col-chg">漲跌</th><th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th>' +
+      '<th class="watch-col-chg">漲跌</th><th class="watch-col-tape">足跡</th>' +
+      '<th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th>' +
       '<th class="watch-col-lamp">動向</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th>' +
       '<th class="watch-col-cost">買價</th><th class="watch-col-shares">股數</th>' +
       '<th class="watch-col-del" aria-label="移除"></th><th>通知</th>' +
@@ -4526,6 +4683,8 @@
           '<td class="watch-col-price">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +
           '<td class="watch-num watch-col-chg" data-watch-chg="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-tape"><span class="watch-tape-chip" data-watch-tape="' +
+          idx + '" title="分時足跡判讀">…</span></td>' +
           '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-lamp"><span class="watch-lamp-chip" data-watch-lamp="' +
@@ -4572,6 +4731,18 @@
     if (!force && box.querySelector("[data-watch-row]") &&
         !!box.querySelector(".watch-mini-grid") === mini) {
       paintWatchQuotes();
+      if (!mini) {
+        applyWatchTapeCacheToBox(box);
+        const stale = book.watch.some(function (item) {
+          const code = String(item && item.code || "").toUpperCase();
+          const hit = code && watchTapeCache[code];
+          return !hit || !(hit.at > Date.now() - 90_000);
+        });
+        if (stale) {
+          watchTapeHintGen += 1;
+          refreshWatchTapeHints(box, watchTapeHintGen).catch(function () { /* ignore */ });
+        }
+      }
       return;
     }
     const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
@@ -4579,6 +4750,12 @@
     else renderWatchFull(box);
     // 切極簡／進出個股重建時先套用上次報價，避免整排變「…」
     applyCachedWatchQuotes(box);
+    if (!mini) {
+      applyWatchTapeCacheToBox(box);
+      watchTapeHintGen += 1;
+      const tapeGen = watchTapeHintGen;
+      refreshWatchTapeHints(box, tapeGen).catch(function () { /* ignore */ });
+    }
     // 盤後／剛登入：watchBoard 會先灌雲端 mis-live 快照再補 MIS
     withWatchTimeout(M.watchBoard(book.watch), 22000, null).then(function (rows) {
       if (gen !== renderWatch.gen) return;
@@ -4605,6 +4782,11 @@
           watchLastChips = chips || { date: "", byCode: {} };
           paintWatchChipRows(box, watchLastChips);
         });
+      if (!mini) {
+        watchTapeHintGen += 1;
+        const tapeGen2 = watchTapeHintGen;
+        refreshWatchTapeHints(box, tapeGen2).catch(function () { /* ignore */ });
+      }
     });
   }
 
@@ -5034,11 +5216,48 @@
       const ver = (brief.verify || []).map(function (line) {
         return "<li>" + esc(line) + "</li>";
       }).join("");
+      const act = brief.action || null;
+      let actionHtml = "";
+      if (act && (act.current || act.at1000 || (act.snapshots && act.snapshots.length))) {
+        function actionCard(h, title) {
+          if (!h) return "";
+          const tone = h.tone === "up" ? "up" : (h.tone === "down" ? "down" : "");
+          const why = (h.reasons || []).map(function (line) {
+            return "<li>" + esc(line) + "</li>";
+          }).join("");
+          return '<div class="tape-action-card">' +
+            '<div class="tape-action-head">' +
+            "<span>" + esc(title || ("截至 " + h.asOf)) + "</span>" +
+            '<strong class="tag ' + tone + '">' + esc(h.action) + "</strong>" +
+            '<span class="fine">現價約 ' + (h.price != null ? fmtPx(h.price) : "—") +
+            (h.vwap != null ? " · VWAP≈" + fmtPx(h.vwap) : "") + "</span></div>" +
+            (why ? '<ul class="session-list tape-action-why">' + why + "</ul>" : "") +
+            "</div>";
+        }
+        const snapRows = (act.snapshots || []).map(function (s) {
+          const tone = s.tone === "up" ? "up" : (s.tone === "down" ? "down" : "");
+          return "<tr><td>" + esc(s.label) + '</td><td class="' + tone + '"><strong>' +
+            esc(s.action) + "</strong></td><td>" +
+            (s.price != null ? fmtPx(s.price) : "—") + "</td><td class=\"fine\">" +
+            esc((s.reasons && s.reasons[0]) || "") + "</td></tr>";
+        }).join("");
+        actionHtml =
+          "<h4>盤中操作傾向（試算）</h4>" +
+          actionCard(act.current, "目前（截至 " + ((act.current && act.current.asOf) || "—") + "）") +
+          (act.at1000 ? actionCard(act.at1000, "若在 10:00 當下") : "") +
+          (snapRows
+            ? '<div class="tape-sample-wrap"><table class="tape-sample-table tape-brief-table tape-action-table">' +
+              "<thead><tr><th>時點</th><th>傾向</th><th>價</th><th>主因</th></tr></thead><tbody>" +
+              snapRows + "</tbody></table></div>"
+            : "") +
+          '<p class="fine">' + esc(act.disclaimer || "") + "</p>";
+      }
       briefHtml =
         '<details class="session-subfold" data-tape-brief-fold' +
         (briefOpen || !box.querySelector("[data-tape-brief-fold]") ? " open" : "") + ">" +
         "<summary>盤中行為推演與時段對照</summary>" +
         '<p class="tape-brief-preamble">' + esc(brief.preamble || "") + "</p>" +
+        actionHtml +
         (narr ? "<h4>各類參與者推演</h4><ul class=\"session-list tape-brief-list\">" + narr + "</ul>" : "") +
         (tl
           ? "<h4>關鍵時段對照</h4><div class=\"tape-sample-wrap\"><table class=\"tape-sample-table tape-brief-table\">" +
@@ -5087,6 +5306,34 @@
           parts.push("");
           parts.push(b.preamble || "");
           parts.push("");
+          if (b.action) {
+            parts.push("■ 盤中操作傾向（試算，非投資建議）");
+            if (b.action.current) {
+              parts.push("目前 " + (b.action.current.asOf || "") + " → " + b.action.current.action);
+              (b.action.current.reasons || []).forEach(function (line) {
+                parts.push("  - " + line);
+              });
+            }
+            if (b.action.at1000) {
+              parts.push("10:00 當下 → " + b.action.at1000.action);
+              (b.action.at1000.reasons || []).forEach(function (line) {
+                parts.push("  - " + line);
+              });
+            }
+            if (b.action.snapshots && b.action.snapshots.length) {
+              parts.push(["時點", "傾向", "價", "主因"].join("\t"));
+              b.action.snapshots.forEach(function (s) {
+                parts.push([
+                  s.label,
+                  s.action,
+                  s.price != null ? s.price : "",
+                  (s.reasons && s.reasons[0]) || ""
+                ].join("\t"));
+              });
+            }
+            if (b.action.disclaimer) parts.push(b.action.disclaimer);
+            parts.push("");
+          }
           parts.push("■ 各類參與者推演");
           (b.narratives || []).forEach(function (n) {
             parts.push("・" + n.title);
@@ -5455,6 +5702,13 @@
         tapeTried: tapeTried,
         tapeDate: fubonTape && fubonTape.date ? String(fubonTape.date) : ""
       });
+      if (code && stockLiveTape && stockLiveTape.length >= 4) {
+        const hint = hintFromTapeTicks(stockLiveTape, {
+          price: bookQ && bookQ.price,
+          pct: bookQ && bookQ.pct
+        });
+        watchTapeCache[code] = { at: Date.now(), hint: hint };
+      }
     } catch (err) {
       if (!quiet) {
         box.hidden = false;

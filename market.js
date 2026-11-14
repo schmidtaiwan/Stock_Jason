@@ -3955,6 +3955,14 @@
       });
     });
 
+    const action = buildTapeActionHint(ticks, ctx, {
+      vwap: vwap,
+      hi: hi,
+      lo: lo,
+      open: openPx,
+      bigThreshold: bigThreshold
+    });
+
     return {
       preamble: preamble,
       vwap: vwap,
@@ -3964,7 +3972,187 @@
       close: closePx,
       narratives: narratives,
       timeline: timeline,
-      verify: verify
+      verify: verify,
+      action: action
+    };
+  }
+
+  /**
+   * 依「截至某時刻」的足跡，給偏買／偏賣／觀望提示（非投資建議）。
+   * 例如盤中 10:00：用 09:00–10:00 資料推演是否還適合追。
+   */
+  function buildTapeActionHint(ticks, ctx, stats) {
+    stats = stats || {};
+    if (!ticks || ticks.length < 4) return null;
+
+    function fmt(p) {
+      if (!(p > 0)) return "—";
+      if (p >= 100) return String(Math.round(p * 10) / 10);
+      if (p >= 10) return String(Math.round(p * 100) / 100);
+      return String(Math.round(p * 1000) / 1000);
+    }
+
+    function secToHm(sec) {
+      if (sec == null || !isFinite(sec)) return "—";
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+    }
+
+    function hintAt(cutSec, label) {
+      const slice = ticks.filter(function (t) {
+        return t.sec == null || t.sec <= cutSec;
+      });
+      if (slice.length < 4) return null;
+
+      let sumPV = 0;
+      let sumV = 0;
+      let hi = -Infinity;
+      let lo = Infinity;
+      slice.forEach(function (t) {
+        sumPV += t.price * t.lots;
+        sumV += t.lots;
+        if (t.price > hi) hi = t.price;
+        if (t.price < lo) lo = t.price;
+      });
+      const vwap = sumV > 0 ? sumPV / sumV : null;
+      const open = slice[0].price;
+      const last = slice[slice.length - 1].price;
+      const avgLot = sumV / slice.length;
+      const bigTh = stats.bigThreshold || Math.max(80, avgLot * 2.5);
+
+      const am = slice.filter(function (t) {
+        return inTapeWindow(t.sec, 9, 0, 9, 32);
+      });
+      let amHi = open;
+      let amBigUp = 0;
+      am.forEach(function (t) {
+        if (t.price > amHi) amHi = t.price;
+        if (t.lots >= bigTh && t.side >= 0) amBigUp += 1;
+      });
+      const pumped = am.length >= 3 && amHi >= open * 1.015 && amBigUp >= 2;
+      const offHigh = pumped && last <= amHi * 0.985;
+      const belowVwap = vwap != null && last < vwap * 0.995;
+      const aboveVwap = vwap != null && last > vwap * 1.005;
+      const nearLo = last <= lo * 1.008;
+      const nearHi = last >= hi * 0.992;
+
+      const recent = slice.slice(-Math.min(12, slice.length));
+      const recentSellBig = recent.filter(function (t) {
+        return t.lots >= bigTh && t.side <= 0;
+      }).length;
+      const recentBuyBig = recent.filter(function (t) {
+        return t.lots >= bigTh && t.side >= 0;
+      }).length;
+      const recentDown = recent.length >= 3 &&
+        recent[recent.length - 1].price < recent[0].price * 0.992;
+
+      const reasons = [];
+      let action = "觀望";
+      let tone = "";
+      let score = 0; // +買 -賣
+
+      if (pumped) {
+        reasons.push("早盤已見大單急拉（高 " + fmt(amHi) + "），隔日沖出貨風險升高");
+        score -= 2;
+      }
+      if (offHigh) {
+        reasons.push("價格已離開早盤高點回落，不宜追高");
+        score -= 2;
+      }
+      if (belowVwap && recentDown) {
+        reasons.push("位於均價下方且近端偏弱（VWAP≈" + fmt(vwap) + "）");
+        score -= 2;
+      }
+      if (recentSellBig >= 2) {
+        reasons.push("近端連續大單偏賣（" + recentSellBig + " 筆）");
+        score -= 2;
+      }
+      if (nearLo && recentBuyBig >= 1 && !recentDown) {
+        reasons.push("靠近當日低檔且出現大單承接跡象");
+        score += 2;
+      }
+      if (aboveVwap && !offHigh && recentBuyBig >= 1 && score >= 0) {
+        reasons.push("站上均價且近端有買盤");
+        score += 1;
+      }
+      if (nearHi && pumped) {
+        reasons.push("仍近當日高檔，追價風險大");
+        score -= 1;
+      }
+      // 破均價急殺後的超賣區：只給「留意」不給猛買
+      if (belowVwap && nearLo && cutSec >= 10 * 3600) {
+        reasons.push("若要做多僅適合等止穩／站回均價，不建議趕底");
+        if (score > -1) score -= 1;
+      }
+
+      if (score <= -3) {
+        action = "偏賣／勿追";
+        tone = "down";
+      } else if (score <= -1) {
+        action = "觀望偏空";
+        tone = "down";
+      } else if (score >= 3) {
+        action = "偏買／可留意";
+        tone = "up";
+      } else if (score >= 1) {
+        action = "觀望偏多";
+        tone = "up";
+      } else {
+        action = "觀望";
+        tone = "";
+      }
+
+      if (!reasons.length) {
+        reasons.push("截至此時特徵尚未一面倒，優先等待更明確價量轉折");
+      }
+
+      return {
+        label: label || secToHm(cutSec),
+        asOfSec: cutSec,
+        asOf: label || secToHm(cutSec),
+        action: action,
+        tone: tone,
+        score: score,
+        price: last,
+        vwap: vwap,
+        open: open,
+        hi: hi,
+        lo: lo,
+        reasons: reasons.slice(0, 4),
+        summary: "截至 " + (label || secToHm(cutSec)) + "（現價約 " + fmt(last) +
+          (vwap ? "，VWAP≈" + fmt(vwap) : "") + "）→ **" + action + "**"
+      };
+    }
+
+    const marks = [
+      { label: "09:30", sec: 9 * 3600 + 30 * 60 },
+      { label: "10:00", sec: 10 * 3600 },
+      { label: "10:30", sec: 10 * 3600 + 30 * 60 },
+      { label: "11:00", sec: 11 * 3600 },
+      { label: "12:00", sec: 12 * 3600 },
+      { label: "13:00", sec: 13 * 3600 },
+      { label: "13:25", sec: 13 * 3600 + 25 * 60 }
+    ];
+
+    const last = ticks[ticks.length - 1];
+    const lastSec = last && last.sec != null ? last.sec : (13 * 3600 + 30 * 60);
+    const snapshots = [];
+    marks.forEach(function (m) {
+      if (m.sec > lastSec + 60) return;
+      const h = hintAt(m.sec, m.label);
+      if (h) snapshots.push(h);
+    });
+
+    const current = hintAt(lastSec, secToHm(lastSec));
+    // 特別標出 10:00（使用者常問的時點）
+    const at1000 = snapshots.filter(function (s) { return s.label === "10:00"; })[0] || null;
+
+    return {
+      current: current,
+      at1000: at1000,
+      snapshots: snapshots,
+      disclaimer: "僅依分時價量規則試算的操作傾向，不是投資建議；無法辨識真實法人／券商，下單前請自行承擔風險。"
     };
   }
 

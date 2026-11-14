@@ -928,6 +928,29 @@ canvas {
   line-height: 1.55;
   color: var(--text, #e8eef7);
 }
+.tape-action-card {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #2a3340);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.tape-action-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-bottom: 4px;
+}
+.tape-action-head .tag {
+  font-size: 13px;
+}
+.tape-action-why {
+  margin: 4px 0 0;
+}
+.tape-action-table td {
+  vertical-align: top;
+}
 .tape-brief-list li {
   margin: 0 0 10px;
   line-height: 1.5;
@@ -2272,6 +2295,23 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   width: 52px;
   min-width: 52px;
 }
+.watch-col-tape {
+  width: 48px;
+  min-width: 48px;
+  text-align: center !important;
+  vertical-align: middle;
+}
+.watch-tape-chip {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.watch-tape-chip.up { color: #d49292; }
+.watch-tape-chip.down { color: #6eae8e; }
 .watch-col-pct {
   width: 46px;
   min-width: 46px;
@@ -2309,8 +2349,12 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   text-align: left !important;
 }
 .watch-table thead th:nth-child(3),
-.watch-table thead th:nth-child(4) {
+.watch-table thead th:nth-child(5) {
   text-align: left !important;
+}
+.watch-table thead th.watch-col-tape {
+  text-align: center !important;
+  font-size: 12px;
 }
 .watch-col-cost .watch-input {
   text-align: left;
