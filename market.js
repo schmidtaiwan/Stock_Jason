@@ -3875,10 +3875,62 @@
     return t > 1e12 ? t : t * 1000;
   }
 
+  function quoteFromFubonIndexSnap(snap, sourceTag) {
+    if (!snap || !snap.byCode || typeof snap.byCode !== "object") return null;
+    const codes = ["IX0001", "TWSE", "T00"];
+    for (let i = 0; i < codes.length; i++) {
+      const raw = snap.byCode[codes[i]];
+      const q = slimFubonQuote(raw, sourceTag || "fubon");
+      if (!q || !(q.price > 0)) continue;
+      let asOfMs = Date.now();
+      if (snap.at != null && isFinite(Number(snap.at))) asOfMs = Number(snap.at);
+      else if (q.asOf != null) {
+        if (typeof q.asOf === "number" && isFinite(q.asOf)) asOfMs = q.asOf;
+        else {
+          const parsed = Date.parse(String(q.asOf));
+          if (isFinite(parsed)) asOfMs = parsed;
+        }
+      }
+      return {
+        price: q.price,
+        change: q.change,
+        pct: q.pct,
+        name: q.name || "加權指數",
+        asOf: asOfMs,
+        delayMin: 0,
+        source: q.source || sourceTag || "fubon"
+      };
+    }
+    return null;
+  }
+
   async function fubonTwiiQuote() {
-    const codes = ["IX0001", "TWSE"];
+    const codes = ["IX0001", "TWSE", "T00"];
+    // 先直接讀 Live Bridge／Drive 快照（不依賴 cache 年齡閘）
+    const B = fubonLiveBridgeApi();
+    if (B && B.readFubonLive) {
+      try {
+        const snap = await B.readFubonLive();
+        const hit = quoteFromFubonIndexSnap(snap, "fubon-tailscale");
+        if (hit) {
+          applyFubonDriveSnap(snap, 5 * 60_000, "fubon-tailscale");
+          return hit;
+        }
+      } catch (err) { /* fall through */ }
+    }
+    const D = fubonDriveApi();
+    if (D && D.readFubonLive) {
+      try {
+        const snap = await D.readFubonLive();
+        const hit = quoteFromFubonIndexSnap(snap, "fubon-drive");
+        if (hit) {
+          applyFubonDriveSnap(snap, 5 * 60_000, "fubon-drive");
+          return hit;
+        }
+      } catch (err) { /* fall through */ }
+    }
     try {
-      await hydrateFubonFromDrive(codes, { maxAgeMs: FUBON_DRIVE_MAX_AGE_MS, force: true });
+      await hydrateFubonFromDrive(codes, { maxAgeMs: 5 * 60_000, force: true });
     } catch (err) { /* ignore */ }
     for (let i = 0; i < codes.length; i++) {
       const id = codes[i];

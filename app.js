@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 230;
+  const PAGE_BUILD = 231;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -777,6 +777,8 @@
         if (!btn) return;
         const next = setTwiiSourcePref(btn.getAttribute("data-twii-src"));
         closeTwiiSourceMenu();
+        // 選了就立刻改紅框文字，不等行情回來
+        paintTwiiSource({ source: next === "fubon" ? "fubon" : "mis" });
         flashStatus(next === "fubon" ? "加權來源：富邦 API" : "加權來源：證交所 MIS");
         paintTwii(true).catch(function () { /* ignore */ });
       });
@@ -803,19 +805,18 @@
     syncTwiiBoxPickable();
     const pref = getTwiiSourcePref();
     const actual = String((q && q.source) || "").toLowerCase();
-    const isFubon = actual.indexOf("fubon") >= 0;
-    if (isFubon) {
+    const actualFubon = actual.indexOf("fubon") >= 0;
+    // 紅框以「目前選擇」為準：選富邦就顯示富邦
+    if (pref === "fubon") {
       srcEl.textContent = "富邦";
-      srcEl.title = canPickTwiiSource()
-        ? "目前富邦 API（點擊可改 MIS）"
-        : "富邦 API";
+      srcEl.title = actualFubon
+        ? "目前富邦 API（點擊可改證交所 MIS）"
+        : "已選富邦 API（點擊可改證交所 MIS）";
       return;
     }
     srcEl.textContent = "證交所";
     srcEl.title = canPickTwiiSource()
-      ? (pref === "fubon"
-        ? "已選富邦但暫用證交所 MIS（點擊可再選）"
-        : "目前證交所 MIS（點擊可改富邦 API）")
+      ? "目前證交所 MIS（點擊可改富邦 API）"
       : "台灣證交所 MIS";
   }
 
@@ -885,11 +886,9 @@
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
-      if ($("twii-src")) {
-        $("twii-src").textContent = getTwiiSourcePref() === "fubon" ? "富邦" : "證交所";
-      }
+      paintTwiiSource({ source: getTwiiSourcePref() === "fubon" ? "fubon" : "mis" });
     } else if (force && $("twii-src") && !hadPrice) {
-      $("twii-src").textContent = getTwiiSourcePref() === "fubon" ? "富邦" : "證交所";
+      paintTwiiSource({ source: getTwiiSourcePref() === "fubon" ? "fubon" : "mis" });
     }
     try {
       const q = await M.twiiQuote(getTwiiSourcePref());
@@ -914,11 +913,12 @@
         priceEl.className = "";
         chgEl.className = "twii-chg";
         chgEl.textContent = forceMis ? "MIS 重試中" : "加權讀取失敗";
-        if ($("twii-src")) $("twii-src").textContent = forceMis ? "證交所" : "—";
       } else {
         chgEl.textContent = (chgEl.textContent || "").replace(/（更新失敗|MIS 重試中）$/, "") +
           (forceMis ? "（MIS 重試中）" : "（更新失敗）");
       }
+      // 失敗也不把紅框改回證交所；維持使用者選擇
+      paintTwiiSource({ source: getTwiiSourcePref() === "fubon" ? "fubon" : "mis" });
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
     } finally {
       if (seq === twiiSeq) twiiBusy = false;
