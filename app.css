@@ -1263,6 +1263,11 @@ textarea { min-height: 120px; resize: vertical; }
   font-size: 11px;
   white-space: nowrap;
 }
+.watch-toolbar #watch-open-add {
+  padding-left: 18px;
+  padding-right: 18px;
+  min-width: 4.5em;
+}
 #watch-pnl-toggle[aria-pressed="true"],
 #watch-privacy-toggle[aria-pressed="true"],
 #watch-wake-toggle[aria-pressed="true"] {
