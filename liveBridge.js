@@ -4,8 +4,9 @@
   const LS_KEY = "sj-live-bridge-url";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FETCH_MS = 4000;
-  const ONLINE_TTL_OK_MS = 15000;
-  const ONLINE_TTL_FAIL_MS = 8000;
+  const ONLINE_TTL_OK_MS = 20000;
+  // 失敗快取短一點：手機 Tailscale 第一跳常慢，勿鎖死太久
+  const ONLINE_TTL_FAIL_MS = 4000;
 
   let _online = null;
   let _onlineAt = 0;
@@ -118,7 +119,18 @@
     }
   }
 
-  /** 短 timeout 探活；結果會快取幾秒，避免每次刷新都卡。force 則略過快取。 */
+  function isMobileUa() {
+    try {
+      return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * 探活：手機 Tailscale 第一跳（DERP）常 >2.5s，需較長 timeout＋重試。
+   * force 則略過快取。
+   */
   async function probe(timeoutMs, force) {
     if (!baseUrl()) {
       markOnline(false);
@@ -128,12 +140,25 @@
       const known = isOnline();
       if (known != null) return known;
     }
-    try {
-      await fetchJson("/api/health", false, timeoutMs > 0 ? timeoutMs : 2500);
-      return true;
-    } catch (err) {
-      return false;
+    const mobile = isMobileUa();
+    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 10000 : 4000);
+    const tries = mobile ? 3 : 2;
+    for (let i = 0; i < tries; i++) {
+      try {
+        // 重試時先清失敗快取，避免 markOnline(false) 擋住
+        if (i > 0) {
+          _online = null;
+          _onlineAt = 0;
+          await new Promise(function (r) { setTimeout(r, 600 * i); });
+        }
+        await fetchJson("/api/health", false, perTry);
+        return true;
+      } catch (err) {
+        /* try next */
+      }
     }
+    markOnline(false);
+    return false;
   }
 
   async function readFubonLive() {
