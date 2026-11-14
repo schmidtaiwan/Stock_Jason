@@ -2587,6 +2587,9 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   min-width: 1.5em;
   font-weight: 700;
 }
+.health-list .health-dot.mark-red { color: #e25c5c; }
+.health-list .health-dot.mark-green { color: #3dbe7a; }
+.health-list .health-dot.mark-gray { color: var(--muted, #9aa4b2); }
 .health-list li {
   display: grid;
   grid-template-columns: 1.5em 1fr auto;

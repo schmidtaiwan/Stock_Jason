@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 205;
-  const PAGE_DATE = "2026-11-13";
+  const PAGE_BUILD = 206;
+  const PAGE_DATE = "2026-11-14";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
   let usBoardOpen = true;
@@ -4392,8 +4392,8 @@
     let healthHtml = "";
     if (chipx && chipx.ok) {
       const lights = (chipx.lights || []).map(function (L) {
-        const cls = L.ok === true ? "up" : L.ok === false ? "down" : "";
         const mark = L.ok === true ? "綠" : L.ok === false ? "紅" : "灰";
+        const cls = L.ok === true ? "mark-green" : L.ok === false ? "mark-red" : "mark-gray";
         return '<li><span class="health-dot ' + cls + '">' + mark + "</span><span>" + esc(L.name) +
           "</span><strong>" + esc(L.detail) + "</strong></li>";
       }).join("");
@@ -6233,8 +6233,9 @@
     try {
       const r = await C.analyzeChip(code);
       const lights = (r.lights || []).map(function (L) {
-        const cls = L.ok === true ? "up" : L.ok === false ? "down" : "";
-        return "<li><span class=\"health-dot " + cls + "\">●</span><span>" + esc(L.name) +
+        const mark = L.ok === true ? "綠" : L.ok === false ? "紅" : "灰";
+        const cls = L.ok === true ? "mark-green" : L.ok === false ? "mark-red" : "mark-gray";
+        return "<li><span class=\"health-dot " + cls + "\">" + mark + "</span><span>" + esc(L.name) +
           "</span><strong>" + esc(L.detail) + "</strong></li>";
       }).join("");
       let brokerBlock = "";
