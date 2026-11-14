@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 233;
+  const PAGE_BUILD = 234;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -764,7 +764,9 @@
     box.classList.toggle("twii-pickable", ok);
     box.setAttribute("role", ok ? "button" : "group");
     box.tabIndex = ok ? 0 : -1;
-    box.title = ok ? "點擊選擇加權來源：富邦 API 或證交所 MIS" : "加權指數（證交所 MIS）";
+    box.title = ok
+      ? "點擊選擇台股來源：富邦 API（報價＋足跡）或證交所 MIS"
+      : "加權指數（證交所 MIS）";
   }
 
   function closeTwiiSourceMenu() {
@@ -788,8 +790,14 @@
         closeTwiiSourceMenu();
         // 選了就立刻改紅框文字，不等行情回來
         paintTwiiSource({ source: next === "fubon" ? "fubon" : "mis" });
-        flashStatus(next === "fubon" ? "加權來源：富邦 API" : "加權來源：證交所 MIS");
+        flashStatus(next === "fubon"
+          ? "台股來源：富邦 API（報價＋足跡）"
+          : "台股來源：證交所 MIS");
         paintTwii(true).catch(function () { /* ignore */ });
+        if (state.view === "watch") paintWatchQuotes();
+        else if (state.view === "stock" && state.stock) {
+          loadStockLive(state.stock, true).catch(function () { /* ignore */ });
+        }
       });
     }
     const cur = getTwiiSourcePref();
@@ -4610,9 +4618,10 @@
     }).sort(function (a, b) { return b.price - a.price; });
   }
 
-  function renderStockActors(bookQ) {
+  function renderStockActors(bookQ, meta) {
     const box = $("stock-actors");
     if (!box || !M || !M.analyzeTapeActors) return;
+    meta = meta || {};
     const pack = M.analyzeTapeActors(stockLiveTape, {
       pct: bookQ && bookQ.pct,
       limitUp: bookQ && bookQ.limitUp,
@@ -4626,13 +4635,28 @@
     }
     box.hidden = false;
     if (!pack.ok) {
+      const wantFubon = !!(meta.wantFubon || (M.preferFubonQuotes && M.preferFubonQuotes()));
+      const tapeN = Array.isArray(stockLiveTape) ? stockLiveTape.length : 0;
+      let reason = pack.reason || "尚無足夠成交明細";
+      let note = pack.note || "";
+      if (wantFubon) {
+        if (meta.bridgeOk === false) {
+          reason = "Live Bridge 未連線，無法抓富邦分時足跡";
+          note = "請確認 LiveBridge 已登入富邦，且網頁以 Jason／Backy 登入。";
+        } else if (meta.tapeTried && tapeN < 4) {
+          reason = "富邦分時足跡不足（目前 " + tapeN + " 筆）";
+          note = "已向 Live Bridge 請求富邦成交明細；休市或剛開盤時常為 0 筆，開盤後會累積。";
+        }
+      }
       box.innerHTML = '<article class="card stock-actors-card">' +
         '<details class="session-fold" open>' +
         '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
-        '<span class="tag">樣本不足</span></summary>' +
+        '<span class="tag">樣本不足</span>' +
+        (wantFubon ? '<span class="fine">富邦</span>' : "") +
+        "</summary>" +
         '<div class="session-fold-body">' +
-        '<p class="fine">' + esc(pack.reason || "尚無足夠成交明細") + "</p>" +
-        '<p class="fine">' + esc(pack.note || "") + "</p>" +
+        '<p class="fine">' + esc(reason) + "</p>" +
+        '<p class="fine">' + esc(note) + "</p>" +
         "</div></details></article>";
       return;
     }
@@ -4648,11 +4672,12 @@
     const lotHint = (pack.topLots || []).slice(0, 3).map(function (r) {
       return r.lots + "張×" + r.count;
     }).join(" · ");
+    const wantFubon = !!(meta.wantFubon || (M.preferFubonQuotes && M.preferFubonQuotes()));
     box.innerHTML = '<article class="card stock-actors-card">' +
       '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
       '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
       '<span class="tag ' + ((pack.actors[0] && pack.actors[0].tone) || "") + '">' + esc(pack.bias || "") + "</span>" +
-      '<span class="fine">樣本 ' + pack.sample + " 筆</span></summary>" +
+      '<span class="fine">樣本 ' + pack.sample + " 筆" + (wantFubon ? " · 富邦" : "") + "</span></summary>" +
       '<div class="session-fold-body">' +
       "<h4>可能活躍者</h4><ul class=\"stat-list actor-list\">" + rows + "</ul>" +
       (sig ? "<h4>即時訊號</h4><ul class=\"session-list\">" + sig + "</ul>" : "") +
@@ -4778,41 +4803,82 @@
           } catch (err) { /* ignore */ }
         }
       }
+      const wantFubon = getTwiiSourcePref() === "fubon";
+      const LB = window.SJLiveBridge;
+      const bridgeOk = !!(LB && LB.canUse && LB.canUse());
       let bookQ = null;
-      if (M.misBook) {
-        try { bookQ = await M.misBook(code); } catch (err) { bookQ = null; }
-      }
-      // 雲端富邦橋接：報價／完整分時／分價（桌面 EXE 上傳）
       let fubonTape = null;
-      if (M.fetchFubonTapeFromDrive) {
+      let tapeTried = false;
+
+      function bookFromFubonRow(row, srcTag, asOf) {
+        if (!row || !(row.price > 0)) return null;
+        return {
+          price: row.price,
+          change: row.change,
+          pct: row.pct,
+          open: row.open,
+          high: row.high,
+          low: row.low,
+          bid: row.bid,
+          ask: row.ask,
+          volumeLots: row.volumeLots,
+          tradeTime: row.asOf || asOf || "",
+          source: srcTag || "fubon",
+          bids: [],
+          asks: []
+        };
+      }
+
+      // 選富邦：報價＋分時足跡都先走 Live Bridge
+      if (wantFubon || bridgeOk) {
+        if (M.hydrateFubonFromDrive) {
+          try {
+            await M.hydrateFubonFromDrive([code], {
+              maxAgeMs: 5 * 60_000,
+              force: true,
+              forceOverwrite: wantFubon
+            });
+          } catch (err) { /* ignore */ }
+        }
+        if (LB && LB.readFubonLive && bridgeOk) {
+          try {
+            const live = await LB.readFubonLive();
+            const row = live && live.byCode && live.byCode[code];
+            const hit = bookFromFubonRow(row, "fubon-tailscale", live && live.asOf);
+            if (hit) bookQ = hit;
+          } catch (err) { /* ignore */ }
+        }
+        if ((!bookQ || !(bookQ.price > 0)) && window.SJDrive && SJDrive.readFubonLive) {
+          try {
+            const live = await SJDrive.readFubonLive();
+            const row = live && live.byCode && live.byCode[code];
+            if (row && row.price > 0 && live.at && Date.now() - Number(live.at) < 300_000) {
+              bookQ = bookFromFubonRow(row, "fubon-drive", live.asOf);
+            }
+          } catch (err) { /* ignore */ }
+        }
+        if (M.fetchFubonTapeFromDrive) {
+          tapeTried = true;
+          try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
+        }
+      }
+
+      // 非富邦模式，或富邦缺五檔：再補 MIS
+      if (!wantFubon || !(bookQ && bookQ.price > 0)) {
+        if (M.misBook) {
+          try {
+            const misQ = await M.misBook(code);
+            if (misQ && misQ.price > 0) {
+              if (!bookQ || !(bookQ.price > 0)) bookQ = misQ;
+            }
+          } catch (err) { /* ignore */ }
+        }
+      }
+      if (!wantFubon && !fubonTape && M.fetchFubonTapeFromDrive) {
+        tapeTried = true;
         try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
       }
-      if (M.hydrateFubonFromDrive) {
-        try { await M.hydrateFubonFromDrive([code], { maxAgeMs: 60_000, force: true }); } catch (err) { /* ignore */ }
-      }
-      if ((!bookQ || !(bookQ.price > 0)) && window.SJDrive && SJDrive.readFubonLive) {
-        try {
-          const live = await SJDrive.readFubonLive();
-          const row = live && live.byCode && live.byCode[code];
-          if (row && row.price > 0 && live.at && Date.now() - Number(live.at) < 120_000) {
-            bookQ = {
-              price: row.price,
-              change: row.change,
-              pct: row.pct,
-              open: row.open,
-              high: row.high,
-              low: row.low,
-              bid: row.bid,
-              ask: row.ask,
-              volumeLots: row.volumeLots,
-              tradeTime: row.asOf || live.asOf || "",
-              source: row.source === "fubon" ? "fubon-bridge" : "fubon-drive",
-              bids: [],
-              asks: []
-            };
-          }
-        } catch (err) { /* ignore */ }
-      }
+
       if (fubonTape && Array.isArray(fubonTape.ticks) && fubonTape.ticks.length) {
         stockLiveTape = fubonTape.ticks.map(function (t) {
           return {
@@ -4822,7 +4888,7 @@
             change: t.change,
             cum: null
           };
-        }).filter(function (t) { return t.price > 0 && t.lots > 0; });
+        }).filter(function (t) { return t.price > 0 && Number(t.lots) > 0; });
         if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
         stockLiveLastKey = "fubon-bridge|" + code + "|" + (fubonTape.at || stockLiveTape.length);
       }
@@ -4834,7 +4900,9 @@
           .sort(function (a, b) { return b.price - a.price; });
       }
       if (!state.stock || String(state.stock.code || "").toUpperCase() !== code) return;
-      if (bookQ && bookQ.price > 0 && !(fubonTape && fubonTape.ticks && fubonTape.ticks.length)) {
+      // 無完整富邦分時時，才用逐筆報價湊樣本（選富邦且已有分時則不混 MIS）
+      const hasFubonTicks = !!(fubonTape && fubonTape.ticks && fubonTape.ticks.length);
+      if (bookQ && bookQ.price > 0 && !hasFubonTicks && !wantFubon) {
         const key = String(bookQ.tradeTime || "") + "|" + bookQ.price + "|" + (bookQ.lastLot || "") + "|" +
           (bookQ.volumeLots || "");
         if (key !== stockLiveLastKey) {
@@ -4853,20 +4921,26 @@
           if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
           stockLiveLastKey = key;
         }
+      }
+      if (bookQ) {
         if (bookQ.open != null) stockLivePv.open = bookQ.open;
         if (bookQ.high != null) stockLivePv.high = bookQ.high;
         if (bookQ.low != null) stockLivePv.low = bookQ.low;
       }
       const rows = mergePriceVolume(stockLivePv, stockLiveTape);
-      if (bookQ && (bookQ.source === "fubon-drive" || bookQ.source === "fubon-bridge" || bookQ.source === "fubon-tailscale")) {
+      if (bookQ && String(bookQ.source || "").indexOf("fubon") >= 0) {
         const tag = bookQ.source === "fubon-drive" ? "富邦雲端" : "富邦橋";
         bookQ.tradeTime = (bookQ.tradeTime || "") + (bookQ.tradeTime ? " · " : "") + tag;
       } else if (fubonTape && fubonTape.asOf) {
         if (!bookQ) bookQ = { price: null, change: null, pct: null, bids: [], asks: [] };
-        bookQ.tradeTime = (bookQ.tradeTime || "—") + " · 分時橋 " + fubonTape.asOf;
+        bookQ.tradeTime = (bookQ.tradeTime || "—") + " · 富邦分時 " + fubonTape.asOf;
       }
       renderStockLive(bookQ, rows);
-      renderStockActors(bookQ);
+      renderStockActors(bookQ, {
+        wantFubon: wantFubon,
+        bridgeOk: bridgeOk,
+        tapeTried: tapeTried
+      });
     } catch (err) {
       if (!quiet) {
         box.hidden = false;

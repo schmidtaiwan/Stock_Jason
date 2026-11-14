@@ -2902,8 +2902,18 @@
 
   const FUBON_DRIVE_MAX_AGE_MS = 60_000;
   const FUBON_DRIVE_SEED_MAX_AGE_MS = 30 * 60_000;
+  const TW_QUOTE_SRC_KEY = "sj-twii-source";
   let fubonDriveSnap = null;
   let fubonDriveReadAt = 0;
+
+  /** 與頁首加權來源同步：選富邦時台股報價／足跡優先 Live Bridge */
+  function preferFubonQuotes() {
+    try {
+      return String(localStorage.getItem(TW_QUOTE_SRC_KEY) || "").toLowerCase() === "fubon";
+    } catch (err) {
+      return false;
+    }
+  }
 
   function slimFubonQuote(q, sourceTag) {
     if (!q || !(q.price > 0)) return null;
@@ -2926,12 +2936,14 @@
     };
   }
 
-  function applyFubonDriveSnap(snap, preferAgeMs, sourceTag) {
+  function applyFubonDriveSnap(snap, preferAgeMs, sourceTag, opts) {
+    opts = opts || {};
     if (!snap || !snap.byCode || typeof snap.byCode !== "object") return 0;
     const age = snap.at != null ? Date.now() - Number(snap.at) : Infinity;
     if (!(age >= 0) || age > (preferAgeMs != null ? preferAgeMs : FUBON_DRIVE_MAX_AGE_MS)) return 0;
     const cacheAt = Number(snap.at) || Date.now();
     const tag = sourceTag || "fubon-drive";
+    const forceOverwrite = !!opts.forceOverwrite;
     let n = 0;
     Object.keys(snap.byCode).forEach(function (code) {
       const id = String(code || "").toUpperCase();
@@ -2939,9 +2951,11 @@
       if (!id || !q) return;
       q.code = id;
       const hit = misQuoteCache.get(id);
-      // 富邦橋較新才覆寫；本機剛抓的 MIS／富邦不覆蓋
-      if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
-      if (hit && hit.fromFubonDrive && hit.at >= cacheAt) return;
+      // 選富邦時強制覆寫 MIS；否則僅富邦較新才覆寫
+      if (!forceOverwrite) {
+        if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
+        if (hit && hit.fromFubonDrive && hit.at >= cacheAt) return;
+      }
       misQuoteCache.set(id, { at: cacheAt, quote: q, fromDrive: true, fromFubonDrive: true });
       n += 1;
     });
@@ -2953,8 +2967,14 @@
     opts = opts || {};
     if (!(needIds && needIds.length)) return 0;
     const now = Date.now();
+    const applyOpts = { forceOverwrite: !!(opts.forceOverwrite || preferFubonQuotes()) };
     if (!opts.force && now - fubonDriveReadAt < 5000 && fubonDriveSnap) {
-      return applyFubonDriveSnap(fubonDriveSnap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS);
+      return applyFubonDriveSnap(
+        fubonDriveSnap,
+        opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
+        null,
+        applyOpts
+      );
     }
     fubonDriveReadAt = now;
 
@@ -2964,7 +2984,12 @@
       try {
         const snap = await B.readFubonLive();
         if (snap) {
-          return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS, "fubon-tailscale");
+          return applyFubonDriveSnap(
+            snap,
+            opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
+            "fubon-tailscale",
+            applyOpts
+          );
         }
       } catch (err) { /* fall through */ }
     }
@@ -2974,7 +2999,12 @@
     try {
       const snap = await D.readFubonLive();
       if (!snap) return 0;
-      return applyFubonDriveSnap(snap, opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS, "fubon-drive");
+      return applyFubonDriveSnap(
+        snap,
+        opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
+        "fubon-drive",
+        applyOpts
+      );
     } catch (err) {
       return 0;
     }
@@ -3788,7 +3818,8 @@
   async function watchBoard(items) {
     const list = items || [];
     if (!list.length) return [];
-    // 台股自選即時：只留證交所 MIS；盤後先灌雲端最後快照避免一直「…」
+    const wantFubon = preferFubonQuotes();
+    // 選富邦：台股成交價以 Live Bridge／Drive 富邦為主；否則證交所 MIS
     const codes = [];
     const secids = [];
     list.forEach(function (item) {
@@ -3804,35 +3835,59 @@
         if (secids.indexOf(secid) < 0) secids.push(secid);
       }
     });
-    const forceMis = isMisForceWindow();
+    const forceMis = !wantFubon && isMisForceWindow();
     if (forceMis) bustLiveCaches(secids);
-    // 登入／盤後：先讀雲端富邦橋接與 mis-live（可接受較舊），立刻有成交價
     try {
       await hydrateFubonFromDrive(codes, {
-        maxAgeMs: FUBON_DRIVE_SEED_MAX_AGE_MS,
-        force: true
+        maxAgeMs: wantFubon ? Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 5 * 60_000) : FUBON_DRIVE_SEED_MAX_AGE_MS,
+        force: true,
+        forceOverwrite: wantFubon
       });
     } catch (errFb) { /* ignore */ }
-    try {
-      await hydrateMisFromDrive(codes, {
-        maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
-        freshen: true,
-        force: true
-      });
-    } catch (errSeed) { /* ignore */ }
-    let byCode = {};
-    try {
-      if (forceMis) byCode = await misQuotesForced(codes) || {};
-      else byCode = await misQuotes(codes) || {};
-    } catch (err) {
-      try { byCode = await misQuotes(codes) || {}; } catch (err2) { byCode = {}; }
+    if (!wantFubon) {
+      try {
+        await hydrateMisFromDrive(codes, {
+          maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
+          freshen: true,
+          force: true
+        });
+      } catch (errSeed) { /* ignore */ }
     }
-    // 缺口補雲端／本機快取（含 fromDrive）
-    codes.forEach(function (id) {
-      if (byCode[id] && byCode[id].price > 0) return;
-      const hit = misQuoteCache.get(id);
-      if (hit && hit.quote && hit.quote.price > 0) byCode[id] = hit.quote;
-    });
+    let byCode = {};
+    function fillFromCache(ids) {
+      (ids || []).forEach(function (id) {
+        if (byCode[id] && byCode[id].price > 0) return;
+        const hit = misQuoteCache.get(id);
+        if (!hit || !hit.quote || !(hit.quote.price > 0)) return;
+        if (wantFubon && !hit.fromFubonDrive) return;
+        byCode[id] = hit.quote;
+      });
+    }
+    fillFromCache(codes);
+    if (wantFubon) {
+      const missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
+      if (missing.length) {
+        try {
+          const mis = await misQuotes(missing) || {};
+          missing.forEach(function (id) {
+            if (byCode[id] && byCode[id].price > 0) return;
+            if (mis[id] && mis[id].price > 0) byCode[id] = mis[id];
+          });
+        } catch (errMis) { /* ignore */ }
+      }
+    } else {
+      try {
+        if (forceMis) byCode = await misQuotesForced(codes) || {};
+        else byCode = await misQuotes(codes) || {};
+      } catch (err) {
+        try { byCode = await misQuotes(codes) || {}; } catch (err2) { byCode = {}; }
+      }
+      codes.forEach(function (id) {
+        if (byCode[id] && byCode[id].price > 0) return;
+        const hit = misQuoteCache.get(id);
+        if (hit && hit.quote && hit.quote.price > 0) byCode[id] = hit.quote;
+      });
+    }
     return list.map(function (item) {
       const code = watchItemCode(item);
       const q = (code && byCode[code]) || null;
@@ -3841,6 +3896,9 @@
       const change = q && q.change != null && isFinite(q.change)
         ? q.change
         : (price != null && pct != null ? price * pct / (100 + pct) : null);
+      const src = q && q.source
+        ? String(q.source)
+        : (q && q.price > 0 ? (wantFubon ? "fubon" : "mis") : "");
       return {
         name: preferTwName(item && item.name, q && q.name, item && item.code),
         price: price,
@@ -3862,7 +3920,7 @@
         breakout: null,
         support: null,
         asOf: q && q.asOf != null ? q.asOf : null,
-        source: q && q.price > 0 ? "mis" : ""
+        source: src
       };
     });
   }
@@ -6767,6 +6825,7 @@
     analyzeTapeActors: analyzeTapeActors,
     hydrateFubonFromDrive: hydrateFubonFromDrive,
     fetchFubonTapeFromDrive: fetchFubonTapeFromDrive,
+    preferFubonQuotes: preferFubonQuotes,
     misTwiiQuote: misTwiiQuote,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,
