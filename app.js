@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 223;
+  const PAGE_BUILD = 224;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -4355,6 +4355,32 @@
     return n.toFixed(1) + "%";
   }
 
+  /** 籌碼健檢 detail：數字正紅負綠（台股慣例） */
+  function formatHealthDetail(detail) {
+    return esc(String(detail == null ? "" : detail)).replace(/([+-]?\d[\d,]*(?:\.\d+)?)/g, function (m) {
+      const n = Number(String(m).replace(/,/g, ""));
+      if (!isFinite(n) || n === 0) return m;
+      return '<span class="' + (n > 0 ? "up" : "down") + '">' + m + "</span>";
+    });
+  }
+
+  /** 三率：本季%＋升降符號 · 上季 · 上上季 */
+  function formatRateTriple(hist, trend) {
+    const h = hist || [];
+    const sym = trend && trend.text
+      ? '<span class="' + (trend.cls || "") + '">' + esc(trend.text) + "</span>"
+      : "";
+    return pctText(h[0]) + sym + " · " + pctText(h[1]) + " · " + pctText(h[2]);
+  }
+
+  function healthLightsHtml(lights) {
+    return (lights || []).map(function (L) {
+      const cls = L.ok === true ? "mark-green" : L.ok === false ? "mark-red" : "mark-gray";
+      return '<li><span class="health-dot ' + cls + '" aria-hidden="true"></span><span>' +
+        esc(L.name) + "</span><strong>" + formatHealthDetail(L.detail) + "</strong></li>";
+    }).join("");
+  }
+
   function mergePriceVolume(base, tape) {
     const map = Object.create(null);
     (base && base.rows || []).forEach(function (r) {
@@ -4563,10 +4589,10 @@
       '<li><span>近 5 日法人合計</span><strong class="' + ((own.flow5 && own.flow5.total) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.total) + "</strong></li>" +
       '</ul><p class="fine">持股占比目前公開資料主要是外資；投信／自營以近 5 日買賣超代表法人籌碼流向。</p></article>';
     const finHtml = '<article class="card"><h3>財務狀況（三率）</h3><ul class="stat-list">' +
-      "<li><span>毛利率</span><strong>" + pctText(m.gross) + ' <span class="' + (m.grossTrend && m.grossTrend.cls) + '">' + esc(m.grossTrend && m.grossTrend.text) + "</span></strong></li>" +
-      "<li><span>營益率</span><strong>" + pctText(m.op) + ' <span class="' + (m.opTrend && m.opTrend.cls) + '">' + esc(m.opTrend && m.opTrend.text) + "</span></strong></li>" +
-      "<li><span>淨利率</span><strong>" + pctText(m.net) + ' <span class="' + (m.netTrend && m.netTrend.cls) + '">' + esc(m.netTrend && m.netTrend.text) + "</span></strong></li>" +
-      '</ul><p class="fine">用最近一季對上一季判斷上升／下降。資料截至 ' + esc(m.date || "—") + "。</p></article>";
+      "<li><span>毛利率</span><strong>" + formatRateTriple(m.grossHist || [m.gross], m.grossTrend) + "</strong></li>" +
+      "<li><span>營益率</span><strong>" + formatRateTriple(m.opHist || [m.op], m.opTrend) + "</strong></li>" +
+      "<li><span>淨利率</span><strong>" + formatRateTriple(m.netHist || [m.net], m.netTrend) + "</strong></li>" +
+      '</ul><p class="fine">依序本季／上季／上上季；符號為本季對上季。資料截至 ' + esc(m.date || "—") + "。</p></article>";
     const epsHtml = '<article class="card"><h3>EPS 與本益比</h3><table class="eps-table"><thead><tr><th>年</th><th>EPS</th><th>別</th></tr></thead><tbody>' +
       (detail.epsYears || []).map(function (row) {
         return "<tr><td>" + row.year + "</td><td>" + (row.eps == null ? "—" : row.eps.toFixed(2)) + "</td><td>" + esc(row.kind) + "</td></tr>";
@@ -4581,12 +4607,7 @@
       }).join("") + "</ul></article>";
     let healthHtml = "";
     if (chipx && chipx.ok) {
-      const lights = (chipx.lights || []).map(function (L) {
-        const mark = L.ok === true ? "綠" : L.ok === false ? "紅" : "灰";
-        const cls = L.ok === true ? "mark-green" : L.ok === false ? "mark-red" : "mark-gray";
-        return '<li><span class="health-dot ' + cls + '">' + mark + "</span><span>" + esc(L.name) +
-          "</span><strong>" + esc(L.detail) + "</strong></li>";
-      }).join("");
+      const lights = healthLightsHtml(chipx.lights);
       const broker = chipx.broker && chipx.broker.ok && chipx.broker.latest ? chipx.broker.latest : null;
       const brokerHtml = broker
         ? '<p class="fine">家數差 ' + broker.brokerDiff +
@@ -6340,18 +6361,12 @@
     const finHtml = fin.ready
       ? '<ul class="stat-list">' +
         "<li><span>資料日</span><strong>" + esc(fin.date || "—") + "</strong></li>" +
-        "<li><span>毛利率</span><strong>" + (fin.gross != null ? fin.gross.toFixed(1) + "%" : "—") +
-        ' <span class="' + ((fin.grossTrend && fin.grossTrend.cls) || "") + '">' +
-        esc((fin.grossTrend && fin.grossTrend.text) || "") + "</span></strong></li>" +
-        "<li><span>營益率</span><strong>" + (fin.op != null ? fin.op.toFixed(1) + "%" : "—") +
-        ' <span class="' + ((fin.opTrend && fin.opTrend.cls) || "") + '">' +
-        esc((fin.opTrend && fin.opTrend.text) || "") + "</span></strong></li>" +
-        "<li><span>淨利率</span><strong>" + (fin.net != null ? fin.net.toFixed(1) + "%" : "—") +
-        ' <span class="' + ((fin.netTrend && fin.netTrend.cls) || "") + '">' +
-        esc((fin.netTrend && fin.netTrend.text) || "") + "</span></strong></li>" +
+        "<li><span>毛利率</span><strong>" + formatRateTriple(fin.grossHist || [fin.gross], fin.grossTrend) + "</strong></li>" +
+        "<li><span>營益率</span><strong>" + formatRateTriple(fin.opHist || [fin.op], fin.opTrend) + "</strong></li>" +
+        "<li><span>淨利率</span><strong>" + formatRateTriple(fin.netHist || [fin.net], fin.netTrend) + "</strong></li>" +
         "<li><span>EPS</span><strong>" + (fin.eps != null ? Number(fin.eps).toFixed(2) : "—") + "</strong></li>" +
         "<li><span>負債比近似</span><strong>" + (fin.debtRatio != null ? fin.debtRatio.toFixed(1) + "%" : "—") + "</strong></li>" +
-        "</ul><p class=\"fine\">" + esc(fin.note || "") + "</p>"
+        '</ul><p class="fine">三率依序本季／上季／上上季；符號為本季對上季。' + esc(fin.note || "") + "</p>"
       : '<p class="note">' + esc(fin.note || "無財報摘要") + "</p>";
 
     const divHtml = (div.rows || []).length
@@ -6431,12 +6446,7 @@
     $("chipx-out").innerHTML = "";
     try {
       const r = await C.analyzeChip(code);
-      const lights = (r.lights || []).map(function (L) {
-        const mark = L.ok === true ? "綠" : L.ok === false ? "紅" : "灰";
-        const cls = L.ok === true ? "mark-green" : L.ok === false ? "mark-red" : "mark-gray";
-        return "<li><span class=\"health-dot " + cls + "\">" + mark + "</span><span>" + esc(L.name) +
-          "</span><strong>" + esc(L.detail) + "</strong></li>";
-      }).join("");
+      const lights = healthLightsHtml(r.lights);
       let brokerBlock = "";
       const b = r.broker && r.broker.ok && r.broker.latest;
       if (b) {

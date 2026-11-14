@@ -2462,10 +2462,10 @@
   }
 
   function rateTrend(now, prev) {
-    if (now == null || prev == null || !isFinite(now) || !isFinite(prev)) return { text: "—", cls: "" };
+    if (now == null || prev == null || !isFinite(now) || !isFinite(prev)) return { text: "", cls: "" };
     const d = now - prev;
-    if (Math.abs(d) < 0.05) return { text: "持平", cls: "" };
-    return d > 0 ? { text: "上升", cls: "up" } : { text: "下降", cls: "down" };
+    if (Math.abs(d) < 0.05) return { text: "－", cls: "" };
+    return d > 0 ? { text: "▲", cls: "up" } : { text: "▼", cls: "down" };
   }
 
   function yearEps(rows) {
@@ -3543,18 +3543,28 @@
     const q = quarterBag(fins);
     const last = q.length ? q[q.length - 1] : null;
     const prev = q.length > 1 ? q[q.length - 2] : null;
+    const prev2 = q.length > 2 ? q[q.length - 3] : null;
     function margin(row, key) {
       if (!row || !(row.Revenue > 0) || row[key] == null) return null;
       return row[key] / row.Revenue * 100;
     }
+    function marginHist(key) {
+      return [margin(last, key), margin(prev, key), margin(prev2, key)];
+    }
+    const grossHist = marginHist("GrossProfit");
+    const opHist = marginHist("OperatingIncome");
+    const netHist = marginHist("IncomeAfterTaxes");
     const margins = {
       date: last ? last.date : "",
-      gross: margin(last, "GrossProfit"),
-      op: margin(last, "OperatingIncome"),
-      net: margin(last, "IncomeAfterTaxes"),
-      grossTrend: rateTrend(margin(last, "GrossProfit"), margin(prev, "GrossProfit")),
-      opTrend: rateTrend(margin(last, "OperatingIncome"), margin(prev, "OperatingIncome")),
-      netTrend: rateTrend(margin(last, "IncomeAfterTaxes"), margin(prev, "IncomeAfterTaxes"))
+      gross: grossHist[0],
+      op: opHist[0],
+      net: netHist[0],
+      grossHist: grossHist,
+      opHist: opHist,
+      netHist: netHist,
+      grossTrend: rateTrend(grossHist[0], grossHist[1]),
+      opTrend: rateTrend(opHist[0], opHist[1]),
+      netTrend: rateTrend(netHist[0], netHist[1])
     };
 
     const years = yearEps(fins);
@@ -5867,9 +5877,13 @@
     const fin = quarterBag(got[1]);
     const lastQ = fin.length ? fin[fin.length - 1] : null;
     const prevQ = fin.length > 1 ? fin[fin.length - 2] : null;
+    const prev2Q = fin.length > 2 ? fin[fin.length - 3] : null;
     function marginOf(row, key) {
       if (!row || !(row.Revenue > 0) || row[key] == null) return null;
       return row[key] / row.Revenue * 100;
+    }
+    function marginHistOf(key) {
+      return [marginOf(lastQ, key), marginOf(prevQ, key), marginOf(prev2Q, key)];
     }
     const balByDate = {};
     (got[2] || []).forEach(function (row) {
@@ -5884,11 +5898,17 @@
       const liab = lastBal.TotalLiabilities || lastBal.Liabilities;
       if (assets > 0 && liab != null) debtRatio = liab / assets * 100;
     }
+    const grossHistQ = lastQ ? marginHistOf("GrossProfit") : null;
+    const opHistQ = lastQ ? marginHistOf("OperatingIncome") : null;
+    const netHistQ = lastQ ? marginHistOf("IncomeAfterTaxes") : null;
     const margins = lastQ ? {
       date: lastQ.date,
-      gross: marginOf(lastQ, "GrossProfit"),
-      op: marginOf(lastQ, "OperatingIncome"),
-      net: marginOf(lastQ, "IncomeAfterTaxes"),
+      gross: grossHistQ[0],
+      op: opHistQ[0],
+      net: netHistQ[0],
+      grossHist: grossHistQ,
+      opHist: opHistQ,
+      netHist: netHistQ,
       eps: lastQ.EPS != null ? num(lastQ.EPS) : null
     } : null;
     const divRows = (got[3] || []).slice().sort(function (a, b) {
@@ -5934,10 +5954,13 @@
         gross: margins && margins.gross,
         op: margins && margins.op,
         net: margins && margins.net,
+        grossHist: margins && margins.grossHist,
+        opHist: margins && margins.opHist,
+        netHist: margins && margins.netHist,
         eps: margins && margins.eps,
-        grossTrend: margins ? rateTrend(margins.gross, marginOf(prevQ, "GrossProfit")) : null,
-        opTrend: margins ? rateTrend(margins.op, marginOf(prevQ, "OperatingIncome")) : null,
-        netTrend: margins ? rateTrend(margins.net, marginOf(prevQ, "IncomeAfterTaxes")) : null,
+        grossTrend: margins ? rateTrend(margins.gross, margins.grossHist[1]) : null,
+        opTrend: margins ? rateTrend(margins.op, margins.opHist[1]) : null,
+        netTrend: margins ? rateTrend(margins.net, margins.netHist[1]) : null,
         debtRatio: debtRatio,
         note: "損益／資產負債來自 FinMind；完整四大表與會計師意見請開 MOPS／XBRL。"
       },
