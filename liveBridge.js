@@ -5,17 +5,14 @@
   const JASON_EMAIL = "jason660803@gmail.com";
   const FETCH_MS = 4000;
   const ONLINE_TTL_OK_MS = 20000;
+  // 失敗快取短一點：手機 Tailscale 第一跳常慢，勿鎖死太久
   const ONLINE_TTL_FAIL_MS = 4000;
   const PAGE_ORIGIN = "https://schmidtaiwan.github.io";
 
   let _online = null;
   let _onlineAt = 0;
   let _lastError = "";
-  let _iframe = null;
-  let _iframeReady = null;
-  let _iframeWaiters = [];
-  let _reqSeq = 0;
-  const _pending = new Map();
+  let _relayReady = false;
 
   function baseUrl() {
     let raw = "";
@@ -35,7 +32,7 @@
     } catch (e) { /* ignore */ }
     _online = null;
     _onlineAt = 0;
-    destroyIframe();
+    _relayReady = false;
     return v;
   }
 
@@ -67,6 +64,7 @@
     return true;
   }
 
+  /** 有設定 Tailscale URL（未必真的連得上）。 */
   function canReach() {
     return !!baseUrl();
   }
@@ -96,119 +94,65 @@
     }
   }
 
-  function destroyIframe() {
-    if (_iframe && _iframe.parentNode) {
-      try { _iframe.parentNode.removeChild(_iframe); } catch (e) { /* ignore */ }
-    }
-    _iframe = null;
-    _iframeReady = null;
-    _iframeWaiters = [];
-    _pending.forEach(function (p) {
-      try { p.reject(new Error("bridge iframe reset")); } catch (e) { /* ignore */ }
-    });
-    _pending.clear();
-  }
-
-  function onBridgeMessage(ev) {
-    const root = baseUrl();
-    if (!root) return;
-    let originOk = false;
-    try {
-      originOk = ev.origin === root || ev.origin === new URL(root).origin;
-    } catch (e) { originOk = false; }
-    if (!originOk) return;
-    const d = ev.data || {};
-    if (d.type === "sj-bridge-ready") {
-      _iframeReady = true;
-      const waiters = _iframeWaiters.splice(0);
-      waiters.forEach(function (fn) { try { fn(); } catch (e) { /* ignore */ } });
-      return;
-    }
-    if (d.type !== "sj-bridge-res") return;
-    const p = _pending.get(d.id);
-    if (!p) return;
-    _pending.delete(d.id);
-    clearTimeout(p.timer);
-    if (!d.ok) {
-      p.reject(new Error(d.error || ("HTTP " + (d.status || "?"))));
-      return;
-    }
-    if (d.data == null) {
-      p.reject(new Error("empty bridge response"));
-      return;
-    }
-    p.resolve(d.data);
-  }
-
-  if (!global.__sjBridgeMsgBound) {
-    global.__sjBridgeMsgBound = true;
-    global.addEventListener("message", onBridgeMessage);
-  }
-
-  function ensureIframe(timeoutMs) {
-    const root = baseUrl();
-    if (!root) return Promise.reject(new Error("no bridge url"));
-    if (_iframe && _iframeReady) return Promise.resolve();
-    if (_iframe && !_iframeReady) {
-      return new Promise(function (resolve, reject) {
-        const t = setTimeout(function () {
-          reject(new Error("bridge iframe timeout"));
-        }, timeoutMs || 12000);
-        _iframeWaiters.push(function () {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-    }
-    return new Promise(function (resolve, reject) {
-      const frame = document.createElement("iframe");
-      frame.id = "sj-live-bridge-frame";
-      frame.title = "LiveBridge";
-      frame.setAttribute("aria-hidden", "true");
-      frame.style.cssText = "position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0;opacity:0;";
-      frame.src = root + "/bridge.html?_=" + Date.now();
-      _iframe = frame;
-      _iframeReady = false;
-      const t = setTimeout(function () {
-        reject(new Error("bridge iframe load timeout"));
-      }, timeoutMs || 12000);
-      _iframeWaiters.push(function () {
-        clearTimeout(t);
-        resolve();
-      });
-      frame.onerror = function () {
-        clearTimeout(t);
-        reject(new Error("bridge iframe error"));
-      };
-      document.body.appendChild(frame);
-    });
-  }
-
-  function fetchViaIframe(path, headers, timeoutMs) {
+  /**
+   * 手機開 Tailscale 時 MagicDNS 把 *.ts.net 指到 100.x，
+   * github.io 的 fetch 會被 Chrome Local Network Access 擋成 Failed to fetch。
+   * 改用隱藏 iframe 載入 Bridge 同源 /relay（文件導覽常比 fetch 寬鬆），再 postMessage 回傳 JSON。
+   */
+  function fetchViaRelay(path, timeoutMs) {
     const root = baseUrl();
     if (!root) return Promise.reject(new Error("no bridge url"));
     const ms = timeoutMs > 0 ? timeoutMs : 12000;
-    return ensureIframe(ms).then(function () {
-      return new Promise(function (resolve, reject) {
-        const id = "r" + (++_reqSeq) + "_" + Date.now();
-        const timer = setTimeout(function () {
-          _pending.delete(id);
-          reject(new Error("bridge rpc timeout"));
-        }, ms);
-        _pending.set(id, { resolve: resolve, reject: reject, timer: timer });
+    const apiPath = String(path || "/api/health");
+    const id = "sj" + Date.now() + Math.floor(Math.random() * 1e6);
+
+    return new Promise(function (resolve, reject) {
+      let done = false;
+      const iframe = document.createElement("iframe");
+      iframe.setAttribute("aria-hidden", "true");
+      iframe.style.cssText = "position:absolute;width:1px;height:1px;left:-9999px;top:0;border:0;opacity:0;";
+      iframe.referrerPolicy = "no-referrer";
+
+      function finish(err, value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        window.removeEventListener("message", onMsg);
+        try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch (e) { /* ignore */ }
+        if (err) reject(err);
+        else resolve(value);
+      }
+
+      function onMsg(ev) {
         try {
-          _iframe.contentWindow.postMessage({
-            type: "sj-bridge-req",
-            id: id,
-            path: path,
-            headers: headers || {}
-          }, root);
-        } catch (err) {
-          clearTimeout(timer);
-          _pending.delete(id);
-          reject(err instanceof Error ? err : new Error(String(err)));
+          if (!ev || !ev.data || ev.data.source !== "sj-live-bridge-relay") return;
+          if (ev.data.id !== id) return;
+          const origin = String(ev.origin || "");
+          if (origin.indexOf(".ts.net") < 0 && origin.indexOf("127.0.0.1") < 0 &&
+              origin.indexOf("localhost") < 0) {
+            return;
+          }
+          if (ev.data.ok) finish(null, ev.data.payload);
+          else finish(new Error(ev.data.error || "relay failed"));
+        } catch (e) {
+          finish(e instanceof Error ? e : new Error(String(e)));
         }
-      });
+      }
+
+      const timer = setTimeout(function () {
+        finish(new Error("relay 逾時（Chrome 可能擋區域網路 iframe）"));
+      }, ms);
+
+      window.addEventListener("message", onMsg);
+      const url = root + "/relay.html?id=" + encodeURIComponent(id) +
+        "&path=" + encodeURIComponent(apiPath) +
+        "&parent=" + encodeURIComponent(PAGE_ORIGIN);
+      try {
+        document.body.appendChild(iframe);
+        iframe.src = url;
+      } catch (e) {
+        finish(e instanceof Error ? e : new Error(String(e)));
+      }
     });
   }
 
@@ -217,7 +161,7 @@
     if (!root) return null;
     const headers = {};
     const token = accessToken();
-    // health／live／tape 不帶 Authorization，減少 CORS 預檢
+    // health／live／tape 不要帶 Authorization（避免多餘 CORS 預檢）
     if (needAuth) {
       if (!token) return null;
       headers.Authorization = "Bearer " + token;
@@ -231,7 +175,7 @@
       }, ms);
     }
 
-    async function doCorsFetch(addressSpace) {
+    async function doFetch(addressSpace) {
       const fetchOpts = {
         method: "GET",
         headers: headers,
@@ -252,16 +196,26 @@
     try {
       let data;
       try {
-        data = await doCorsFetch("");
+        data = await doFetch("");
       } catch (firstErr) {
-        // 手機 Tailscale 開著時 MagicDNS→100.x，Chrome 擋跨站 fetch：改 iframe 同來源代打
-        try {
-          if (timer) { clearTimeout(timer); timer = null; }
-          data = await fetchViaIframe(path, headers, Math.max(ms, 12000));
-        } catch (iframeErr) {
+        // 手機 Failed to fetch：改 relay（不帶 auth 的路徑）
+        const msg = String((firstErr && firstErr.message) || firstErr || "");
+        const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local/i.test(msg);
+        if (useRelay) {
           try {
-            data = await doCorsFetch("local");
-          } catch (e3) {
+            data = await fetchViaRelay(path, Math.max(ms, 12000));
+            _relayReady = true;
+          } catch (relayErr) {
+            try {
+              data = await doFetch("local");
+            } catch (e2) {
+              throw firstErr;
+            }
+          }
+        } else {
+          try {
+            data = await doFetch("local");
+          } catch (e2) {
             throw firstErr;
           }
         }
@@ -274,7 +228,7 @@
       const name = err && err.name ? String(err.name) : "";
       const msg = err && err.message ? String(err.message) : String(err || "fetch failed");
       if (name === "AbortError") _lastError = "逾時 " + ms + "ms";
-      else _lastError = msg.slice(0, 120);
+      else _lastError = msg.slice(0, 160);
       throw err;
     } finally {
       if (timer) clearTimeout(timer);

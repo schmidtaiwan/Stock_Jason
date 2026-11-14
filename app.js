@@ -852,19 +852,33 @@
       if (bridgeAlertKind) hideBridgeAlert();
       return false;
     }
+    // 直連被 Chrome 擋時，若雲端 fubon-live 仍新，只輕提示、不重橘條干擾
+    let driveFresh = false;
+    try {
+      if (D.readFubonLive) {
+        const live = await D.readFubonLive();
+        const age = live && live.at ? Date.now() - Number(live.at) : 1e15;
+        driveFresh = !!(live && live.byCode && age < 5 * 60_000);
+      }
+    } catch (err) { driveFresh = false; }
     const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
     const detail = (window.SJLiveBridge && SJLiveBridge.lastError && SJLiveBridge.lastError()) || "";
     const tip = detail ? ("（" + detail + "）") : "";
     let msg = "";
     if (!st.configured || !base) {
       msg = "尚未設定 LiveBridge 網址（Tailscale Serve）。富邦即時報價／庫存無法直連本機。";
-    } else if (reason === "fubon") {
-      msg = "已選富邦，但連不到 LiveBridge" + tip +
-        "。請確認 Tailscale→DNS／MagicDNS 開啟，並用瀏覽器開 " + base + "/api/health ；Chrome 若詢問「區域網路」請允許。暫改雲端備援。";
+    } else if (reason === "fubon" || reason === "livebridge") {
+      msg = "網頁直連 LiveBridge 失敗" + tip +
+        "。手機請到 Tailscale → 關閉「使用 Tailscale DNS」（VPN 可繼續開），讓網址走 Funnel 公網；或允許 Chrome「區域網路」。" +
+        (driveFresh ? " 目前已用雲端備援報價。" : " 暫改雲端備援。");
     } else if (reason === "holdings") {
       msg = "連不到 LiveBridge" + tip + "。「富邦庫存」改讀雲端備援。";
     } else {
       msg = "連不到 LiveBridge" + tip + "：" + base;
+    }
+    if (driveFresh && reason !== "holdings" && !opts.force) {
+      flashStatus(msg);
+      return true;
     }
     showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force });
     return true;
