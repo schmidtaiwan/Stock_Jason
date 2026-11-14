@@ -9,7 +9,7 @@ window.GOOGLE_CONFIG = {
   editors: ["jason660803@gmail.com", "backy2777@gmail.com"],
   folderName: "StockJason",
   /* Tailscale Serve 的 HTTPS 根網址，例 https://你的電腦.tailXXXX.ts.net （勿用 http://192.168） */
-  liveBridgeBaseUrl: "",
+  liveBridgeBaseUrl: "https://desktop-lpmd0rk.tail3f8104.ts.net",
   /* 選填：FinMind 付費 token，亦可在「籌碼健檢」頁貼上並存本機 */
   finmindToken: ""
 };
