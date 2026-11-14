@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 213;
+  const PAGE_BUILD = 214;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 500;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -693,14 +693,15 @@
       const q = await M.twiiQuote();
       if (seq !== twiiSeq) return;
       const cls = pctClass((q.pct || 0) / 100);
-      priceEl.textContent = fmt(q.price);
+      priceEl.textContent = q.price == null || !isFinite(q.price) ? "—" :
+        String(Math.round(q.price));
       priceEl.className = cls;
       const pts = q.change == null || !isFinite(q.change) ? "—" :
-        ((q.change > 0 ? "+" : "") + q.change.toFixed(2));
+        ((q.change > 0 ? "+" : "") + String(Math.round(q.change)));
       const pctTxt = q.pct == null || !isFinite(q.pct) ? "" :
-        "（" + (q.pct > 0 ? "+" : "") + q.pct.toFixed(2) + "%）";
+        "(" + (q.pct > 0 ? "+" : "") + q.pct.toFixed(2) + "%)";
       chgEl.className = "twii-chg " + cls;
-      chgEl.textContent = pts + (pctTxt ? " " + pctTxt : "");
+      chgEl.textContent = pts + pctTxt;
       formatTwiiLag(q);
       paintTwiiSource(q);
     } catch (err) {
