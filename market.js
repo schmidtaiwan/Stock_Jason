@@ -3221,6 +3221,291 @@
     };
   }
 
+  /** 解析 MIS 成交時間 → 當日秒數 */
+  function tapeTimeSec(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s) return null;
+    const colon = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (colon) {
+      return Number(colon[1]) * 3600 + Number(colon[2]) * 60 + Number(colon[3] || 0);
+    }
+    const digits = s.replace(/\D/g, "");
+    if (digits.length >= 6) {
+      return Number(digits.slice(0, 2)) * 3600 + Number(digits.slice(2, 4)) * 60 + Number(digits.slice(4, 6));
+    }
+    if (digits.length === 4) {
+      return Number(digits.slice(0, 2)) * 3600 + Number(digits.slice(2, 4)) * 60;
+    }
+    return null;
+  }
+
+  function inTapeWindow(sec, h0, m0, h1, m1) {
+    if (sec == null) return false;
+    const a = h0 * 3600 + m0 * 60;
+    const b = h1 * 3600 + m1 * 60;
+    return sec >= a && sec <= b;
+  }
+
+  function isRoundLot(lots) {
+    const n = Math.round(Number(lots) || 0);
+    return n >= 20 && n % 10 === 0;
+  }
+
+  function isOddishLot(lots) {
+    const n = Math.round(Number(lots) || 0);
+    if (n < 2 || n > 40) return false;
+    if (n % 10 === 0 || n % 5 === 0) return false;
+    return true;
+  }
+
+  /**
+   * 依分時成交（張數／時間／價位推升）近似判讀參與者。
+   * 非真實歸戶；僅規則試算。
+   * ticks: [{ time, price, lots, change }]
+   * ctx: { pct, limitUp, price, ref }
+   */
+  function analyzeTapeActors(tape, ctx) {
+    ctx = ctx || {};
+    const raw = (tape || []).filter(function (t) {
+      return t && Number(t.lots) > 0 && t.price > 0;
+    });
+    if (raw.length < 4) {
+      return {
+        ok: false,
+        reason: "成交明細不足（盤中刷新會累積）",
+        sample: raw.length,
+        actors: [],
+        signals: [],
+        note: "需至少數筆分時成交才能近似判讀；非券商分點歸戶。"
+      };
+    }
+
+    const ticks = [];
+    for (let i = 0; i < raw.length; i++) {
+      const t = raw[i];
+      const lots = Math.round(Number(t.lots) * 10) / 10;
+      const prev = ticks.length ? ticks[ticks.length - 1] : null;
+      let side = 0;
+      if (prev && t.price > prev.price + 1e-9) side = 1;
+      else if (prev && t.price < prev.price - 1e-9) side = -1;
+      else if (t.change != null && isFinite(t.change)) {
+        side = t.change > 0 ? 1 : t.change < 0 ? -1 : 0;
+      }
+      ticks.push({
+        time: t.time || "",
+        sec: tapeTimeSec(t.time),
+        price: Number(t.price),
+        lots: lots,
+        side: side,
+        change: t.change
+      });
+    }
+
+    const n = ticks.length;
+    const scores = {
+      overnight: 0,
+      daytrade: 0,
+      trust: 0,
+      foreign: 0,
+      dealer: 0
+    };
+    const evidence = {
+      overnight: [],
+      daytrade: [],
+      trust: [],
+      foreign: [],
+      dealer: []
+    };
+    function bump(key, pts, line) {
+      scores[key] += pts;
+      if (line && evidence[key].length < 4) evidence[key].push(line);
+    }
+
+    const lotFreq = Object.create(null);
+    ticks.forEach(function (t) {
+      const k = String(Math.round(t.lots));
+      lotFreq[k] = (lotFreq[k] || 0) + 1;
+    });
+    const topLots = Object.keys(lotFreq).map(function (k) {
+      return { lots: Number(k), count: lotFreq[k] };
+    }).sort(function (a, b) { return b.count - a.count || b.lots - a.lots; });
+
+    // 固定張數 + 固定間隔 → 程式拆單（外資／投信）
+    let algoHits = 0;
+    let trustish = 0;
+    let foreignish = 0;
+    for (let i = 0; i < topLots.length && i < 5; i++) {
+      const row = topLots[i];
+      if (row.count < 3) continue;
+      const same = ticks.filter(function (t) { return Math.round(t.lots) === row.lots && t.sec != null; });
+      if (same.length < 3) continue;
+      const gaps = [];
+      for (let j = 1; j < same.length; j++) gaps.push(same[j].sec - same[j - 1].sec);
+      const validGaps = gaps.filter(function (g) { return g > 0 && g <= 180; });
+      if (validGaps.length < 2) continue;
+      const avg = validGaps.reduce(function (s, g) { return s + g; }, 0) / validGaps.length;
+      const mad = validGaps.reduce(function (s, g) { return s + Math.abs(g - avg); }, 0) / validGaps.length;
+      if (avg >= 8 && avg <= 90 && mad <= Math.max(4, avg * 0.35)) {
+        algoHits += 1;
+        const line = "每隔約 " + Math.round(avg) + " 秒出現 " + row.lots + " 張（" + row.count + " 筆）";
+        if (isRoundLot(row.lots)) {
+          trustish += 1;
+          bump("trust", 18, line);
+        } else {
+          foreignish += 1;
+          bump("foreign", 20, line);
+        }
+      } else if (row.count >= 5 && (row.lots === 13 || row.lots === 17 || row.lots === 24 ||
+        row.lots === 48 || row.lots === 26 || row.lots === 36 || (row.lots > 10 && row.lots % 10 !== 0))) {
+        foreignish += 1;
+        bump("foreign", 12, "反覆出現固定 " + row.lots + " 張（" + row.count + " 筆）");
+      }
+    }
+    if (algoHits >= 1) bump("foreign", 6, "疑似 TWAP／時間加權拆單");
+
+    // 499／大單鎖碼
+    const bigBuys = ticks.filter(function (t) { return t.lots >= 100 && t.side >= 0; });
+    const huge = ticks.filter(function (t) { return t.lots >= 200; });
+    const nearLimit = (ctx.pct != null && ctx.pct >= 8) ||
+      (ctx.limitUp != null && ctx.price != null && ctx.limitUp > 0 &&
+        ctx.price >= ctx.limitUp * 0.995);
+    if (nearLimit && bigBuys.length >= 2) {
+      bump("overnight", 28, "近漲停連續大單敲進（" + bigBuys.length + " 筆≥100張）");
+    }
+    if (huge.some(function (t) { return t.lots >= 400; })) {
+      bump("foreign", 10, "出現接近單筆上限之大單");
+      bump("overnight", 8, "巨量鎖碼跡象");
+    }
+
+    // 散戶隔日沖：1～10 張、尾盤外盤／早盤內盤
+    let smallBuyPm = 0;
+    let smallSellAm = 0;
+    let smallN = 0;
+    ticks.forEach(function (t) {
+      if (t.lots > 10) return;
+      smallN += 1;
+      if (t.side > 0 && inTapeWindow(t.sec, 13, 0, 13, 25)) smallBuyPm += 1;
+      if (t.side < 0 && inTapeWindow(t.sec, 9, 0, 9, 20)) smallSellAm += 1;
+    });
+    if (smallN >= Math.max(3, n * 0.35)) {
+      bump("overnight", 10, "以 1～10 張零碎單為主");
+    }
+    if (smallBuyPm >= 2) bump("overnight", 14, "尾盤零碎外盤追價");
+    if (smallSellAm >= 2) bump("overnight", 12, "開盤零碎內盤倒貨");
+
+    // 當沖：整數倍大單急拉急殺、早盤／尾盤平倉
+    let roundBig = 0;
+    let flip = 0;
+    for (let i = 1; i < ticks.length; i++) {
+      if (ticks[i].side && ticks[i - 1].side && ticks[i].side !== ticks[i - 1].side) flip += 1;
+    }
+    ticks.forEach(function (t) {
+      const L = Math.round(t.lots);
+      if ((L === 30 || L === 50 || L === 100 || L === 150 || L === 200) ||
+        (L >= 30 && L <= 100 && L % 10 === 0)) {
+        if (inTapeWindow(t.sec, 9, 0, 10, 30) || inTapeWindow(t.sec, 12, 30, 13, 25)) roundBig += 1;
+      }
+    });
+    if (roundBig >= 2) bump("daytrade", 16, "常見 30～100 張整數單");
+    if (flip >= Math.max(3, Math.floor(n * 0.25))) {
+      bump("daytrade", 14, "內外盤頻繁切換（急拉急殺）");
+    }
+    let lateSell = 0;
+    ticks.forEach(function (t) {
+      if (t.side < 0 && t.lots >= 5 && t.lots <= 30 && inTapeWindow(t.sec, 12, 45, 13, 25)) lateSell += 1;
+    });
+    if (lateSell >= 3) bump("daytrade", 18, "尾盤連續 5～30 張內盤（疑似強制平倉）");
+
+    // 點火＋避險跟單
+    for (let i = 0; i < ticks.length - 3; i++) {
+      let run = 0;
+      for (let j = i; j < Math.min(i + 5, ticks.length); j++) {
+        const L = Math.round(ticks[j].lots);
+        if (ticks[j].side > 0 && (L === 50 || L === 100 || L === 200 || (L >= 50 && L % 50 === 0))) run += 1;
+        else break;
+      }
+      if (run >= 3) {
+        bump("daytrade", 12, "連續大單外盤點火");
+        let follow = 0;
+        for (let k = i + run; k < Math.min(i + run + 6, ticks.length); k++) {
+          if (ticks[k].side > 0 && isOddishLot(ticks[k].lots)) follow += 1;
+        }
+        if (follow >= 2) bump("dealer", 16, "大單後緊接零碎跟單（疑似權證避險）");
+        break;
+      }
+    }
+
+    // 自營：零碎張數高頻
+    const oddN = ticks.filter(function (t) { return isOddishLot(t.lots); }).length;
+    if (oddN >= Math.max(4, n * 0.3)) {
+      bump("dealer", 10, "非整數零碎張數偏多");
+    }
+
+    // 投信：避開開盤亂流、整數單、偏內盤承接
+    let trustBuy = 0;
+    ticks.forEach(function (t) {
+      if (!isRoundLot(t.lots)) return;
+      if (inTapeWindow(t.sec, 9, 30, 13, 0) && t.side <= 0) trustBuy += 1;
+    });
+    if (trustBuy >= 2) bump("trust", 12, "整數張數偏內盤／均價附近承接");
+    if (trustish === 0 && isRoundLot(topLots[0] && topLots[0].lots) && (topLots[0].count || 0) >= 4) {
+      bump("trust", 8, "反覆整數張數 " + topLots[0].lots + " 張");
+    }
+
+    const meta = [
+      { key: "overnight", name: "散戶隔日沖", cls: "up" },
+      { key: "daytrade", name: "當沖客", cls: "up" },
+      { key: "trust", name: "投信", cls: "down" },
+      { key: "foreign", name: "外資／程式", cls: "down" },
+      { key: "dealer", name: "自營避險", cls: "" }
+    ];
+    const maxScore = meta.reduce(function (m, row) { return Math.max(m, scores[row.key]); }, 0);
+    const actors = meta.map(function (row) {
+      const sc = scores[row.key];
+      let level = "弱";
+      let tone = "";
+      if (sc >= 28 || (maxScore > 0 && sc >= maxScore && sc >= 18)) {
+        level = "強";
+        tone = row.cls || "up";
+      } else if (sc >= 14) {
+        level = "中";
+        tone = row.cls || "";
+      }
+      return {
+        key: row.key,
+        name: row.name,
+        score: sc,
+        level: level,
+        tone: tone,
+        active: sc >= 14,
+        detail: (evidence[row.key] || []).join("；") || "特徵不足"
+      };
+    }).sort(function (a, b) { return b.score - a.score; });
+
+    const signals = [];
+    actors.filter(function (a) { return a.active; }).forEach(function (a) {
+      signals.push(a.name + "（" + a.level + "）：" + a.detail);
+    });
+    if (!signals.length) {
+      signals.push("目前累積樣本偏中性，尚無單一參與者特徵突出。");
+    }
+
+    const lead = actors[0];
+    const bias = lead && lead.active
+      ? ("偏 " + lead.name)
+      : "足跡不明顯";
+
+    return {
+      ok: true,
+      sample: n,
+      bias: bias,
+      actors: actors,
+      signals: signals,
+      topLots: topLots.slice(0, 5),
+      note: "依單筆張數規律、成交時段、價位推升／壓低近似判讀；非真實分點歸戶，規則試算非投資建議。"
+    };
+  }
+
   function misExTokens(code) {
     const id = String(code || "").toUpperCase();
     if (id === "T00" || id === "TWII") return ["tse_t00.tw"];
@@ -6267,6 +6552,7 @@
     misQuotes: misQuotes,
     misBook: misBook,
     stockPriceVolume: stockPriceVolume,
+    analyzeTapeActors: analyzeTapeActors,
     misTwiiQuote: misTwiiQuote,
     bustLiveCaches: bustLiveCaches,
     twPredict: twPredict,

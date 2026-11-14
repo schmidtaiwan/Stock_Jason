@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 224;
+  const PAGE_BUILD = 225;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -4398,12 +4398,65 @@
     }).sort(function (a, b) { return b.price - a.price; });
   }
 
+  function renderStockActors(bookQ) {
+    const box = $("stock-actors");
+    if (!box || !M || !M.analyzeTapeActors) return;
+    const pack = M.analyzeTapeActors(stockLiveTape, {
+      pct: bookQ && bookQ.pct,
+      limitUp: bookQ && bookQ.limitUp,
+      price: bookQ && bookQ.price,
+      ref: bookQ && bookQ.ref
+    });
+    if (!pack) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    if (!pack.ok) {
+      box.innerHTML = '<article class="card stock-actors-card">' +
+        '<details class="session-fold" open>' +
+        '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
+        '<span class="tag">樣本不足</span></summary>' +
+        '<div class="session-fold-body">' +
+        '<p class="fine">' + esc(pack.reason || "尚無足夠成交明細") + "</p>" +
+        '<p class="fine">' + esc(pack.note || "") + "</p>" +
+        "</div></details></article>";
+      return;
+    }
+    const open = !!(box.querySelector(".session-fold") && box.querySelector(".session-fold").open);
+    const rows = (pack.actors || []).map(function (a) {
+      return "<li><span>" + esc(a.name) +
+        ' <span class="tag ' + esc(a.tone || "") + '">' + esc(a.level) + "</span></span>" +
+        "<strong>" + esc(a.detail) + "</strong></li>";
+    }).join("");
+    const sig = (pack.signals || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    const lotHint = (pack.topLots || []).slice(0, 3).map(function (r) {
+      return r.lots + "張×" + r.count;
+    }).join(" · ");
+    box.innerHTML = '<article class="card stock-actors-card">' +
+      '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
+      '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
+      '<span class="tag ' + ((pack.actors[0] && pack.actors[0].tone) || "") + '">' + esc(pack.bias || "") + "</span>" +
+      '<span class="fine">樣本 ' + pack.sample + " 筆</span></summary>" +
+      '<div class="session-fold-body">' +
+      "<h4>可能活躍者</h4><ul class=\"stat-list actor-list\">" + rows + "</ul>" +
+      (sig ? "<h4>即時訊號</h4><ul class=\"session-list\">" + sig + "</ul>" : "") +
+      (lotHint ? '<p class="fine">高頻張數：' + esc(lotHint) + "</p>" : "") +
+      '<p class="fine">' + esc(pack.note || "") + "</p>" +
+      "</div></details></article>";
+  }
+
   function renderStockLive(bookQ, pvRows) {
     const box = $("stock-live");
     if (!box) return;
     if (!bookQ && !(pvRows && pvRows.length)) {
       box.hidden = true;
       box.innerHTML = "";
+      const actors = $("stock-actors");
+      if (actors) { actors.hidden = true; actors.innerHTML = ""; }
       return;
     }
     const liveOpen = !!(box.querySelector("[data-live-fold]") && box.querySelector("[data-live-fold]").open);
@@ -4534,7 +4587,7 @@
             change: bookQ.change,
             cum: bookQ.volumeLots
           });
-          if (stockLiveTape.length > 120) stockLiveTape = stockLiveTape.slice(-100);
+          if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
           stockLiveLastKey = key;
         }
         if (bookQ.open != null) stockLivePv.open = bookQ.open;
@@ -4543,6 +4596,7 @@
       }
       const rows = mergePriceVolume(stockLivePv, stockLiveTape);
       renderStockLive(bookQ, rows);
+      renderStockActors(bookQ);
     } catch (err) {
       if (!quiet) {
         box.hidden = false;
@@ -4706,6 +4760,8 @@
     stockLiveTape = [];
     stockLiveLastKey = "";
     stockSessionGen += 1;
+    const actorsBox = $("stock-actors");
+    if (actorsBox) { actorsBox.hidden = true; actorsBox.innerHTML = ""; }
     setView("stock");
   }
 

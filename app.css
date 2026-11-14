@@ -764,6 +764,25 @@ canvas {
   display: grid;
   gap: 10px;
 }
+.stock-actors {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+.stock-actors-card h4 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--muted, #9aa4b2);
+  font-weight: 600;
+}
+.stock-actors-card .actor-list li {
+  align-items: start;
+}
+.stock-actors-card .actor-list .tag {
+  margin-left: 4px;
+  font-size: 11px;
+  vertical-align: middle;
+}
 .stock-session {
   margin: 8px 0 10px;
 }
