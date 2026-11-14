@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 239;
+  const PAGE_BUILD = 240;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -1949,13 +1949,16 @@
     rows.forEach(function (row) {
       if (!row.secid) return;
       const costNum = Number(row.cost);
+      const fubonPnl = row.pnl != null && isFinite(Number(row.pnl)) ? Number(row.pnl) : null;
       const item = {
         secid: row.secid,
         code: row.code,
         name: twName(row.name || row.code || ""),
         market: "台股",
         shares: row.shares == null ? "" : String(row.shares).trim(),
-        cost: costNum > 0 ? String(costNum) : ""
+        cost: costNum > 0 ? String(costNum) : "",
+        fubonPnl: fubonPnl,
+        pnl: fubonPnl
       };
       items.push(item);
       syncHolding(item);
@@ -2773,7 +2776,7 @@
     if (!(val > 0)) return null;
     const price = Number(quote.price);
     const pctChg = Number(quote.pct);
-    const pnl = watchPnl(price, item.cost, item.shares, item.code).value;
+    const pnl = watchPnl(price, item.cost, item.shares, item.code, item).value;
     if (mode === "pct") {
       if (!isFinite(pctChg) || Math.abs(pctChg) < val) return null;
       const side = pctChg >= 0 ? "up" : "down";
@@ -3853,7 +3856,8 @@
     return (n > 0 ? "+" : "") + fmtPx(n);
   }
 
-  // 對齊券商未實現淨損益：成本為成交均價（不含費）；另扣買進手續費、賣出(估)手續費、證交稅
+  // 富邦成本價多半已含買進費；未實現損益優先用券商 unrealizedPnl。
+  // 無券商數字時：市值−成本 − 賣出(估)手續費 − 證交稅（不再重扣買進費）。
   // 手續費 1.425‰、單筆最低 20（無條件捨去）；股票證交稅 0.3%、ETF 0.1%
   const BROKER_FEE_RATE = 0.001425;
   const BROKER_FEE_MIN = 20;
@@ -3878,7 +3882,17 @@
     return Math.round(amount * (isEtfLike(code) ? TAX_ETF : TAX_STOCK));
   }
 
-  function watchPnl(price, cost, shares, code) {
+  function watchPnl(price, cost, shares, code, item) {
+    const fubon = item && item.fubonPnl != null ? Number(item.fubonPnl)
+      : (item && item.pnl != null ? Number(item.pnl) : NaN);
+    if (isFinite(fubon)) {
+      return {
+        text: (fubon > 0 ? "+" : "") + Math.round(fubon).toLocaleString("zh-Hant"),
+        cls: fubon > 0 ? "up" : fubon < 0 ? "down" : "",
+        value: fubon,
+        tip: "富邦未實現損益 " + Math.round(fubon).toLocaleString("zh-Hant") + " 元（與 App 對齊）"
+      };
+    }
     const p = Number(price);
     const c = Number(cost);
     const s = Number(shares);
@@ -3888,12 +3902,12 @@
     }
     const costAmt = c * s;
     const mv = p * s;
-    const buyFee = brokerFee(costAmt);
     const sellFee = brokerFee(mv);
     const tax = sellTax(mv, code);
-    const v = mv - costAmt - buyFee - sellFee - tax;
-    const tip = "未實現淨損益 " + Math.round(v).toLocaleString("zh-Hant") + " 元\n" +
-      "買進手續費 " + buyFee.toLocaleString("zh-Hant") + "\n" +
+    // 成本價已含買進費 → 只再估賣出費＋證交稅
+    const v = mv - costAmt - sellFee - tax;
+    const tip = "預估淨損益 " + Math.round(v).toLocaleString("zh-Hant") + " 元\n" +
+      "（成本已含買進費，未重扣）\n" +
       "賣出(估)手續費 " + sellFee.toLocaleString("zh-Hant") + "\n" +
       "證交稅 " + tax.toLocaleString("zh-Hant") + "\n" +
       "成本 " + (Math.round(c * 100) / 100) + " · " +
@@ -3913,7 +3927,7 @@
     const item = book.watch[idx];
     if (!row || !item) return;
     const price = Number(row.getAttribute("data-price"));
-    const pnl = watchPnl(price, item.cost, item.shares, item.code);
+    const pnl = watchPnl(price, item.cost, item.shares, item.code, item);
     const cell = row.querySelector("[data-watch-pnl]");
     if (!cell) return;
     cell.className = "watch-num watch-col-pnl" + (pnl.cls ? " " + pnl.cls : "");
@@ -3935,14 +3949,24 @@
     }
     let sum = 0;
     let n = 0;
+    let usedFubon = 0;
     book.watch.forEach(function (item, idx) {
       const row = box && box.querySelector('[data-watch-row="' + idx + '"]');
       const price = row ? Number(row.getAttribute("data-price")) : NaN;
-      const pnl = watchPnl(price, item.cost, item.shares, item.code);
+      const pnl = watchPnl(price, item.cost, item.shares, item.code, item);
       if (pnl.value == null || !isFinite(pnl.value)) return;
       sum += pnl.value;
       n += 1;
+      if (item && (item.fubonPnl != null || item.pnl != null) && isFinite(Number(item.fubonPnl != null ? item.fubonPnl : item.pnl))) {
+        usedFubon += 1;
+      }
     });
+    const hint = $("watch-total-hint");
+    if (hint) {
+      hint.textContent = usedFubon > 0 && usedFubon === n
+        ? "富邦未實現損益"
+        : (usedFubon > 0 ? "富邦＋預估（賣出費・稅）" : "預估已扣賣出費・證交稅");
+    }
     if (!n) {
       el.className = "";
       el.textContent = "—";
@@ -4715,13 +4739,13 @@
       let note = pack.note || "";
       if (wantFubon) {
         if (meta.bridgeOk === false) {
-          reason = "Live Bridge 未連線，無法抓富邦分時足跡";
-          note = "請確認 LiveBridge 已登入富邦，且網頁以 Jason／Backy 登入。";
+          reason = "Live Bridge 未連線，改試 Drive 足跡亦不足";
+          note = "請開 LiveBridge 並登入富邦；或等 EXE 上傳 fubon-tape/latest。休市會抓最近交易日 1 分Ｋ。";
         } else if (meta.tapeTried && tapeN < 4) {
           reason = "富邦分時足跡不足（目前 " + tapeN + " 筆）";
           note = meta.tapeDate
-            ? ("已請求 " + meta.tapeDate + " 富邦分時；若仍不足請確認 LiveBridge 已登入。")
-            : "已向 Live Bridge 請求富邦成交／最近交易日分時；請確認 EXE 已重開並登入。";
+            ? ("已請求 " + meta.tapeDate + "；若為休市請確認 LiveBridge 狀態列有 last-session／已上傳 tape。")
+            : "已請求成交明細與最近交易日 1 分Ｋ；請確認 LiveBridge 已登入且 focus 為該代號。";
         }
       }
       box.innerHTML = '<article class="card stock-actors-card">' +
@@ -4934,7 +4958,12 @@
             }
           } catch (err) { /* ignore */ }
         }
-        if (M.fetchFubonTapeFromDrive) {
+        // 先直連 LiveBridge 分時，再退 Drive latest／近幾日
+        if (LB && LB.readFubonTape && bridgeOk) {
+          tapeTried = true;
+          try { fubonTape = await LB.readFubonTape(code); } catch (err) { fubonTape = null; }
+        }
+        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length) && M.fetchFubonTapeFromDrive) {
           tapeTried = true;
           try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
         }
@@ -4951,7 +4980,7 @@
           } catch (err) { /* ignore */ }
         }
       }
-      if (!wantFubon && !fubonTape && M.fetchFubonTapeFromDrive) {
+      if (!fubonTape && M.fetchFubonTapeFromDrive) {
         tapeTried = true;
         try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
       }

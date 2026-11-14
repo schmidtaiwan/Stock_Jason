@@ -2003,10 +2003,15 @@
       // 避免浮點顯示成 4.4350000001
       if (cost > 0) cost = Math.round(cost * 10000) / 10000;
       let pnl = null;
-      if (row.raw) {
+      const topPnl = Number(row.unrealizedPnl != null ? row.unrealizedPnl : row.pnl);
+      if (isFinite(topPnl)) {
+        pnl = topPnl;
+      } else if (row.raw) {
         const up = Number(row.raw.unrealized_profit);
         const down = Number(row.raw.unrealized_loss);
-        if (up > 0) pnl = up;
+        const pl = Number(row.raw.profit_or_loss);
+        if (isFinite(pl) && (pl !== 0 || row.raw.profit_or_loss != null)) pnl = pl;
+        else if (up > 0) pnl = up;
         else if (down > 0) pnl = -down;
       }
       seen[code] = true;
