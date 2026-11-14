@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 206;
+  const PAGE_BUILD = 207;
   const PAGE_DATE = "2026-11-14";
   let chartDetailsOn = true;
   let stockDetailsOn = true;
@@ -6126,7 +6126,7 @@
         "https://www.cmoney.tw/notes/note-detail.aspx?nid=499697") +
       '" target="_blank" rel="noopener">技術分析選股筆記</a></p>';
     const revTable = (rev.rows || []).length
-      ? '<div class="watch-table-wrap"><table class="watch-table"><thead><tr><th>年月</th><th>營收</th><th>MoM</th><th>YoY</th></tr></thead><tbody>' +
+      ? '<div class="watch-table-wrap mops-table-wrap"><table class="watch-table mops-table"><thead><tr><th>年月</th><th>營收</th><th>MoM</th><th>YoY</th></tr></thead><tbody>' +
         rev.rows.slice(0, 12).map(function (row) {
           const mom = row.mom == null ? "—" : ((row.mom > 0 ? "+" : "") + row.mom.toFixed(1) + "%");
           const yoy = row.yoy == null ? "—" : ((row.yoy > 0 ? "+" : "") + row.yoy.toFixed(1) + "%");

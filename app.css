@@ -2590,6 +2590,28 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 .health-list .health-dot.mark-red { color: #e25c5c; }
 .health-list .health-dot.mark-green { color: #3dbe7a; }
 .health-list .health-dot.mark-gray { color: var(--muted, #9aa4b2); }
+
+.mops-table-wrap {
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+  vertical-align: top;
+}
+.watch-table.mops-table {
+  width: auto;
+  min-width: 0;
+  table-layout: auto;
+}
+.watch-table.mops-table th,
+.watch-table.mops-table td {
+  width: 1%;
+  white-space: nowrap;
+  padding: 6px 8px;
+}
+.watch-table.mops-table th:nth-child(n+2),
+.watch-table.mops-table td:nth-child(n+2) {
+  text-align: right;
+}
 .health-list li {
   display: grid;
   grid-template-columns: 1.5em 1fr auto;
