@@ -1,8 +1,10 @@
 /* 行情、指標與六項交易分析。計算在瀏覽器完成，不把價格寫進 Git。 */
 (function (global) {
   const RANGES = {
+    // 今：不鎖日曆日，fiveMinBars session=last → 最近一交易日；盤中即今日即時
     "1d": { label: "今", klt: 5, lmt: 120, session: "last", align: "index" },
-    "5d": { label: "五日", klt: 15, lmt: 240, days: 5, align: "index" },
+    // 5／20／180：皆為最近 N 個交易日（日 K）
+    "5d": { label: "5日", klt: 101, lmt: 5, days: 5, align: "date" },
     "20d": { label: "20日", klt: 101, lmt: 20, align: "date" },
     "180d": { label: "180日", klt: 101, lmt: 180, align: "date" },
     "1y": { label: "年", klt: 101, lmt: 250, align: "date" },
@@ -580,14 +582,14 @@
 
   const FX_QUERY = {
     "1d": "interval=5m&range=1d",
-    "5d": "interval=15m&range=5d",
+    "5d": "interval=1d&range=1mo",
     "20d": "interval=1d&range=1mo",
     "180d": "interval=1d&range=1y",
     "1y": "interval=1d&range=1y",
     "3y": "interval=1wk&range=5y",
     "5y": "interval=1wk&range=5y"
   };
-  const FX_KEEP = { "20d": 20, "180d": 180, "1y": 250, "3y": 160 };
+  const FX_KEEP = { "5d": 5, "20d": 20, "180d": 180, "1y": 250, "3y": 160 };
 
   function isoDaysAgo(days) {
     const d = new Date();

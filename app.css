@@ -194,10 +194,19 @@ a.gate-ext[hidden] { display: none !important; }
   font-size: calc(15px + 2pt + 4pt);
   font-variant-numeric: tabular-nums;
 }
+.twii-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
 .twii-chg {
   font-size: calc(12px - 1pt);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+  white-space: nowrap;
 }
 .twii-chg.up { color: var(--up, #3dbe7a); }
 .twii-chg.down { color: var(--down, #e25c5c); }
@@ -206,14 +215,13 @@ a.gate-ext[hidden] { display: none !important; }
   color: #c9a227;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  white-space: nowrap;
 }
 .twii-src {
   font-size: calc(10px - 2pt);
   color: var(--muted);
   line-height: 1.2;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 .range-row {

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 222;
+  const PAGE_BUILD = 223;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -1767,10 +1767,10 @@
     }).join("");
     const flowHtml = (M.FLOW_SERIES || []).map(function (f) {
       const tip = f.id === "short"
-        ? "外資台指期空單未平倉歷史曲線（五日以上線圖）"
+        ? "外資台指期空單未平倉歷史曲線（5 日以上線圖）"
         : f.id === "buy"
-          ? "外資現貨買超歷史曲線（五日以上線圖）"
-          : "外資現貨賣超歷史曲線（五日以上線圖）";
+          ? "外資現貨買超歷史曲線（5 日以上線圖）"
+          : "外資現貨賣超歷史曲線（5 日以上線圖）";
       return '<button type="button" class="chip chip-flow" data-flow="' + f.id + '" aria-pressed="' +
         !!flow[f.id] + '" title="' + tip + '">' + f.name + "</button>";
     }).join("");
@@ -1969,22 +1969,14 @@
   }
 
   function plotWindow() {
+    // 預設區間不鎖日曆日：今＝最近一交易日（盤中即今日即時）；5／20／180＝最近 N 交易日
     if (state.custom && state.from && state.to) return { from: state.from, to: state.to };
-    if (!state.custom && state.range === "1d") {
-      const day = state.from && state.to && state.from === state.to ? state.from : isoToday();
-      return { from: day, to: day };
-    }
     return null;
   }
 
   function stockPlotWindow() {
     if (state.stockCustom && state.stockDateFrom && state.stockDateTo) {
       return { from: state.stockDateFrom, to: state.stockDateTo };
-    }
-    if (!state.stockCustom && state.stockRange === "1d") {
-      const day = state.stockDateFrom && state.stockDateTo && state.stockDateFrom === state.stockDateTo
-        ? state.stockDateFrom : isoToday();
-      return { from: day, to: day };
     }
     return null;
   }
@@ -2616,7 +2608,7 @@
         if (candle) {
           statusNote = (statusNote ? statusNote + " " : "") + "K線不疊加空單／買賣超。";
         } else if (oneDay) {
-          statusNote = (statusNote ? statusNote + " " : "") + "空單／買賣超為日資料，請改五日以上。";
+          statusNote = (statusNote ? statusNote + " " : "") + "空單／買賣超為日資料，請改 5 日以上。";
         } else if (M.flowBars) {
           const flowGot = await Promise.all(flowSpecs.map(async function (f) {
             try {
@@ -5556,24 +5548,18 @@
     } else if (t.dataset.range) {
       state.range = t.dataset.range;
       state.custom = false;
-      if (state.range === "1d") {
-        const day = isoToday();
-        state.from = day;
-        state.to = day;
-        state.chartStyle = "candle";
-        syncDateInputs();
-      }
+      state.from = "";
+      state.to = "";
+      if (state.range === "1d") state.chartStyle = "candle";
+      syncDateInputs();
       buildToggles();
       loadChart();
     } else if (t.dataset.stockRange) {
       state.stockRange = t.dataset.stockRange;
       state.stockCustom = false;
-      if (state.stockRange === "1d") {
-        const day = isoToday();
-        state.stockDateFrom = day;
-        state.stockDateTo = day;
-        syncStockDateInputs();
-      }
+      state.stockDateFrom = "";
+      state.stockDateTo = "";
+      syncStockDateInputs();
       buildStockToggles();
       loadStockChart();
     } else if (t.dataset.market) {
