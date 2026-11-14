@@ -104,7 +104,7 @@
         try { ctrl.abort(); } catch (e) { /* ignore */ }
       }, ms);
     }
-    try {
+    function buildOpts(addressSpace) {
       const fetchOpts = {
         method: "GET",
         headers: headers,
@@ -112,15 +112,36 @@
         mode: "cors",
         signal: ctrl ? ctrl.signal : undefined
       };
-      // Chromium：明示要打私網（Tailscale 100.x）
-      try { fetchOpts.targetAddressSpace = "private"; } catch (e) { /* ignore */ }
-      const res = await fetch(root + path, fetchOpts);
-      markOnline(true);
-      _lastError = "";
+      // Tailscale 100.x 屬 local（CGNAT），不是 private；設錯會直接 Failed to fetch
+      if (addressSpace) {
+        try { fetchOpts.targetAddressSpace = addressSpace; } catch (e) { /* ignore */ }
+      }
+      return fetchOpts;
+    }
+
+    async function doFetch(addressSpace) {
+      const res = await fetch(root + path, buildOpts(addressSpace));
       if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
       if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
       if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
       return res.json();
+    }
+
+    try {
+      // 先一般 fetch（Funnel 公開網址時最穩）；失敗再試 local（tailnet 100.x）
+      let data;
+      try {
+        data = await doFetch("");
+      } catch (firstErr) {
+        try {
+          data = await doFetch("local");
+        } catch (e2) {
+          throw firstErr;
+        }
+      }
+      markOnline(true);
+      _lastError = "";
+      return data;
     } catch (err) {
       markOnline(false);
       const name = err && err.name ? String(err.name) : "";
