@@ -2,6 +2,7 @@
 (function (global) {
   const cfg = global.GOOGLE_CONFIG || {};
   const LS_KEY = "sj-live-bridge-url";
+  const JASON_EMAIL = "jason660803@gmail.com";
 
   function baseUrl() {
     let raw = "";
@@ -31,6 +32,16 @@
     return "";
   }
 
+  function accountEmail() {
+    const D = global.SJDrive;
+    if (!D || !D.account || !D.account()) return "";
+    return String(D.account().email || "").trim().toLowerCase();
+  }
+
+  function isJason() {
+    return accountEmail() === JASON_EMAIL;
+  }
+
   function canUse() {
     const D = global.SJDrive;
     if (!baseUrl()) return false;
@@ -52,6 +63,7 @@
       mode: "cors",
     });
     if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
+    if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
     if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
     return res.json();
   }
@@ -76,6 +88,16 @@
     }
   }
 
+  /** 僅 jason660803；Backy 不呼叫。 */
+  async function readFubonHoldings() {
+    if (!canUse() || !isJason()) return null;
+    try {
+      return await fetchJson("/api/fubon-holdings");
+    } catch (err) {
+      return null;
+    }
+  }
+
   async function health() {
     const root = baseUrl();
     if (!root) return null;
@@ -92,8 +114,10 @@
     baseUrl: baseUrl,
     setBaseUrl: setBaseUrl,
     canUse: canUse,
+    isJason: isJason,
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,
+    readFubonHoldings: readFubonHoldings,
     health: health,
   };
 })(window);

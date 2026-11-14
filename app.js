@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 227;
+  const PAGE_BUILD = 228;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -1701,6 +1701,35 @@
     syncMoney();
     renderWatch();
     paintToolMenu();
+    syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+  }
+
+  let liveHoldingsTimer = 0;
+  async function syncHoldingsFromLiveBridge() {
+    const LB = window.SJLiveBridge;
+    if (!LB || typeof LB.readFubonHoldings !== "function" || !LB.isJason || !LB.isJason()) return;
+    if (!D.account()) return;
+    const data = await LB.readFubonHoldings();
+    if (!data || !Array.isArray(data.holdings) || !data.holdings.length) return;
+    const parsed = M.parseFubonHoldingsJson(data).map(function (row) {
+      return Object.assign({}, row, { note: row.cost > 0 ? "Live Bridge 富邦庫存" : "" });
+    });
+    if (!parsed.length) return;
+    const rows = await resolveParsed(parsed);
+    let n = 0;
+    rows.forEach(function (row) {
+      if (!row.secid) return;
+      savePosition(row);
+      n += 1;
+    });
+    if (n) flashStatus("已從 Live Bridge 同步富邦庫存 " + n + " 檔");
+  }
+
+  function ensureLiveHoldingsTimer() {
+    if (liveHoldingsTimer) return;
+    liveHoldingsTimer = setInterval(function () {
+      syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+    }, 60000);
   }
 
   function warnEmbeddedLogin() {
@@ -1742,6 +1771,7 @@
         book = emptyBook();
         flashStatus("讀取雲端失敗：" + ((bookErr && bookErr.message) || bookErr));
       }
+      ensureLiveHoldingsTimer();
       paintChrome(true);
       if (state.view === "chart") loadChart();
       else if (state.view === "pulse") loadPulse();
