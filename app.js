@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 242;
+  const PAGE_BUILD = 243;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -4740,12 +4740,14 @@
       if (wantFubon) {
         if (meta.bridgeOk === false) {
           reason = "Live Bridge 未連線，改試 Drive 足跡亦不足";
-          note = "請開 LiveBridge 並登入富邦；或等 EXE 上傳 fubon-tape/latest。休市會抓最近交易日 1 分Ｋ。";
+          note = meta.driveReady
+            ? "請確認 EXE 已上傳 fubon-live／fubon-tape，且目前看的是 focus 代號（狀態列 focus）。休市為最近交易日 1 分Ｋ。"
+            : "手機請先 Google 登入讀雲端足跡；或開 Tailscale 連 LiveBridge。未登入且連不到橋時會是 0 筆。";
         } else if (meta.tapeTried && tapeN < 4) {
           reason = "富邦分時足跡不足（目前 " + tapeN + " 筆）";
           note = meta.tapeDate
             ? ("已請求 " + meta.tapeDate + "；若為休市請確認 LiveBridge 狀態列有 last-session／已上傳 tape。")
-            : "已請求成交明細與最近交易日 1 分Ｋ；請確認 LiveBridge 已登入且 focus 為該代號。";
+            : "已請求成交明細與最近交易日 1 分Ｋ；請確認 LiveBridge focus 為該代號（目前只保證 focus 檔有足跡）。";
         }
       }
       box.innerHTML = '<article class="card stock-actors-card">' +
@@ -4906,8 +4908,21 @@
       }
       const wantFubon = getTwiiSourcePref() === "fubon";
       const LB = window.SJLiveBridge;
-      // 報價／分時：有 Tailscale URL 即可（免 Google token）；庫存仍用 canUse
-      const bridgeOk = !!(LB && ((LB.canReach && LB.canReach()) || (LB.canUse && LB.canUse())));
+      const bridgeConfigured = !!(LB && ((LB.canReach && LB.canReach()) || (LB.canUse && LB.canUse())));
+      // 手機常設了 URL 但連不到 Tailscale：先 probe，失敗就改走 Drive（勿卡死）
+      let bridgeOnline = false;
+      if (bridgeConfigured && LB) {
+        if (LB.isOnline && LB.isOnline() === true) bridgeOnline = true;
+        else if (LB.isOnline && LB.isOnline() === false) bridgeOnline = false;
+        else if (LB.probe) {
+          try { bridgeOnline = !!(await LB.probe(2500)); } catch (err) { bridgeOnline = false; }
+        } else {
+          bridgeOnline = true;
+        }
+      }
+      const bridgeOk = bridgeOnline;
+      const driveReady = !!(window.SJDrive && SJDrive.account && SJDrive.account() &&
+        SJDrive.readFubonLive && (!SJDrive.isAllowed || SJDrive.isAllowed((SJDrive.account().email) || "")));
       let bookQ = null;
       let fubonTape = null;
       let tapeTried = false;
@@ -4945,8 +4960,19 @@
         };
       }
 
-      // 選富邦：報價＋分時足跡都先走 Live Bridge
-      if (wantFubon || bridgeOk) {
+      function applyLiveSnap(live, srcTag) {
+        if (!live) return;
+        const row = live.byCode && live.byCode[code];
+        const hit = bookFromFubonRow(row, srcTag, live.asOf);
+        if (hit && (!bookQ || !(bookQ.price > 0) || srcTag === "fubon-tailscale")) bookQ = hit;
+        if (!fubonTape) {
+          const embedded = tapeFromLiveSnap(live, code);
+          if (embedded) fubonTape = embedded;
+        }
+      }
+
+      // 選富邦：報價＋分時足跡；Bridge 與 Drive 並行（連不到 Tailscale 時 Drive 仍可用）
+      if (wantFubon || bridgeConfigured || driveReady) {
         if (M.hydrateFubonFromDrive) {
           try {
             await M.hydrateFubonFromDrive([code], {
@@ -4956,37 +4982,42 @@
             });
           } catch (err) { /* ignore */ }
         }
-        if (LB && LB.readFubonLive && bridgeOk) {
-          try {
-            const live = await LB.readFubonLive();
-            const row = live && live.byCode && live.byCode[code];
-            const hit = bookFromFubonRow(row, "fubon-tailscale", live && live.asOf);
-            if (hit) bookQ = hit;
-            const embedded = tapeFromLiveSnap(live, code);
-            if (embedded) fubonTape = embedded;
-          } catch (err) { /* ignore */ }
+
+        const liveTasks = [];
+        if (LB && LB.readFubonLive && bridgeOnline) {
+          liveTasks.push(LB.readFubonLive().then(function (live) {
+            applyLiveSnap(live, "fubon-tailscale");
+          }).catch(function () { /* ignore */ }));
         }
-        if ((!bookQ || !(bookQ.price > 0) || !fubonTape) && window.SJDrive && SJDrive.readFubonLive) {
-          try {
-            const live = await SJDrive.readFubonLive();
-            const row = live && live.byCode && live.byCode[code];
+        if (driveReady) {
+          liveTasks.push(SJDrive.readFubonLive().then(function (live) {
+            if (!live) return;
+            const row = live.byCode && live.byCode[code];
+            // Drive 報價：5 分鐘內才當即時
             if (row && row.price > 0 && live.at && Date.now() - Number(live.at) < 300_000) {
-              bookQ = bookFromFubonRow(row, "fubon-drive", live.asOf);
+              if (!bookQ || !(bookQ.price > 0)) {
+                bookQ = bookFromFubonRow(row, "fubon-drive", live.asOf);
+              }
             }
+            // 足跡不限新鮮度（休市 last-session 也要）
             if (!fubonTape) {
               const embedded = tapeFromLiveSnap(live, code);
               if (embedded) fubonTape = embedded;
             }
-          } catch (err) { /* ignore */ }
+          }).catch(function () { /* ignore */ }));
         }
-        // 直連 LiveBridge 分時，再退 Drive 扁平／巢狀檔
-        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length) && LB && LB.readFubonTape && bridgeOk) {
-          tapeTried = true;
-          try { fubonTape = await LB.readFubonTape(code); } catch (err) { fubonTape = null; }
+        if (liveTasks.length) {
+          try { await Promise.all(liveTasks); } catch (err) { /* ignore */ }
         }
-        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length) && M.fetchFubonTapeFromDrive) {
+
+        // 直連／Drive 扁平檔（並行；Bridge 離線時只打 Drive）
+        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length)) {
           tapeTried = true;
-          try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
+          if (M.fetchFubonTapeFromDrive) {
+            try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
+          } else if (LB && LB.readFubonTape && bridgeOnline) {
+            try { fubonTape = await LB.readFubonTape(code); } catch (err) { fubonTape = null; }
+          }
         }
         if (fubonTape && fubonTape.ticks && fubonTape.ticks.length) tapeTried = true;
       }
@@ -5070,6 +5101,7 @@
       renderStockActors(bookQ, {
         wantFubon: wantFubon,
         bridgeOk: bridgeOk,
+        driveReady: driveReady,
         tapeTried: tapeTried,
         tapeDate: fubonTape && fubonTape.date ? String(fubonTape.date) : ""
       });

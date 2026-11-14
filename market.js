@@ -2907,8 +2907,11 @@
 
   function fubonLiveBridgeApi() {
     const B = global.SJLiveBridge;
-    if (!B || !B.canUse || !B.canUse()) return null;
-    if (!B.readFubonLive) return null;
+    if (!B || !B.readFubonLive) return null;
+    // 報價／分時：有 Tailscale URL 即可（免 Google）；庫存仍走 canUse
+    const reach = !!(B.canReach && B.canReach());
+    const auth = !!(B.canUse && B.canUse());
+    if (!reach && !auth) return null;
     return B;
   }
 
@@ -2990,9 +2993,10 @@
     }
     fubonDriveReadAt = now;
 
-    // 優先 Tailscale Live Bridge，其次 Google Drive
+    // 優先 Tailscale Live Bridge，其次 Google Drive（已知離線則跳過橋，避免手機卡住）
     const B = fubonLiveBridgeApi();
-    if (B) {
+    const bridgeKnown = B && B.isOnline ? B.isOnline() : null;
+    if (B && bridgeKnown !== false) {
       try {
         const snap = await B.readFubonLive();
         if (snap) {
@@ -3027,20 +3031,43 @@
       return !!(tape && Array.isArray(tape.ticks) && tape.ticks.length >= 4);
     }
     const B = fubonLiveBridgeApi();
-    if (B && B.readFubonTape) {
+    const D = fubonDriveApi();
+    const bridgeKnownOnline = B && B.isOnline ? B.isOnline() : null;
+    // 手機常連不到 Tailscale：已知離線或未知時先／並行打 Drive，避免卡死
+    const driveFirst = bridgeKnownOnline === false;
+
+    async function fromBridge() {
+      if (!B || !B.readFubonTape) return null;
+      if (bridgeKnownOnline === false) return null;
       try {
         const tape = await B.readFubonTape(code, dateYmd);
-        if (usable(tape)) return tape;
-      } catch (err) { /* fall through */ }
+        return usable(tape) ? tape : null;
+      } catch (err) {
+        return null;
+      }
     }
-    const D = fubonDriveApi();
-    if (!D || !D.readFubonTape) return null;
-    try {
-      const tape = await D.readFubonTape(code, dateYmd);
-      return usable(tape) ? tape : null;
-    } catch (err) {
+    async function fromDrive() {
+      if (!D || !D.readFubonTape) return null;
+      try {
+        const tape = await D.readFubonTape(code, dateYmd);
+        return usable(tape) ? tape : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    if (driveFirst) {
+      const d = await fromDrive();
+      if (d) return d;
+      return fromBridge();
+    }
+    if (B && D) {
+      const pair = await Promise.all([fromBridge(), fromDrive()]);
+      if (usable(pair[0])) return pair[0];
+      if (usable(pair[1])) return pair[1];
       return null;
     }
+    return (await fromBridge()) || (await fromDrive());
   }
 
   function slimMisQuote(q) {

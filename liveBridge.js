@@ -3,6 +3,12 @@
   const cfg = global.GOOGLE_CONFIG || {};
   const LS_KEY = "sj-live-bridge-url";
   const JASON_EMAIL = "jason660803@gmail.com";
+  const FETCH_MS = 4000;
+  const ONLINE_TTL_OK_MS = 15000;
+  const ONLINE_TTL_FAIL_MS = 8000;
+
+  let _online = null;
+  let _onlineAt = 0;
 
   function baseUrl() {
     let raw = "";
@@ -20,6 +26,8 @@
       if (v) localStorage.setItem(LS_KEY, v);
       else localStorage.removeItem(LS_KEY);
     } catch (e) { /* ignore */ }
+    _online = null;
+    _onlineAt = 0;
     return v;
   }
 
@@ -51,12 +59,26 @@
     return true;
   }
 
-  /** 報價／分時：有 Tailscale URL 即可（免 Google token）；庫存仍要登入。 */
+  /** 有設定 Tailscale URL（未必真的連得上）。 */
   function canReach() {
     return !!baseUrl();
   }
 
-  async function fetchJson(path, needAuth) {
+  /** 最近探活結果：true／false／null（未知）。 */
+  function isOnline() {
+    if (_online == null || !_onlineAt) return null;
+    const age = Date.now() - _onlineAt;
+    if (_online === true && age < ONLINE_TTL_OK_MS) return true;
+    if (_online === false && age < ONLINE_TTL_FAIL_MS) return false;
+    return null;
+  }
+
+  function markOnline(ok) {
+    _online = !!ok;
+    _onlineAt = Date.now();
+  }
+
+  async function fetchJson(path, needAuth, timeoutMs) {
     const root = baseUrl();
     if (!root) return null;
     const headers = {};
@@ -67,16 +89,49 @@
     } else if (token) {
       headers.Authorization = "Bearer " + token;
     }
-    const res = await fetch(root + path, {
-      method: "GET",
-      headers: headers,
-      cache: "no-store",
-      mode: "cors",
-    });
-    if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
-    if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
-    if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
-    return res.json();
+    const ms = timeoutMs > 0 ? timeoutMs : FETCH_MS;
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timer = null;
+    if (ctrl) {
+      timer = setTimeout(function () {
+        try { ctrl.abort(); } catch (e) { /* ignore */ }
+      }, ms);
+    }
+    try {
+      const res = await fetch(root + path, {
+        method: "GET",
+        headers: headers,
+        cache: "no-store",
+        mode: "cors",
+        signal: ctrl ? ctrl.signal : undefined
+      });
+      markOnline(true);
+      if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
+      if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
+      if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
+      return res.json();
+    } catch (err) {
+      markOnline(false);
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /** 短 timeout 探活；結果會快取幾秒，避免每次刷新都卡。 */
+  async function probe(timeoutMs) {
+    if (!baseUrl()) {
+      markOnline(false);
+      return false;
+    }
+    const known = isOnline();
+    if (known != null) return known;
+    try {
+      await fetchJson("/api/health", false, timeoutMs > 0 ? timeoutMs : 2500);
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   async function readFubonLive() {
@@ -116,9 +171,7 @@
     const root = baseUrl();
     if (!root) return null;
     try {
-      const res = await fetch(root + "/api/health", { cache: "no-store", mode: "cors" });
-      if (!res.ok) return null;
-      return res.json();
+      return await fetchJson("/api/health", false, 2500);
     } catch (err) {
       return null;
     }
@@ -129,6 +182,8 @@
     setBaseUrl: setBaseUrl,
     canUse: canUse,
     canReach: canReach,
+    isOnline: isOnline,
+    probe: probe,
     isJason: isJason,
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,
