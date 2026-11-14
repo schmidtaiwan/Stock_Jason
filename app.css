@@ -922,6 +922,44 @@ canvas {
   font-size: 11px;
   vertical-align: middle;
 }
+.tape-sample-wrap {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  margin: 6px 0 4px;
+  border: 1px solid var(--line, #2a3340);
+  border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.tape-sample-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tape-sample-table th,
+.tape-sample-table td {
+  padding: 5px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line, #2a3340);
+}
+.tape-sample-table th:nth-child(2),
+.tape-sample-table td:nth-child(2),
+.tape-sample-table th:first-child,
+.tape-sample-table td:first-child {
+  text-align: left;
+}
+.tape-sample-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card, #1a222c);
+  z-index: 1;
+  font-weight: 600;
+  color: var(--muted, #9aa4b2);
+}
+.tape-sample-table td.tape-i {
+  color: var(--muted, #9aa4b2);
+  font-size: 11px;
+}
 .stock-session {
   margin: 8px 0 10px;
 }

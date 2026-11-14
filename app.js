@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 250;
+  const PAGE_BUILD = 251;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -4928,12 +4928,41 @@
     }).join(" · ");
     const wantFubon = !!(meta.wantFubon || (M.preferFubonQuotes && M.preferFubonQuotes()));
     const dayTag = meta.tapeDate ? (" · " + meta.tapeDate) : "";
+    const sampleOpen = !!(box.querySelector("[data-tape-sample-fold]") &&
+      box.querySelector("[data-tape-sample-fold]").open);
+    const ticks = Array.isArray(stockLiveTape) ? stockLiveTape : [];
+    const sampleN = pack.sample || ticks.length;
+    // 由舊到新編號；表內由新到舊較好對盤
+    const tickRows = ticks.slice().reverse().map(function (t, i) {
+      const n = ticks.length - i;
+      const chg = Number(t.change);
+      const cls = chg > 0 ? "up" : (chg < 0 ? "down" : "");
+      let chgLabel = "—";
+      if (isFinite(chg) && chg !== 0) {
+        // 分時常為 +1／-1 方向；其餘當價差
+        chgLabel = Math.abs(chg) === 1
+          ? (chg > 0 ? "漲" : "跌")
+          : ((chg > 0 ? "+" : "") + fmtPx(chg));
+      }
+      const lots = t.lots != null && isFinite(Number(t.lots)) ? String(t.lots) : "—";
+      return "<tr><td class=\"tape-i\">" + n + "</td><td>" + esc(t.time || "—") +
+        "</td><td class=\"" + cls + "\">" + (t.price != null ? fmtPx(t.price) : "—") +
+        "</td><td>" + esc(lots) + "</td><td class=\"" + cls + "\">" + esc(chgLabel) + "</td></tr>";
+    }).join("");
+    const sampleFold = ticks.length
+      ? '<details class="session-subfold" data-tape-sample-fold' + (sampleOpen ? " open" : "") + ">" +
+        "<summary>逐筆樣本（" + sampleN + " 筆）· 點開展開／再點收合</summary>" +
+        '<div class="tape-sample-wrap"><table class="tape-sample-table">' +
+        "<thead><tr><th>#</th><th>時間</th><th>成交</th><th>張</th><th>向</th></tr></thead>" +
+        "<tbody>" + tickRows + "</tbody></table></div></details>"
+      : "";
     box.innerHTML = '<article class="card stock-actors-card">' +
       '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
       '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
       '<span class="tag ' + ((pack.actors[0] && pack.actors[0].tone) || "") + '">' + esc(pack.bias || "") + "</span>" +
-      '<span class="fine">樣本 ' + pack.sample + " 筆" + (wantFubon ? " · 富邦" : "") + dayTag + "</span></summary>" +
+      '<span class="fine">樣本 ' + sampleN + " 筆" + (wantFubon ? " · 富邦" : "") + dayTag + "</span></summary>" +
       '<div class="session-fold-body">' +
+      sampleFold +
       "<h4>可能活躍者</h4><ul class=\"stat-list actor-list\">" + rows + "</ul>" +
       (sig ? "<h4>即時訊號</h4><ul class=\"session-list\">" + sig + "</ul>" : "") +
       (lotHint ? '<p class="fine">高頻張數：' + esc(lotHint) + "</p>" : "") +
