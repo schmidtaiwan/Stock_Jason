@@ -558,8 +558,9 @@
     return run;
   }
 
-  // 桌面 EXE 上傳：fubon-live.json（最新報價）／fubon-tape/YYYY-MM-DD/{code}.json（分時＋分價）
+  // 桌面 EXE 上傳：fubon-live.json（最新報價）／fubon-holdings.json（庫存）／fubon-tape/…
   const FUBON_LIVE_NAME = "fubon-live.json";
+  const FUBON_HOLDINGS_NAME = "fubon-holdings.json";
 
   async function findNestedFileId(relativePath) {
     const parts = String(relativePath || "").replace(/\\/g, "/").split("/").filter(Boolean);
@@ -589,6 +590,16 @@
   async function readFubonLive() {
     if (!account || !isAllowed(accountEmail())) return null;
     const id = await findBookFile(FUBON_LIVE_NAME);
+    if (!id) return null;
+    return readJsonByFileId(id);
+  }
+
+  /** Live Bridge 上傳的富邦庫存（Jason 雲端）；備援 Tailscale API。 */
+  async function readFubonHoldings() {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const me = accountEmail();
+    if (me !== "jason660803@gmail.com") return null;
+    const id = await findBookFile(FUBON_HOLDINGS_NAME);
     if (!id) return null;
     return readJsonByFileId(id);
   }
@@ -699,6 +710,7 @@
     readMisSnapshot: readMisSnapshot,
     writeMisSnapshot: writeMisSnapshot,
     readFubonLive: readFubonLive,
+    readFubonHoldings: readFubonHoldings,
     readFubonTape: readFubonTape,
     friendly: friendly,
     restoreSession: restoreSession,

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 235;
+  const PAGE_BUILD = 236;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -1869,29 +1869,47 @@
 
   let liveHoldingsTimer = 0;
   async function syncHoldingsFromLiveBridge() {
-    const LB = window.SJLiveBridge;
-    if (!LB || typeof LB.readFubonHoldings !== "function" || !LB.isJason || !LB.isJason()) return;
     if (!D.account() || !isJasonAccount()) return;
-    const data = await LB.readFubonHoldings();
+    let data = null;
+    let via = "";
+    const LB = window.SJLiveBridge;
+    if (LB && typeof LB.readFubonHoldings === "function" && LB.isJason && LB.isJason()) {
+      try {
+        data = await LB.readFubonHoldings();
+        if (data && Array.isArray(data.holdings) && data.holdings.length) via = "LiveBridge";
+        else data = null;
+      } catch (err) { data = null; }
+    }
+    // Tailscale 失敗時改讀雲端 fubon-holdings.json（EXE 上傳）
+    if (!data && D && typeof D.readFubonHoldings === "function") {
+      try {
+        data = await D.readFubonHoldings();
+        if (data && Array.isArray(data.holdings) && data.holdings.length) via = "Drive";
+        else data = null;
+      } catch (err) { data = null; }
+    }
     if (!data || !Array.isArray(data.holdings) || !data.holdings.length) return;
     const parsed = M.parseFubonHoldingsJson(data).map(function (row) {
-      return Object.assign({}, row, { note: row.cost > 0 ? "Live Bridge 富邦庫存" : "" });
+      return Object.assign({}, row, { note: row.cost > 0 ? "富邦庫存" : "" });
     });
     if (!parsed.length) return;
     const rows = await resolveParsed(parsed);
-    flushWatchToGroup();
+    // 不要把舊的 book.watch 沖回「富邦庫存」群組
+    const active = activeWatchGroup();
+    if (active && !isFubonHoldingsGroup(active)) flushWatchToGroup();
     const g = ensureFubonHoldingsGroup();
     if (!g) return;
     const items = [];
     rows.forEach(function (row) {
       if (!row.secid) return;
+      const costNum = Number(row.cost);
       const item = {
         secid: row.secid,
         code: row.code,
         name: twName(row.name || row.code || ""),
         market: "台股",
         shares: row.shares == null ? "" : String(row.shares).trim(),
-        cost: Number(row.cost) > 0 ? String(row.cost) : ""
+        cost: costNum > 0 ? String(costNum) : ""
       };
       items.push(item);
       syncHolding(item);
@@ -1899,7 +1917,7 @@
     g.items = items;
     g.name = FUBON_GROUP_NAME;
     g.locked = "fubon";
-    if (book.watchGroupId === FUBON_GROUP_ID) {
+    if (isFubonHoldingsGroup(activeWatchGroup())) {
       loadWatchFromGroup();
       renderWatch(true);
     } else {
@@ -1907,7 +1925,13 @@
     }
     scheduleSave();
     if (items.length) {
-      flashStatus("已同步「富邦庫存」" + items.length + " 檔（僅能由 Live Bridge 更新）");
+      const sample = items.filter(function (it) {
+        return it.code === "00403A" || it.code === "3702";
+      }).map(function (it) {
+        return it.code + " @" + it.cost;
+      }).join(" · ");
+      flashStatus("已同步「富邦庫存」" + items.length + " 檔（" + via + "）" +
+        (sample ? " · " + sample : ""));
     }
   }
 
@@ -1915,7 +1939,11 @@
     if (liveHoldingsTimer) return;
     liveHoldingsTimer = setInterval(function () {
       syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
-    }, 60000);
+    }, 30000);
+    // 進站立刻再抓一次，覆寫雲端舊買價
+    setTimeout(function () {
+      syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+    }, 1500);
   }
 
   function warnEmbeddedLogin() {

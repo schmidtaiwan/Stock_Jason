@@ -1986,15 +1986,22 @@
       const code = String(row.code || row.stock_no || (row.raw && row.raw.stock_no) || "")
         .trim().toUpperCase();
       if (!code || seen[code]) return;
-      const shares = Number(row.tradableQty != null ? row.tradableQty
-        : (row.todayQty != null ? row.todayQty
-          : (row.raw && (row.raw.tradable_qty != null ? row.raw.tradable_qty : row.raw.today_qty))));
+      const todayQty = Number(row.todayQty != null ? row.todayQty
+        : (row.raw && row.raw.today_qty));
+      const tradableQty = Number(row.tradableQty != null ? row.tradableQty
+        : (row.raw && row.raw.tradable_qty));
+      const shares = Math.max(
+        isFinite(todayQty) && todayQty > 0 ? todayQty : 0,
+        isFinite(tradableQty) && tradableQty > 0 ? tradableQty : 0
+      );
       if (!(shares > 0)) return;
       let cost = Number(row.costPrice != null ? row.costPrice
         : (row.raw && row.raw.cost_price));
       if (!(cost > 0) && row.raw && Number(row.raw.buy_value) > 0) {
         cost = Number(row.raw.buy_value) / shares;
       }
+      // 避免浮點顯示成 4.4350000001
+      if (cost > 0) cost = Math.round(cost * 10000) / 10000;
       let pnl = null;
       if (row.raw) {
         const up = Number(row.raw.unrealized_profit);
