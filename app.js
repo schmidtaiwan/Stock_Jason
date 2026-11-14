@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 245;
+  const PAGE_BUILD = 246;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -482,7 +482,12 @@
   function hardReloadToBuild(remote) {
     const go = function () {
       const url = new URL(location.href);
-      url.searchParams.set("v", String(remote || PAGE_BUILD));
+      const target = String(remote || PAGE_BUILD);
+      // 已在目標版次且腳本也是新版：勿再 replace（防止閃頁迴圈）
+      if (String(url.searchParams.get("v") || "") === target && !(Number(remote) > PAGE_BUILD)) {
+        return;
+      }
+      url.searchParams.set("v", target);
       url.searchParams.set("_", String(Date.now()));
       location.replace(url.toString());
     };
@@ -571,8 +576,12 @@
         didAlert = sessionStorage.getItem(alertKey) === token;
         if (!didAlert) sessionStorage.setItem(alertKey, token);
       } catch (err) { /* ignore */ }
-      // iOS 常擋 alert；改為頂部紅條，並自動嘗試重整一次
+      // 只自動重整一次；若 URL 已是目標 v 仍載入舊腳本，改等使用者點「立即更新」
       if (!didAlert) {
+        try {
+          const curV = String(new URL(location.href).searchParams.get("v") || "");
+          if (curV === String(remote)) return;
+        } catch (err) { /* ignore */ }
         hardReloadToBuild(remote);
       }
     }).catch(function () { /* offline */ });
@@ -681,9 +690,11 @@
   function showApp() {
     if (!(D && D.account && D.account())) {
       const deadline = guestDeadline();
+      // 試看已結束時按「先看走勢」：重新給一段試看，不要卡死在閘道
       if (deadline && deadline <= Date.now()) {
-        kickGuestToGate();
-        return;
+        clearGuestDeadline();
+        setGuestDeadline(Date.now() + GUEST_VIEW_SECS * 1000);
+        if ($("gate-msg")) $("gate-msg").textContent = "";
       }
     }
     $("gate").hidden = true;
