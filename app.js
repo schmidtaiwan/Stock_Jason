@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 232;
+  const PAGE_BUILD = 233;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -487,10 +487,11 @@
   }
 
   function paintStaleBuild(remote) {
-    const msg = "有更新版本" + remote + "請重新整理後登入";
+    const msg = "有更新版本 " + remote + "，請重新整理後登入";
+    const label = String(PAGE_BUILD) + "→" + String(remote);
     const ver = $("pageVer");
     if (ver) {
-      ver.textContent = String(PAGE_BUILD);
+      ver.textContent = label;
       ver.classList.add("page-ver-stale");
       ver.title = msg + "（點此重整）";
       ver.style.cursor = "pointer";
@@ -498,6 +499,7 @@
     }
     const gateVer = $("gate-ver");
     if (gateVer) {
+      gateVer.textContent = label;
       gateVer.classList.add("page-ver-stale");
       gateVer.title = msg + "（點此重整）";
       gateVer.style.cursor = "pointer";
