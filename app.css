@@ -2191,7 +2191,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   align-items: center;
   gap: 2px 4px;
   margin: 0;
-  font-size: 22px;
+  font-size: calc(22px - 4pt);
   font-weight: 800;
   color: var(--muted);
 }
@@ -2203,7 +2203,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   margin: 0;
   color: var(--muted);
   font-weight: 800;
-  font-size: 22px;
+  font-size: calc(22px - 4pt);
 }
 .watch-alert input[type="checkbox"] {
   width: 16px;
@@ -2218,7 +2218,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   height: 28px;
   padding: 0 4px;
   border-radius: 3px;
-  font-size: 22px;
+  font-size: calc(22px - 4pt);
   font-weight: 800;
   line-height: 1.1;
 }
@@ -2229,7 +2229,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   padding: 0 2px;
   text-align: center;
   border-radius: 3px;
-  font-size: 22px;
+  font-size: calc(22px - 4pt);
   font-weight: 800;
   line-height: 1.1;
 }
