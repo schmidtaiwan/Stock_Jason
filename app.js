@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 234;
+  const PAGE_BUILD = 235;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -4645,7 +4645,9 @@
           note = "請確認 LiveBridge 已登入富邦，且網頁以 Jason／Backy 登入。";
         } else if (meta.tapeTried && tapeN < 4) {
           reason = "富邦分時足跡不足（目前 " + tapeN + " 筆）";
-          note = "已向 Live Bridge 請求富邦成交明細；休市或剛開盤時常為 0 筆，開盤後會累積。";
+          note = meta.tapeDate
+            ? ("已請求 " + meta.tapeDate + " 富邦分時；若仍不足請確認 LiveBridge 已登入。")
+            : "已向 Live Bridge 請求富邦成交／最近交易日分時；請確認 EXE 已重開並登入。";
         }
       }
       box.innerHTML = '<article class="card stock-actors-card">' +
@@ -4673,11 +4675,12 @@
       return r.lots + "張×" + r.count;
     }).join(" · ");
     const wantFubon = !!(meta.wantFubon || (M.preferFubonQuotes && M.preferFubonQuotes()));
+    const dayTag = meta.tapeDate ? (" · " + meta.tapeDate) : "";
     box.innerHTML = '<article class="card stock-actors-card">' +
       '<details class="session-fold"' + (open || !box.querySelector(".session-fold") ? " open" : "") + ">" +
       '<summary><span class="session-fold-title">盤中足跡判讀</span>' +
       '<span class="tag ' + ((pack.actors[0] && pack.actors[0].tone) || "") + '">' + esc(pack.bias || "") + "</span>" +
-      '<span class="fine">樣本 ' + pack.sample + " 筆" + (wantFubon ? " · 富邦" : "") + "</span></summary>" +
+      '<span class="fine">樣本 ' + pack.sample + " 筆" + (wantFubon ? " · 富邦" : "") + dayTag + "</span></summary>" +
       '<div class="session-fold-body">' +
       "<h4>可能活躍者</h4><ul class=\"stat-list actor-list\">" + rows + "</ul>" +
       (sig ? "<h4>即時訊號</h4><ul class=\"session-list\">" + sig + "</ul>" : "") +
@@ -4891,6 +4894,9 @@
         }).filter(function (t) { return t.price > 0 && Number(t.lots) > 0; });
         if (stockLiveTape.length > 320) stockLiveTape = stockLiveTape.slice(-280);
         stockLiveLastKey = "fubon-bridge|" + code + "|" + (fubonTape.at || stockLiveTape.length);
+        if (fubonTape.session === "last-session" || String(fubonTape.source || "").indexOf("last-session") >= 0) {
+          flashStatus("盤中足跡：最近交易日 " + (fubonTape.date || "") + "（休市備援）");
+        }
       }
       if (fubonTape && Array.isArray(fubonTape.volumes) && fubonTape.volumes.length) {
         stockLivePv = stockLivePv || { code: code, rows: [], open: null, high: null, low: null };
@@ -4939,7 +4945,8 @@
       renderStockActors(bookQ, {
         wantFubon: wantFubon,
         bridgeOk: bridgeOk,
-        tapeTried: tapeTried
+        tapeTried: tapeTried,
+        tapeDate: fubonTape && fubonTape.date ? String(fubonTape.date) : ""
       });
     } catch (err) {
       if (!quiet) {
