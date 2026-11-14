@@ -1,9 +1,10 @@
 (function () {
-  const PAGE_BUILD = 229;
+  const PAGE_BUILD = 230;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
   const FUBON_GROUP_NAME = "富邦庫存";
+  const TWII_SRC_KEY = "sj-twii-source";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
   let guestTimer = 0;
@@ -704,6 +705,7 @@
     if ($("prefer")) {
       $("prefer").textContent = (window.GOOGLE_CONFIG.editors || []).join(" 或 ");
     }
+    syncTwiiBoxPickable();
     if (!skipTwii) paintTwii(false);
   }
 
@@ -721,11 +723,100 @@
 
   let twiiBusy = false;
   let twiiSeq = 0;
-  function paintTwiiSource() {
+
+  function canPickTwiiSource() {
+    try {
+      const a = D.account && D.account();
+      return !!(a && D.isAllowed && D.isAllowed(a.email));
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function getTwiiSourcePref() {
+    if (!canPickTwiiSource()) return "mis";
+    try {
+      const v = String(localStorage.getItem(TWII_SRC_KEY) || "").toLowerCase();
+      if (v === "fubon" || v === "mis") return v;
+    } catch (err) { /* ignore */ }
+    return "mis";
+  }
+
+  function setTwiiSourcePref(v) {
+    const next = String(v || "").toLowerCase() === "fubon" ? "fubon" : "mis";
+    try { localStorage.setItem(TWII_SRC_KEY, next); } catch (err) { /* ignore */ }
+    return next;
+  }
+
+  function syncTwiiBoxPickable() {
+    const box = $("twii-box");
+    if (!box) return;
+    const ok = canPickTwiiSource();
+    box.classList.toggle("twii-pickable", ok);
+    box.setAttribute("role", ok ? "button" : "group");
+    box.tabIndex = ok ? 0 : -1;
+    box.title = ok ? "點擊選擇加權來源：富邦 API 或證交所 MIS" : "加權指數（證交所 MIS）";
+  }
+
+  function closeTwiiSourceMenu() {
+    const menu = $("twii-src-menu");
+    if (menu) menu.hidden = true;
+  }
+
+  function openTwiiSourceMenu() {
+    if (!canPickTwiiSource()) return;
+    let menu = $("twii-src-menu");
+    if (!menu) {
+      menu = document.createElement("div");
+      menu.id = "twii-src-menu";
+      menu.className = "twii-src-menu";
+      menu.hidden = true;
+      document.body.appendChild(menu);
+      menu.addEventListener("click", function (ev) {
+        const btn = ev.target.closest("[data-twii-src]");
+        if (!btn) return;
+        const next = setTwiiSourcePref(btn.getAttribute("data-twii-src"));
+        closeTwiiSourceMenu();
+        flashStatus(next === "fubon" ? "加權來源：富邦 API" : "加權來源：證交所 MIS");
+        paintTwii(true).catch(function () { /* ignore */ });
+      });
+    }
+    const cur = getTwiiSourcePref();
+    menu.innerHTML =
+      '<button type="button" class="twii-src-opt" data-twii-src="mis" aria-pressed="' +
+      (cur === "mis" ? "true" : "false") + '">證交所 MIS</button>' +
+      '<button type="button" class="twii-src-opt" data-twii-src="fubon" aria-pressed="' +
+      (cur === "fubon" ? "true" : "false") + '">富邦 API</button>';
+    const box = $("twii-box");
+    if (box) {
+      const r = box.getBoundingClientRect();
+      menu.style.top = Math.round(r.bottom + 6) + "px";
+      menu.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + "px";
+      menu.style.left = "auto";
+    }
+    menu.hidden = false;
+  }
+
+  function paintTwiiSource(q) {
     const srcEl = $("twii-src");
     if (!srcEl) return;
+    syncTwiiBoxPickable();
+    const pref = getTwiiSourcePref();
+    const actual = String((q && q.source) || "").toLowerCase();
+    const isFubon = actual.indexOf("fubon") >= 0;
+    if (isFubon) {
+      srcEl.textContent = "富邦";
+      srcEl.title = canPickTwiiSource()
+        ? "目前富邦 API（點擊可改 MIS）"
+        : "富邦 API";
+      return;
+    }
     srcEl.textContent = "證交所";
-    srcEl.title = "台灣證交所基本市況報導（台股即時只走 MIS）";
+    srcEl.title = canPickTwiiSource()
+      ? (pref === "fubon"
+        ? "已選富邦但暫用證交所 MIS（點擊可再選）"
+        : "目前證交所 MIS（點擊可改富邦 API）")
+      : "台灣證交所 MIS";
   }
 
   function formatTwiiLag(q) {
@@ -794,12 +885,14 @@
       chgEl.className = "twii-chg";
       chgEl.textContent = "讀取中";
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
-      if ($("twii-src")) $("twii-src").textContent = "證交所";
+      if ($("twii-src")) {
+        $("twii-src").textContent = getTwiiSourcePref() === "fubon" ? "富邦" : "證交所";
+      }
     } else if (force && $("twii-src") && !hadPrice) {
-      $("twii-src").textContent = "證交所";
+      $("twii-src").textContent = getTwiiSourcePref() === "fubon" ? "富邦" : "證交所";
     }
     try {
-      const q = await M.twiiQuote();
+      const q = await M.twiiQuote(getTwiiSourcePref());
       if (seq !== twiiSeq) return;
       const cls = pctClass((q.pct || 0) / 100);
       priceEl.textContent = q.price == null || !isFinite(q.price) ? "—" :
@@ -5749,7 +5842,29 @@
     if (key === "mops" && $("mops-q")) $("mops-q").value = row.code + " " + row.name;
   }
 
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") closeTwiiSourceMenu();
+    if ((ev.key === "Enter" || ev.key === " ") &&
+        ev.target && ev.target.id === "twii-box" && canPickTwiiSource()) {
+      ev.preventDefault();
+      const menu = $("twii-src-menu");
+      if (menu && !menu.hidden) closeTwiiSourceMenu();
+      else openTwiiSourceMenu();
+    }
+  });
+
   document.addEventListener("click", function (ev) {
+    const twiiMenu = $("twii-src-menu");
+    const onTwiiBox = !!ev.target.closest("#twii-box");
+    const onTwiiMenu = !!ev.target.closest("#twii-src-menu");
+    if (twiiMenu && !twiiMenu.hidden && !onTwiiBox && !onTwiiMenu) {
+      closeTwiiSourceMenu();
+    }
+    if (onTwiiBox && canPickTwiiSource()) {
+      if (twiiMenu && !twiiMenu.hidden) closeTwiiSourceMenu();
+      else openTwiiSourceMenu();
+      return;
+    }
     const focusLi = ev.target.closest("[data-k-focus]");
     if (focusLi && $("k-patterns") && $("k-patterns").contains(focusLi)) {
       const i = Number(focusLi.getAttribute("data-k-focus"));

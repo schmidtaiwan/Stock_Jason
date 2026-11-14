@@ -186,6 +186,51 @@ a.gate-ext[hidden] { display: none !important; }
   text-align: right;
   line-height: 1.15;
 }
+.twii-box.twii-pickable {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: 0;
+  outline: none;
+}
+.twii-box.twii-pickable:hover,
+.twii-box.twii-pickable:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+.twii-src-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #1a222b;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+.twii-src-menu[hidden] {
+  display: none !important;
+}
+.twii-src-opt {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text, #e8eef4);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.twii-src-opt:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.twii-src-opt[aria-pressed="true"] {
+  border-color: var(--line);
+  background: rgba(61, 190, 122, 0.14);
+}
 .twii-label {
   font-size: 11px;
   color: var(--muted);

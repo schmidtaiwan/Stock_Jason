@@ -3875,8 +3875,48 @@
     return t > 1e12 ? t : t * 1000;
   }
 
-  async function twiiQuote() {
-    // 加權即時只留證交所 MIS，不改走 Yahoo／鉅亨
+  async function fubonTwiiQuote() {
+    const codes = ["IX0001", "TWSE"];
+    try {
+      await hydrateFubonFromDrive(codes, { maxAgeMs: FUBON_DRIVE_MAX_AGE_MS, force: true });
+    } catch (err) { /* ignore */ }
+    for (let i = 0; i < codes.length; i++) {
+      const id = codes[i];
+      const hit = misQuoteCache.get(id);
+      const q = hit && hit.quote;
+      if (!q || !(q.price > 0)) continue;
+      let asOfMs = Date.now();
+      if (q.asOf != null) {
+        if (typeof q.asOf === "number" && isFinite(q.asOf)) asOfMs = q.asOf;
+        else {
+          const parsed = Date.parse(String(q.asOf));
+          if (isFinite(parsed)) asOfMs = parsed;
+        }
+      } else if (hit.at) {
+        asOfMs = hit.at;
+      }
+      return {
+        price: q.price,
+        change: q.change,
+        pct: q.pct,
+        name: q.name || "加權指數",
+        asOf: asOfMs,
+        delayMin: 0,
+        source: q.source || "fubon"
+      };
+    }
+    return null;
+  }
+
+  async function twiiQuote(preferredSource) {
+    const wantFubon = String(preferredSource || "").toLowerCase() === "fubon";
+    if (wantFubon) {
+      try {
+        const fb = await fubonTwiiQuote();
+        if (fb && fb.price > 0) return fb;
+      } catch (errFb) { /* fall through to MIS */ }
+    }
+    // 預設／備援：證交所 MIS
     for (let i = 0; i < MIS_FORCE_ATTEMPTS; i++) {
       try {
         const mis = await misTwiiQuote();
@@ -3884,7 +3924,7 @@
       } catch (errMis) { /* 下一輪 */ }
       if (i < MIS_FORCE_ATTEMPTS - 1) await sleep(MIS_FORCE_RETRY_MS);
     }
-    throw new Error("MIS 加權讀取失敗，稍後重試");
+    throw new Error(wantFubon ? "富邦加權暫無資料，MIS 也失敗" : "MIS 加權讀取失敗，稍後重試");
   }
 
   async function stockDetail(secid, code) {
@@ -6660,6 +6700,7 @@
     watchMetrics: watchMetrics,
     watchBoard: watchBoard,
     twiiQuote: twiiQuote,
+    fubonTwiiQuote: fubonTwiiQuote,
     foreignTargets: foreignTargets,
     findLevels: findLevels,
     watchLevels: watchLevels,
