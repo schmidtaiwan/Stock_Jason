@@ -1,7 +1,7 @@
 (function () {
-  const PAGE_BUILD = 217;
+  const PAGE_BUILD = 218;
   const PAGE_DATE = "2026-11-14";
-  const GUEST_VIEW_SECS = 500;
+  const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
   let guestTimer = 0;
   let chartDetailsOn = true;
