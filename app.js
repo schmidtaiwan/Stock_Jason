@@ -1,6 +1,9 @@
 (function () {
-  const PAGE_BUILD = 207;
+  const PAGE_BUILD = 208;
   const PAGE_DATE = "2026-11-14";
+  const GUEST_VIEW_SECS = 500;
+  const GUEST_DEADLINE_KEY = "sj-guest-deadline";
+  let guestTimer = 0;
   let chartDetailsOn = true;
   let stockDetailsOn = true;
   let usBoardOpen = true;
@@ -413,10 +416,111 @@
       .catch(function () { /* offline／舊站無 build.json */ });
   }
 
+  function guestDeadline() {
+    try { return Number(sessionStorage.getItem(GUEST_DEADLINE_KEY) || 0) || 0; }
+    catch (err) { return 0; }
+  }
+
+  function setGuestDeadline(ms) {
+    try { sessionStorage.setItem(GUEST_DEADLINE_KEY, String(ms)); }
+    catch (err) { /* 略過 */ }
+  }
+
+  function clearGuestDeadline() {
+    try { sessionStorage.removeItem(GUEST_DEADLINE_KEY); }
+    catch (err) { /* 略過 */ }
+  }
+
+  function guestSecsLeft() {
+    if (D && D.account && D.account()) return null;
+    const deadline = guestDeadline();
+    if (!deadline) return GUEST_VIEW_SECS;
+    return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  }
+
+  function paintGuestLoginBtn() {
+    const login = $("login");
+    if (!login) return;
+    if (D && D.account && D.account()) {
+      login.textContent = "登入";
+      login.removeAttribute("aria-label");
+      return;
+    }
+    if (!$("app") || $("app").hidden) {
+      login.textContent = "登入";
+      login.removeAttribute("aria-label");
+      return;
+    }
+    const left = guestSecsLeft();
+    login.textContent = String(left == null ? GUEST_VIEW_SECS : left);
+    login.setAttribute("aria-label", "剩餘 " + login.textContent + " 秒，點擊登入");
+  }
+
+  function stopGuestCountdown() {
+    if (guestTimer) {
+      clearInterval(guestTimer);
+      guestTimer = 0;
+    }
+  }
+
+  function kickGuestToGate() {
+    stopGuestCountdown();
+    if ($("app")) $("app").hidden = true;
+    if ($("gate")) $("gate").hidden = false;
+    if ($("gate-msg")) $("gate-msg").textContent = "未登入試看已結束，請用 Google 登入後繼續。";
+    const login = $("login");
+    if (login) {
+      login.textContent = "登入";
+      login.removeAttribute("aria-label");
+    }
+  }
+
+  function tickGuestCountdown() {
+    if (D && D.account && D.account()) {
+      stopGuestCountdown();
+      clearGuestDeadline();
+      paintChrome(true);
+      return;
+    }
+    if (!$("app") || $("app").hidden) return;
+    paintGuestLoginBtn();
+    if (guestSecsLeft() <= 0) kickGuestToGate();
+  }
+
+  function startGuestCountdown() {
+    if (D && D.account && D.account()) {
+      stopGuestCountdown();
+      clearGuestDeadline();
+      const login = $("login");
+      if (login) login.textContent = "登入";
+      return;
+    }
+    let deadline = guestDeadline();
+    if (!deadline) {
+      deadline = Date.now() + GUEST_VIEW_SECS * 1000;
+      setGuestDeadline(deadline);
+    }
+    if (deadline <= Date.now()) {
+      kickGuestToGate();
+      return;
+    }
+    paintGuestLoginBtn();
+    stopGuestCountdown();
+    guestTimer = setInterval(tickGuestCountdown, 1000);
+  }
+
   function showApp() {
+    if (!(D && D.account && D.account())) {
+      const deadline = guestDeadline();
+      if (deadline && deadline <= Date.now()) {
+        kickGuestToGate();
+        return;
+      }
+    }
     $("gate").hidden = true;
     $("app").hidden = false;
     paintChrome(false);
+    startGuestCountdown();
     // 進站／登入後紅框先抓加權，再載圖
     paintTwii(true).then(function () {
       if (state.view === "chart") loadChart();
@@ -441,6 +545,19 @@
     const login = $("login");
     const acctBtn = $("account-btn");
     if (login) login.hidden = !!account;
+    if (account) {
+      stopGuestCountdown();
+      clearGuestDeadline();
+      if (login) {
+        login.textContent = "登入";
+        login.removeAttribute("aria-label");
+      }
+    } else if ($("app") && !$("app").hidden) {
+      paintGuestLoginBtn();
+    } else if (login) {
+      login.textContent = "登入";
+      login.removeAttribute("aria-label");
+    }
     if (acctBtn) {
       acctBtn.hidden = !account;
       acctBtn.title = account && account.email
@@ -1532,6 +1649,8 @@
         return;
       }
       // 先顯示主畫面，避免雲端／行情等待時看起來像登入後白屏卡住
+      stopGuestCountdown();
+      clearGuestDeadline();
       $("gate-msg").textContent = "";
       $("gate").hidden = true;
       $("app").hidden = false;
@@ -5468,7 +5587,9 @@
   if ($("account-btn")) $("account-btn").addEventListener("click", function () {
     D.logout();
     book = normalizeBook(JSON.parse(sessionStorage.getItem("sj-book") || "null"));
+    setGuestDeadline(Date.now() + GUEST_VIEW_SECS * 1000);
     paintChrome();
+    startGuestCountdown();
     renderWatch(true);
   });
   if ($("focus-clear")) {
