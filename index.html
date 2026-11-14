@@ -16,15 +16,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=238">
+  <link rel="stylesheet" href="app.css?v=239">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
-    var PAGE = 238;
+    var PAGE = 239;
     var urls = [
       "build.json?_=" + Date.now() + "&r=" + Math.random(),
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json?_=" + Date.now(),
-      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json?_=" + Date.now()
+      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now(),
+      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json?_=" + Date.now(),
+      "https://schmidtaiwan.github.io/Stock_Jason/build.json?_=" + Date.now()
     ];
     function go(remote) {
       try {
@@ -36,18 +37,25 @@
         location.reload();
       }
     }
-    function check(i) {
-      if (i >= urls.length) return;
-      fetch(urls[i], { cache: "no-store", mode: "cors" })
+    // 取所有來源的最大 build（CDN 舊檔不可擋新版）
+    var left = urls.length;
+    var best = 0;
+    function done() {
+      if (best > PAGE) go(best);
+    }
+    urls.forEach(function (url) {
+      fetch(url, { cache: "no-store", mode: "cors" })
         .then(function (r) { return r && r.ok ? r.json() : null; })
         .then(function (j) {
           var remote = j && Number(j.build);
-          if (remote > PAGE) go(remote);
-          else if (!(remote > 0)) check(i + 1);
+          if (remote > best) best = remote;
         })
-        .catch(function () { check(i + 1); });
-    }
-    check(0);
+        .catch(function () { /* ignore */ })
+        .then(function () {
+          left -= 1;
+          if (left <= 0) done();
+        });
+    });
   })();
   </script>
 </head>
@@ -634,12 +642,12 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=238"></script>
-  <script src="drive.js?v=238"></script>
-  <script src="liveBridge.js?v=238"></script>
-  <script src="sakata.js?v=238"></script>
-  <script src="market.js?v=238"></script>
-  <script src="chips.js?v=238"></script>
-  <script src="app.js?v=238"></script>
+  <script src="google_config.js?v=239"></script>
+  <script src="drive.js?v=239"></script>
+  <script src="liveBridge.js?v=239"></script>
+  <script src="sakata.js?v=239"></script>
+  <script src="market.js?v=239"></script>
+  <script src="chips.js?v=239"></script>
+  <script src="app.js?v=239"></script>
 </body>
 </html>

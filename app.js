@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 238;
+  const PAGE_BUILD = 239;
   const PAGE_DATE = "2026-11-14";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -541,21 +541,22 @@
     const bust = "?_=" + Date.now() + "&r=" + Math.random();
     const urls = [
       "build.json" + bust,
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust,
-      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust
+      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json" + bust,
+      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust,
+      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust
     ];
-    function one(i) {
-      if (i >= urls.length) return Promise.resolve(null);
-      return fetch(urls[i], { cache: "no-store", mode: "cors", credentials: "omit" })
+    // 取各來源最大 build，避免 GitHub Pages／raw CDN 舊快取擋住更新條
+    return Promise.all(urls.map(function (url) {
+      return fetch(url, { cache: "no-store", mode: "cors", credentials: "omit" })
         .then(function (res) { return res && res.ok ? res.json() : null; })
         .then(function (j) {
           const remote = j && Number(j.build);
-          if (remote > 0) return remote;
-          return one(i + 1);
+          return remote > 0 ? remote : 0;
         })
-        .catch(function () { return one(i + 1); });
-    }
-    return one(0);
+        .catch(function () { return 0; });
+    })).then(function (nums) {
+      return nums.reduce(function (a, b) { return a > b ? a : b; }, 0) || null;
+    });
   }
 
   // 手機常快取舊檔：多來源讀 build.json → 頂部紅條＋可點更新（不依賴 alert）
