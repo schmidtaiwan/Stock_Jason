@@ -187,7 +187,7 @@ a.gate-ext[hidden] { display: none !important; }
   color: var(--muted);
 }
 .twii-box strong {
-  font-size: 15px;
+  font-size: calc(15px + 2pt);
   font-variant-numeric: tabular-nums;
 }
 .twii-chg {
@@ -204,7 +204,7 @@ a.gate-ext[hidden] { display: none !important; }
   line-height: 1.2;
 }
 .twii-src {
-  font-size: 10px;
+  font-size: calc(10px - 2pt);
   color: var(--muted);
   line-height: 1.2;
   max-width: 100%;

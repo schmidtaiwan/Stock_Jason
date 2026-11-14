@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 212;
+  const PAGE_BUILD = 213;
   const PAGE_DATE = "2026-11-14";
   const GUEST_VIEW_SECS = 500;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -696,11 +696,11 @@
       priceEl.textContent = fmt(q.price);
       priceEl.className = cls;
       const pts = q.change == null || !isFinite(q.change) ? "—" :
-        ((q.change > 0 ? "+" : "") + q.change.toFixed(2) + " 點");
+        ((q.change > 0 ? "+" : "") + q.change.toFixed(2));
       const pctTxt = q.pct == null || !isFinite(q.pct) ? "" :
         "（" + (q.pct > 0 ? "+" : "") + q.pct.toFixed(2) + "%）";
       chgEl.className = "twii-chg " + cls;
-      chgEl.textContent = pts + pctTxt;
+      chgEl.textContent = pts + (pctTxt ? " " + pctTxt : "");
       formatTwiiLag(q);
       paintTwiiSource(q);
     } catch (err) {
