@@ -2454,7 +2454,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   align-items: flex-start;
   flex-wrap: nowrap;
   gap: 2px;
-  width: auto;
+  width: 100%;
   max-width: 100%;
   background: transparent;
   border: 0;
@@ -2468,10 +2468,12 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 }
 .watch-link [data-watch-name] {
   display: block;
+  width: 100%;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  box-sizing: border-box;
+  overflow: visible;
   white-space: nowrap;
+  line-height: 1.15;
 }
 .watch-diag {
   display: inline-block;

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 299;
+  const PAGE_BUILD = 300;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -5607,6 +5607,47 @@
     row.setAttribute("data-limit", side || "");
   }
 
+  /** 商品名稱依欄寬自動縮字，避免 … 截斷；過長再換行全顯示 */
+  function fitOneWatchName(el) {
+    if (!el || el.closest(".watch-mini-name")) return;
+    const maxPx = 18;
+    const minPx = 11;
+    el.style.whiteSpace = "nowrap";
+    el.style.wordBreak = "";
+    el.style.overflow = "visible";
+    el.style.fontSize = maxPx + "px";
+    if (!(el.clientWidth > 0)) return;
+    if (el.scrollWidth <= el.clientWidth + 1) {
+      el.style.fontSize = "";
+      return;
+    }
+    let lo = minPx;
+    let hi = maxPx;
+    let best = minPx;
+    while (hi - lo > 0.35) {
+      const mid = (lo + hi) / 2;
+      el.style.fontSize = mid + "px";
+      if (el.scrollWidth <= el.clientWidth + 1) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    el.style.fontSize = best + "px";
+    if (el.scrollWidth > el.clientWidth + 1) {
+      el.style.whiteSpace = "normal";
+      el.style.wordBreak = "break-all";
+      el.style.fontSize = minPx + "px";
+    }
+  }
+
+  function fitWatchNameFonts(box) {
+    box = box || $("watch-list");
+    if (!box || isWatchMini()) return;
+    box.querySelectorAll(".watch-link > [data-watch-name]").forEach(fitOneWatchName);
+  }
+
   function applyWatchQuoteRow(box, m, idx) {
     const item = book.watch[idx];
     const row = box.querySelector('[data-watch-row="' + idx + '"]');
@@ -5623,7 +5664,10 @@
       if (btn && !nameEl) btn.textContent = label;
       if (nameEl) {
         if (isWatchMini()) nameEl.innerHTML = watchMiniNameHtml(item);
-        else nameEl.textContent = nextName || item.code || "";
+        else {
+          nameEl.textContent = nextName || item.code || "";
+          fitOneWatchName(nameEl);
+        }
       }
     }
     const priceCell = row.querySelector("[data-watch-price]");
@@ -6156,7 +6200,10 @@
     }
     renderWatch.gen = (renderWatch.gen || 0) + 1;
     if (mini) renderWatchMini(box);
-    else renderWatchFull(box);
+    else {
+      renderWatchFull(box);
+      fitWatchNameFonts(box);
+    }
     // 先套用全宇宙快取，切群組可瞬間顯示
     paintCurrentWatchFromCache(box);
     if (!mini) applyWatchTapeCacheToBox(box);
