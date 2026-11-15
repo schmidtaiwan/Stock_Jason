@@ -3084,7 +3084,10 @@
     if (!snap || !snap.byCode || typeof snap.byCode !== "object") return 0;
     const age = snap.at != null ? Date.now() - Number(snap.at) : Infinity;
     if (!(age >= 0) || age > (preferAgeMs != null ? preferAgeMs : FUBON_DRIVE_MAX_AGE_MS)) return 0;
-    const cacheAt = Number(snap.at) || Date.now();
+    // 用「收到時間」當 cacheAt：snap.at 可能是數分鐘前的 bridge 刷新，
+    // 若寫入 snap.at 會立刻被 misCacheGet（10s TTL）判過期而整批空白。
+    const cacheAt = Date.now();
+    const snapAt = Number(snap.at) || cacheAt;
     const tag = sourceTag || "fubon-drive";
     const forceOverwrite = !!opts.forceOverwrite;
     let n = 0;
@@ -3097,7 +3100,7 @@
       // 選富邦時強制覆寫 MIS；否則僅富邦較新才覆寫
       if (!forceOverwrite) {
         if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
-        if (hit && hit.fromFubonDrive && hit.at >= cacheAt) return;
+        if (hit && hit.fromFubonDrive && hit.at >= snapAt) return;
       }
       misQuoteCache.set(id, { at: cacheAt, quote: q, fromDrive: true, fromFubonDrive: true });
       n += 1;
@@ -3266,6 +3269,8 @@
       if (!freshen) q.source = q.source || "mis-drive";
       else q.source = "mis-drive";
       const hit = misQuoteCache.get(id);
+      // 勿用過期 MIS 雲端覆蓋 Bridge／富邦最後一盤
+      if (hit && hit.fromFubonDrive && !opts.overwriteFubon) return;
       // 本機有更新的 MIS 就保留；灌種時可覆寫過期快取
       if (hit && !hit.fromDrive && hit.at >= cacheAt) return;
       if (hit && hit.fromDrive && hit.at >= Number(snap.at) && !freshen) return;
@@ -4359,6 +4364,12 @@
   function misCacheGet(code) {
     const hit = misQuoteCache.get(String(code || "").toUpperCase());
     if (!hit) return null;
+    // Bridge／Drive 灌入的最後一盤：休市可留著，勿用 10s TTL 清掉
+    if (hit.fromFubonDrive || hit.fromDrive) {
+      const ttl = isTwSessionOpen() ? Math.max(MIS_CACHE_MS, 120_000) : (7 * 86400000);
+      if (Date.now() - hit.at > ttl) return null;
+      return hit.quote;
+    }
     if (Date.now() - hit.at > MIS_CACHE_MS) return null;
     return hit.quote;
   }
@@ -4379,14 +4390,14 @@
     });
     if (!need.length) return out;
 
-    // 開盤＋Bridge 在線：優先即時富邦橋；離線才雲端／MIS
+    // Bridge 在線即可用（含休市）；勿綁 isTwSessionOpen
     const open = isTwSessionOpen();
-    const bridgeOn = open && bridgeLiveOnline();
+    const bridgeOn = bridgeLiveOnline();
     await hydrateFubonFromDrive(need, {
       maxAgeMs: open
         ? (bridgeOn ? 20_000 : Math.max(FUBON_DRIVE_MAX_AGE_MS, 3 * 60_000))
-        : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000),
-      forceOverwrite: bridgeOn
+        : Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 7 * 86400000),
+      forceOverwrite: bridgeOn || !open
     });
     if (!bridgeOn) {
       await hydrateMisFromDrive(need);
@@ -4541,15 +4552,6 @@
         forceOverwrite: wantFubon || bridgeOn || !isTwSessionOpen()
       });
     } catch (errFb) { /* ignore */ }
-    if (!wantFubon) {
-      try {
-        await hydrateMisFromDrive(codes, {
-          maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
-          freshen: true,
-          force: true
-        });
-      } catch (errSeed) { /* ignore */ }
-    }
     let byCode = {};
     function fillFromCache(ids) {
       (ids || []).forEach(function (id) {
@@ -4569,9 +4571,22 @@
       });
     }
     fillFromCache(codes);
-    if (wantFubon) {
-      const missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
-      if (missing.length) {
+    let missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
+    // Bridge／富邦已齊：休市直接回傳，避免再跑 MIS／Drive 拖到 watchBoard 逾時整批空白
+    const sessionOpen = isTwSessionOpen();
+    if (missing.length && !wantFubon && !forceMis && (sessionOpen || !bridgeOn)) {
+      try {
+        await hydrateMisFromDrive(missing, {
+          maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
+          freshen: true,
+          force: true
+        });
+      } catch (errSeed) { /* ignore */ }
+      fillFromCache(missing);
+      missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
+    }
+    if (missing.length && (wantFubon || forceMis || sessionOpen || !bridgeOn)) {
+      if (wantFubon) {
         try {
           const mis = await misQuotes(missing) || {};
           missing.forEach(function (id) {
@@ -4579,30 +4594,30 @@
             if (mis[id] && mis[id].price > 0) byCode[id] = mis[id];
           });
         } catch (errMis) { /* ignore */ }
-      }
-    } else {
-      // 不可整表覆寫：MIS 空／失敗時要保留上面已灌入的富邦／Bridge 價
-      let misBoard = {};
-      try {
-        if (forceMis) misBoard = await misQuotesForced(codes) || {};
-        else misBoard = await misQuotes(codes) || {};
-      } catch (err) {
-        try { misBoard = await misQuotes(codes) || {}; } catch (err2) { misBoard = {}; }
-      }
-      codes.forEach(function (id) {
-        const mq = misBoard[id];
-        if (forceMis && mq && mq.price > 0) {
-          byCode[id] = mq;
-          return;
+      } else {
+        // 不可整表覆寫：MIS 空／失敗時要保留上面已灌入的富邦／Bridge 價
+        let misBoard = {};
+        try {
+          if (forceMis) misBoard = await misQuotesForced(missing) || {};
+          else misBoard = await misQuotes(missing) || {};
+        } catch (err) {
+          try { misBoard = await misQuotes(missing) || {}; } catch (err2) { misBoard = {}; }
         }
-        if (byCode[id] && byCode[id].price > 0) return;
-        if (mq && mq.price > 0) {
-          byCode[id] = mq;
-          return;
-        }
-        const hit = misQuoteCache.get(id);
-        if (hit && hit.quote && hit.quote.price > 0) byCode[id] = hit.quote;
-      });
+        missing.forEach(function (id) {
+          const mq = misBoard[id];
+          if (forceMis && mq && mq.price > 0) {
+            byCode[id] = mq;
+            return;
+          }
+          if (byCode[id] && byCode[id].price > 0) return;
+          if (mq && mq.price > 0) {
+            byCode[id] = mq;
+            return;
+          }
+          const hit = misQuoteCache.get(id);
+          if (hit && hit.quote && hit.quote.price > 0) byCode[id] = hit.quote;
+        });
+      }
     }
     return list.map(function (item) {
       const code = watchItemCode(item);

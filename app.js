@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 296;
+  const PAGE_BUILD = 297;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -5832,7 +5832,7 @@
     }
   }
 
-  // 先畫快取，再背景刷新「全群組宇宙」
+  // 先畫快取 → 先補目前群組報價（快）→ 再背景刷新全宇宙
   async function paintWatchQuotes() {
     const box = $("watch-list");
     if (!box || !book.watch.length) return;
@@ -5841,6 +5841,15 @@
       return;
     }
     paintCurrentWatchFromCache(box);
+    try {
+      const quick = await withWatchTimeout(M.watchBoard(book.watch), 14000, null);
+      if (quick && quick.length) {
+        book.watch.forEach(function (item, i) {
+          rememberWatchQuoteForItem(item, quick[i]);
+        });
+        paintCurrentWatchFromCache(box);
+      }
+    } catch (errQuick) { /* ignore */ }
     await refreshWatchUniverse({ paint: true });
   }
 
