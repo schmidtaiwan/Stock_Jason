@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 315;
+  const PAGE_BUILD = 316;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -9467,13 +9467,13 @@
     }).join("");
     const night = pre.night;
     const nightHtml = night
-      ? '<div class="pulse-cell wide"><span>台指期' + (night.isNight ? "夜盤" : "") +
+      ? '<div class="pulse-cell wide"><span>台指期' + (night.isNight ? "夜盤" : "（全）") +
         " · " + esc(String(night.date || "").slice(5)) + "</span>" +
         '<strong class="' + pulseCls(night.pct) + '">' + fmt(night.close) + "</strong>" +
         '<small class="' + pulseCls(night.pct) + '">' + pulsePct(night.pct) +
         (night.change != null ? "（" + (night.change > 0 ? "+" : "") + night.change.toFixed(0) + "）" : "") +
         "</small></div>"
-      : '<div class="pulse-cell wide"><span>台指期夜盤</span><strong>—</strong></div>';
+      : '<div class="pulse-cell wide"><span>台指期（全）</span><strong>—</strong></div>';
 
     const tw = sess.twii;
     const otc = sess.otc;

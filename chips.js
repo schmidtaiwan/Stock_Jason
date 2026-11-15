@@ -10,7 +10,7 @@
     { symbol: "DX-Y.NYB", name: "美元指數", key: "dxy", core: true },
     { symbol: "^DJI", name: "道瓊", key: "dji" },
     { symbol: "^GSPC", name: "標普", key: "spx" },
-    { symbol: "TXNIGHT", name: "台指期夜盤", key: "txnight", special: "txnight" },
+    { symbol: "TXNIGHT", name: "台指期（全）", key: "txnight", special: "txnight" },
     { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
     { symbol: "AAPL", name: "蘋果", key: "aapl" },
     { symbol: "MARGIN", name: "融資", key: "margin", special: "margin" },
@@ -613,9 +613,10 @@
         const night = M && typeof M.txNightLatest === "function"
           ? await M.txNightLatest().catch(function () { return null; })
           : null;
+        const full = night && night.isNight === false;
         return {
           symbol: item.symbol,
-          name: night && night.isNight === false ? "台指期" : item.name,
+          name: full ? "台指期（全）" : (night && night.isNight ? "台指期夜盤" : item.name),
           key: item.key,
           core: !!item.core,
           price: night && night.close,
@@ -683,6 +684,8 @@
       const mapped = US_BOARD.map(function (item) {
         const hit = byKey[item.key];
         if (!hit) return null;
+        // 台指期雲端列失敗時不硬吃空值，交給下方 live 補抓
+        if (item.special === "txnight" && !(hit.ok && hit.price > 0)) return null;
         return {
           symbol: item.symbol,
           name: hit.name || item.name,
@@ -706,6 +709,22 @@
           brief: brief,
           source: "pulse-board"
         };
+      }
+      // 僅缺台指期時：其餘用雲端，台指期改 live 補
+      if (mapped.filter(Boolean).length >= US_BOARD.length - 1 && !mapped[US_BOARD.findIndex(function (x) { return x.key === "txnight"; })]) {
+        const txIdx = US_BOARD.findIndex(function (x) { return x.key === "txnight"; });
+        const filled = mapped.slice();
+        filled[txIdx] = await usBoardOne(US_BOARD[txIdx]);
+        if (filled.every(function (r) { return r; })) {
+          const brief = await buildUsBrief(filled);
+          return {
+            ok: true,
+            updatedAt: Date.now(),
+            rows: filled,
+            brief: brief,
+            source: "pulse-board+tx"
+          };
+        }
       }
     }
     const out = new Array(US_BOARD.length);
@@ -763,26 +782,26 @@
     } catch (err) { /* ignore */ }
 
     const checks = [];
-    // 1 direction（費半／ADR＋台指期夜盤）
+    // 1 direction（費半／ADR＋台指期全）
     let dir = "中性";
-    let dirDetail = "費半／台積電 ADR／台指期夜盤資料暫時讀不到，方向先當未知。";
+    let dirDetail = "費半／台積電 ADR／台指期資料暫時讀不到，方向先當未知。";
     const txPct = txnight.pct;
     if (sox.pct != null || tsm.pct != null || txPct != null) {
       const soxPct = sox.pct != null ? sox.pct : 0;
       const tsmPct = tsm.pct != null ? tsm.pct : soxPct;
       const nightNote = txPct != null
-        ? ("台指期夜盤 " + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%。")
-        : "台指期夜盤暫無。";
+        ? ("台指期（全） " + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%。")
+        : "台指期（全）暫無。";
       if (soxPct >= 2 || (txPct != null && txPct >= 0.8 && soxPct >= 0.5)) {
         dir = "偏多跳空";
         dirDetail = (soxPct >= 2
           ? "昨晚費半大漲超過 2%，科技股偏強，台股早盤 09:00 容易直接開高（跳空開高機率升）。"
-          : "費半偏多且台指期夜盤明顯走高，早盤開高機率升。") + nightNote;
+          : "費半偏多且台指期明顯走高，早盤開高機率升。") + nightNote;
       } else if (soxPct <= -2 || (txPct != null && txPct <= -0.8 && soxPct <= -0.5)) {
         dir = "偏空提款";
         dirDetail = (soxPct <= -2
           ? "昨晚費半大跌超過 2%，賣壓偏重，台股早盤要小心開低被提款、別急著接刀。"
-          : "費半偏弱且台指期夜盤明顯走低，早盤提款／開低機率升。") + nightNote;
+          : "費半偏弱且台指期明顯走低，早盤提款／開低機率升。") + nightNote;
       } else if (tsmPct >= 1.5 && soxPct < 0) {
         dir = "ADR撐盤";
         dirDetail = "費半偏弱，但台積電 ADR 相對強，權值股可能撐住加權，全面崩跌機率較低。" + nightNote;
@@ -791,10 +810,10 @@
         dirDetail = "台積電 ADR 偏弱，加權指數容易被權值股拖累，早盤宜保守。" + nightNote;
       } else if (txPct != null && txPct >= 0.45 && (soxPct + tsmPct) / 2 >= 0) {
         dir = "偏多";
-        dirDetail = "台指期夜盤偏多，配合費半／ADR 不弱，台股偏向開平高或小開高。" + nightNote;
+        dirDetail = "台指期偏多，配合費半／ADR 不弱，台股偏向開平高或小開高。" + nightNote;
       } else if (txPct != null && txPct <= -0.45 && (soxPct + tsmPct) / 2 <= 0) {
         dir = "偏空";
-        dirDetail = "台指期夜盤偏空，配合費半／ADR 不強，台股偏向開平低或小開低。" + nightNote;
+        dirDetail = "台指期偏空，配合費半／ADR 不強，台股偏向開平低或小開低。" + nightNote;
       } else if ((soxPct + tsmPct) / 2 > 0.3) {
         dir = "偏多";
         dirDetail = "費半／ADR 小幅偏多，台股偏向開平高或小開高，還不到大跳空等級。" + nightNote;
@@ -803,11 +822,11 @@
         dirDetail = "費半／ADR 小幅偏空，台股偏向開平低或小開低，先看能否守住昨收。" + nightNote;
       } else {
         dir = "中性";
-        dirDetail = "費半／ADR／夜盤震盪不大，開盤方向不明顯，等前 30 分鐘再決定。" + nightNote;
+        dirDetail = "費半／ADR／台指期震盪不大，開盤方向不明顯，等前 30 分鐘再決定。" + nightNote;
       }
     }
     checks.push({
-      q: "看方向（費半／ADR／夜盤）",
+      q: "看方向（費半／ADR／台指期）",
       a: dir,
       detail: dirDetail,
       cls: /多|撐/.test(dir) ? "up" : /空|壓|提款/.test(dir) ? "down" : ""
@@ -872,9 +891,9 @@
     const underQ = soxMa.above60 === false;
 
     if (txPct != null) {
-      if (txPct >= 0.6) lines.push("台指期夜盤偏多（" + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%）：現貨開高機率升，仍防開高遇解套。");
-      else if (txPct <= -0.6) lines.push("台指期夜盤偏空（" + txPct.toFixed(2) + "%）：現貨開低／提款機率升，早盤勿急接。");
-      else lines.push("台指期夜盤震盪有限（" + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%），開盤方向仍看費半／ADR 合力。");
+      if (txPct >= 0.6) lines.push("台指期（全）偏多（" + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%）：現貨開高機率升，仍防開高遇解套。");
+      else if (txPct <= -0.6) lines.push("台指期（全）偏空（" + txPct.toFixed(2) + "%）：現貨開低／提款機率升，早盤勿急接。");
+      else lines.push("台指期（全）震盪有限（" + (txPct > 0 ? "+" : "") + txPct.toFixed(2) + "%），開盤方向仍看費半／ADR 合力。");
     }
     if (gapUp && (tight || underQ)) {
       lines.push("白話總結：短線開盤偏多（易開高），但中線資金仍偏緊" +
@@ -943,7 +962,7 @@
       lines: lines,
       actions: actions,
       soxMa: soxMa,
-      tip: "口訣：方向看費半＋ADR＋台指期夜盤 → 力道看 VIX → 資金看美債／美元。規則試算，非投資建議。"
+      tip: "口訣：方向看費半＋ADR＋台指期（全） → 力道看 VIX → 資金看美債／美元。規則試算，非投資建議。"
     };
   }
 

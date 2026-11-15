@@ -5399,7 +5399,8 @@
       if (String(row.contract_date || "").indexOf("/") >= 0) return; // 排除價差單
       const day = row.date;
       const session = String(row.trading_session || "");
-      const pref = session === "after_market" ? 0 : 1;
+      // position／regular＝全日／日盤；after_market＝夜盤（波段分析用全日優先）
+      const pref = session === "position" ? 3 : session === "regular" ? 2 : session === "after_market" ? 0 : 1;
       const cur = byDay[day];
       if (!cur || pref > cur.pref || (pref === cur.pref && vol > cur.volume)) {
         byDay[day] = {
@@ -7942,8 +7943,9 @@
   }
 
   async function txNightLatest() {
+    // 最近交易日「台指期全」：FinMind position（全日）＞ regular ＞ after_market；再退 ^TWII
     try {
-      const rows = await finMindRaw("TaiwanFuturesDaily", isoDaysAgo(10), "TX");
+      const rows = await finMindRaw("TaiwanFuturesDaily", isoDaysAgo(14), "TX");
       const byDay = {};
       rows.forEach(function (row) {
         const close = num(row.close);
@@ -7951,8 +7953,11 @@
         if (!(close > 0)) return;
         if (String(row.contract_date || "").indexOf("/") >= 0) return;
         const session = String(row.trading_session || "");
-        // 夜盤優先
-        const pref = session === "after_market" ? 2 : session === "regular" ? 1 : 0;
+        // position＝台指期全（全日結算）；regular＝日盤；after_market＝夜盤備援
+        const pref = session === "position" ? 3
+          : session === "regular" ? 2
+            : session === "after_market" ? 1
+              : 0;
         const cur = byDay[row.date];
         if (!cur || pref > cur.pref || (pref === cur.pref && vol > cur.volume)) {
           byDay[row.date] = {
@@ -7967,22 +7972,39 @@
         }
       });
       const days = Object.keys(byDay).sort();
-      if (!days.length) return null;
-      const last = byDay[days[days.length - 1]];
-      const prev = days.length > 1 ? byDay[days[days.length - 2]] : null;
-      const change = prev && prev.close ? last.close - prev.close : null;
-      const pct = prev && prev.close ? (last.close / prev.close - 1) * 100 : null;
+      if (days.length) {
+        const last = byDay[days[days.length - 1]];
+        const prev = days.length > 1 ? byDay[days[days.length - 2]] : null;
+        const change = prev && prev.close ? last.close - prev.close : null;
+        const pct = prev && prev.close ? (last.close / prev.close - 1) * 100 : null;
+        return {
+          date: last.date,
+          close: last.close,
+          change: change,
+          pct: pct,
+          session: last.session,
+          basisPct: last.basisPct,
+          contract: last.contract,
+          isNight: last.session === "after_market",
+          source: "finmind"
+        };
+      }
+    } catch (err) { /* ^TWII 備援 */ }
+    try {
+      const q = await yahooSymbolQuote("^TWII");
+      if (!(q && q.price > 0)) return null;
       return {
-        date: last.date,
-        close: last.close,
-        change: change,
-        pct: pct,
-        session: last.session,
-        basisPct: last.basisPct,
-        contract: last.contract,
-        isNight: last.session === "after_market"
+        date: taipeiYmd(),
+        close: q.price,
+        change: q.change != null ? q.change : null,
+        pct: q.pct != null ? q.pct : null,
+        session: "position",
+        basisPct: null,
+        contract: null,
+        isNight: false,
+        source: "yahoo-twii"
       };
-    } catch (err) {
+    } catch (err2) {
       return null;
     }
   }
@@ -8139,7 +8161,7 @@
         us: us,
         night: night,
         bias: preBias,
-        tip: "費半／台積電 ADR／台指期夜盤偏多 → 開高機率升；反之開低機率升。"
+        tip: "費半／台積電 ADR／台指期（全）偏多 → 開高機率升；反之開低機率升。"
       },
       session: {
         twii: twii,
