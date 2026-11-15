@@ -215,8 +215,8 @@ a.gate-ext[hidden] { display: none !important; }
   align-items: flex-start;
   justify-content: center;
   gap: 2px;
-  min-width: 44px;
-  max-width: 72px;
+  min-width: 56px;
+  max-width: 88px;
   margin: 0 2px;
 }
 .conn-lamp {

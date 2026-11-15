@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 264;
+  const PAGE_BUILD = 265;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -487,11 +487,11 @@
     }
   }
 
-  /** 頂部連線燈號：富邦／MIS／LiveBridge */
+  /** 頂部連線燈號：富邦／MIS／家裡電腦 */
   const connState = {
     fubon: { state: "unknown", title: "富邦", detail: "尚未檢查" },
     mis: { state: "unknown", title: "MIS（證交所）", detail: "尚未檢查" },
-    bridge: { state: "unknown", title: "LiveBridge", detail: "尚未檢查" }
+    bridge: { state: "unknown", title: "家裡電腦", detail: "尚未檢查" }
   };
   let connLampBound = false;
   let connRefreshBusy = false;
@@ -992,7 +992,7 @@
       : "bridge";
     const title = lampKey === "fubon" ? "富邦"
       : lampKey === "mis" ? "MIS（證交所）"
-      : "LiveBridge";
+      : "家裡電腦";
     setConnItem(lampKey, "bad", "連線異常。\n" + msg);
     if (connState[lampKey]) connState[lampKey].title = title;
     paintConnLamps();
