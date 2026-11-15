@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 282;
+  const PAGE_BUILD = 283;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -2288,11 +2288,16 @@
     }
     const box = $("watch-groups");
     if (box) {
+      const canMerge = groups.filter(function (g) { return g && !isFubonHoldingsGroup(g); }).length > 1;
       box.innerHTML =
-        '<button type="button" class="ghost watch-group-add watch-group-icon" id="watch-group-add" title="新增群組" aria-label="新增群組">+</button>' +
-        (groups.length > 1
-          ? '<button type="button" class="ghost watch-group-icon watch-group-merge" id="watch-group-merge" title="合併群組成新群組" aria-label="合併群組">合</button>'
+        '<div class="watch-group-add-menu">' +
+        '<button type="button" class="ghost watch-group-add watch-group-icon" id="watch-group-add" title="新增／合併群組" aria-label="新增或合併群組" aria-expanded="false" aria-haspopup="true">+</button>' +
+        '<div id="watch-group-add-panel" class="watch-group-add-panel" hidden role="menu">' +
+        '<button type="button" class="ghost" id="watch-group-add-new" role="menuitem">新增群組</button>' +
+        (canMerge
+          ? '<button type="button" class="ghost" id="watch-group-merge" role="menuitem">合併成新群組</button>'
           : "") +
+        "</div></div>" +
         (!allOn && !fubonLocked
           ? '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>'
           : "") +
@@ -2303,6 +2308,19 @@
     }
     syncWatchPnlUi();
     syncWatchPrivacyUi();
+  }
+
+  function setWatchGroupAddMenuOpen(open) {
+    const panel = $("watch-group-add-panel");
+    const btn = $("watch-group-add");
+    if (!panel || !btn) return;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function toggleWatchGroupAddMenu() {
+    const panel = $("watch-group-add-panel");
+    setWatchGroupAddMenuOpen(!!(panel && panel.hidden));
   }
 
   function toggleWatchShowPnl() {
@@ -7725,8 +7743,15 @@
       toggleWatchPrivacy();
     }
     else if (t.id === "watch-wake-toggle") toggleWakeLock();
-    else if (t.id === "watch-group-add") addWatchGroup();
-    else if (t.id === "watch-group-merge") openWatchMergeSheet();
+    else if (t.id === "watch-group-add") toggleWatchGroupAddMenu();
+    else if (t.id === "watch-group-add-new") {
+      setWatchGroupAddMenuOpen(false);
+      addWatchGroup();
+    }
+    else if (t.id === "watch-group-merge") {
+      setWatchGroupAddMenuOpen(false);
+      openWatchMergeSheet();
+    }
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-export") exportWatchGroupFubonJson();
     else if (t.id === "watch-group-del") deleteWatchGroup();
@@ -8058,12 +8083,23 @@
   }
   document.addEventListener("pointerdown", function (ev) {
     const panel = $("watch-view-menu-panel");
-    if (!panel || panel.hidden) return;
-    if (ev.target.closest && ev.target.closest(".watch-view-menu")) return;
-    setWatchViewMenuOpen(false);
+    if (panel && !panel.hidden) {
+      if (!(ev.target.closest && ev.target.closest(".watch-view-menu"))) {
+        setWatchViewMenuOpen(false);
+      }
+    }
+    const addPanel = $("watch-group-add-panel");
+    if (addPanel && !addPanel.hidden) {
+      if (!(ev.target.closest && ev.target.closest(".watch-group-add-menu"))) {
+        setWatchGroupAddMenuOpen(false);
+      }
+    }
   });
   document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") setWatchViewMenuOpen(false);
+    if (ev.key === "Escape") {
+      setWatchViewMenuOpen(false);
+      setWatchGroupAddMenuOpen(false);
+    }
   });
   if ($("watch-group-select")) {
     $("watch-group-select").addEventListener("change", function () {
