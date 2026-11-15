@@ -6632,7 +6632,402 @@
       patterns: patterns,
       buyPoints: buyPoints,
       sellPoints: sellPoints,
-      atr: atrNow != null ? roundPx(atrNow) : null
+      atr: atrNow != null ? roundPx(atrNow) : null,
+      levels: {
+        buy: buyLevel,
+        sell: sellLevel,
+        stop: stopLevel
+      }
+    };
+  }
+
+  /** 隨機指標 KD（預設 9,3,3） */
+  function kd(bars, n, kSmooth, dSmooth) {
+    n = n || 9;
+    kSmooth = kSmooth || 3;
+    dSmooth = dSmooth || 3;
+    const rsv = [];
+    for (let i = 0; i < bars.length; i++) {
+      if (i < n - 1) {
+        rsv.push(null);
+        continue;
+      }
+      let hi = -Infinity;
+      let lo = Infinity;
+      for (let j = i - n + 1; j <= i; j++) {
+        const h = Number(bars[j].h);
+        const l = Number(bars[j].l);
+        if (isFinite(h) && h > hi) hi = h;
+        if (isFinite(l) && l < lo) lo = l;
+      }
+      const c = Number(bars[i].c);
+      if (!(hi > lo) || !isFinite(c)) rsv.push(50);
+      else rsv.push((c - lo) / (hi - lo) * 100);
+    }
+    const kArr = [];
+    let kPrev = 50;
+    for (let i = 0; i < rsv.length; i++) {
+      if (rsv[i] == null) {
+        kArr.push(null);
+        continue;
+      }
+      kPrev = (rsv[i] + (kSmooth - 1) * kPrev) / kSmooth;
+      kArr.push(kPrev);
+    }
+    const dArr = [];
+    let dPrev = 50;
+    for (let i = 0; i < kArr.length; i++) {
+      if (kArr[i] == null) {
+        dArr.push(null);
+        continue;
+      }
+      dPrev = (kArr[i] + (dSmooth - 1) * dPrev) / dSmooth;
+      dArr.push(dPrev);
+    }
+    const i = bars.length - 1;
+    const kNow = kArr[i];
+    const dNow = dArr[i];
+    const kPrev1 = i > 0 ? kArr[i - 1] : null;
+    const dPrev1 = i > 0 ? dArr[i - 1] : null;
+    let cross = "";
+    if (kNow != null && dNow != null && kPrev1 != null && dPrev1 != null) {
+      if (kPrev1 <= dPrev1 && kNow > dNow) cross = "golden";
+      else if (kPrev1 >= dPrev1 && kNow < dNow) cross = "dead";
+    }
+    let zone = "mid";
+    if (kNow != null) {
+      if (kNow >= 80) zone = "hot";
+      else if (kNow <= 20) zone = "cold";
+    }
+    return {
+      k: kNow != null ? Math.round(kNow * 10) / 10 : null,
+      d: dNow != null ? Math.round(dNow * 10) / 10 : null,
+      cross: cross,
+      zone: zone
+    };
+  }
+
+  function medianNums(arr) {
+    const a = (arr || []).filter(function (x) { return x != null && isFinite(x); }).sort(function (x, y) { return x - y; });
+    if (!a.length) return null;
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  function roeGrade(roe) {
+    if (roe == null || !isFinite(roe)) return { label: "資料不足", tone: "" };
+    if (roe < 5) return { label: "偏弱", tone: "down" };
+    if (roe < 10) return { label: "普通", tone: "" };
+    if (roe < 15) return { label: "不錯", tone: "up" };
+    return { label: "值得深入研究", tone: "up" };
+  }
+
+  /**
+   * 個股投資分析表（SOP）：基本面篩選 → 合理價 → 技術買點 → 分批計畫 → 賣出／停損。
+   * 規則試算，非投資建議。
+   */
+  async function stockInvestPlan(secid, code) {
+    const stockId = twStockId(secid, code);
+    if (!stockId) return { ok: false, reason: "目前僅支援台股。" };
+    const advice = await stockAdvice(secid, code).catch(function () { return { ok: false }; });
+    if (!advice || !advice.ok) {
+      return { ok: false, reason: (advice && advice.reason) || "分析資料不足" };
+    }
+    const close = advice.close;
+    const atrNow = advice.atr;
+    const tech = advice.tech;
+    const per = advice.fund && advice.fund.per;
+    const detail = await stockDetail(secid, code).catch(function () { return null; });
+    const disclose = await stockDisclose(secid, code).catch(function () { return null; });
+
+    let daily = [];
+    try {
+      daily = await bars(secid, "180d");
+    } catch (err) {
+      try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+    }
+    const kdNow = daily.length >= 20 ? kd(daily, 9, 3, 3) : { k: null, d: null, cross: "", zone: "mid" };
+
+    // 量能：近 5 日 vs 前 20 日均量
+    let volumeNote = "成交量資料不足";
+    let volumeTone = "";
+    if (daily.length >= 25) {
+      const last = daily[daily.length - 1];
+      const prev = daily[daily.length - 2];
+      const vols = daily.slice(-21, -1).map(function (b) { return Number(b.v) || 0; });
+      const avg = vols.reduce(function (a, b) { return a + b; }, 0) / Math.max(1, vols.length);
+      const v = Number(last.v) || 0;
+      const up = last.c >= (prev && prev.c != null ? prev.c : last.c);
+      const ratio = avg > 0 ? v / avg : null;
+      if (ratio != null) {
+        if (up && ratio >= 1.3) {
+          volumeNote = "上漲且量增（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 買盤可能增強";
+          volumeTone = "up";
+        } else if (up && ratio < 0.7) {
+          volumeNote = "上漲但量縮（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 觀察動能";
+          volumeTone = "";
+        } else if (!up && ratio >= 1.5) {
+          volumeNote = "下跌爆量（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 留意賣壓";
+          volumeTone = "down";
+        } else {
+          volumeNote = "量能大致正常（約 " + (ratio * 100).toFixed(0) + "% 均量）";
+        }
+      }
+    }
+
+    // EPS 成長判斷
+    const epsYears = (detail && detail.epsYears) || [];
+    const epsActual = epsYears.filter(function (r) {
+      return r && r.eps != null && /實際|年化/.test(String(r.kind || ""));
+    });
+    let epsNote = "EPS 資料不足";
+    let epsTone = "";
+    if (epsActual.length >= 2) {
+      const a = epsActual[epsActual.length - 2].eps;
+      const b = epsActual[epsActual.length - 1].eps;
+      if (a != null && b != null && a > 0 && b > a * 1.05) {
+        epsNote = "近兩年 EPS 成長（" + a.toFixed(2) + " → " + b.toFixed(2) + "）";
+        epsTone = "up";
+      } else if (a != null && b != null && b < 0) {
+        epsNote = "近期 EPS 為虧損，需提高警覺";
+        epsTone = "down";
+      } else if (a != null && b != null && b < a * 0.9) {
+        epsNote = "近兩年 EPS 下滑（" + a.toFixed(2) + " → " + b.toFixed(2) + "）";
+        epsTone = "down";
+      } else if (b != null) {
+        epsNote = "近一年 EPS 約 " + b.toFixed(2) + "，成長性不明顯";
+      }
+    }
+
+    // ROE：近四季稅後淨利 / 最新權益
+    let roe = null;
+    let roeNote = "權益／淨利資料不足，暫無法估算 ROE";
+    const finQ = disclose && disclose.financial ? disclose.financial : null;
+    try {
+      const balRows = await finMind("TaiwanStockBalanceSheet", stockId, isoDaysAgo(800)).catch(function () { return []; });
+      const balByDate = {};
+      (balRows || []).forEach(function (row) {
+        if (!balByDate[row.date]) balByDate[row.date] = { date: row.date };
+        balByDate[row.date][row.type] = num(row.value);
+      });
+      const balDates = Object.keys(balByDate).sort();
+      const lastBal = balDates.length ? balByDate[balDates[balDates.length - 1]] : null;
+      const equity = lastBal
+        ? (lastBal.EquityAttributabletoOwnersofParent
+          || lastBal.Equity
+          || lastBal.TotalEquity
+          || lastBal["Ordinary share capital"]
+          || null)
+        : null;
+      const fins = await finMind("TaiwanStockFinancialStatements", stockId, isoDaysAgo(800)).catch(function () { return []; });
+      const q = quarterBag(fins);
+      const last4 = q.slice(-4);
+      let netTtm = 0;
+      let nNet = 0;
+      last4.forEach(function (row) {
+        if (row && row.IncomeAfterTaxes != null && isFinite(row.IncomeAfterTaxes)) {
+          netTtm += row.IncomeAfterTaxes;
+          nNet += 1;
+        }
+      });
+      if (equity > 0 && nNet >= 2) {
+        // 不足四季則年化
+        const annual = nNet >= 4 ? netTtm : netTtm * (4 / nNet);
+        // FinMind 財報金額常為「千元」；權益同單位則 ROE 比值不受影響
+        roe = annual / equity * 100;
+        if (!isFinite(roe) || Math.abs(roe) > 200) roe = null;
+      }
+    } catch (errRoe) { /* keep null */ }
+    const roeG = roeGrade(roe);
+    if (roe != null) roeNote = "近四季粗估 ROE " + roe.toFixed(1) + "%（" + roeG.label + "）";
+
+    // 合理價：用近 3～5 年本益比中位數 × 前瞻／年化 EPS
+    let peHistMed = null;
+    try {
+      const peRows = await finMind("TaiwanStockPER", stockId, isoDaysAgo(1400)).catch(function () { return []; });
+      const peVals = (peRows || []).map(function (r) { return num(r.PER); })
+        .filter(function (p) { return p != null && p > 3 && p < 60; });
+      peHistMed = medianNums(peVals);
+    } catch (errPe) { /* ignore */ }
+    const epsNowRow = epsYears.find(function (r) { return r.year === new Date().getFullYear(); })
+      || epsYears.filter(function (r) { return r.eps != null; }).slice(-1)[0];
+    const epsFwdRow = epsYears.find(function (r) { return r.year === new Date().getFullYear() + 1; });
+    const epsUse = (epsFwdRow && epsFwdRow.eps > 0)
+      ? epsFwdRow.eps
+      : (epsNowRow && epsNowRow.eps > 0 ? epsNowRow.eps : null);
+    const peUse = peHistMed != null
+      ? peHistMed
+      : (per && per.per > 0 && per.per < 60 ? per.per : null);
+    let fair = null;
+    let fairLow = null;
+    let fairHigh = null;
+    let fairNote = "合理價資料不足（缺 EPS 或歷史本益比）";
+    if (epsUse != null && peUse != null) {
+      fair = roundPx(epsUse * peUse);
+      fairLow = roundPx(epsUse * peUse * 0.85);
+      fairHigh = roundPx(epsUse * peUse * 1.15);
+      fairNote = "以 EPS " + epsUse.toFixed(2) + " × 歷史本益比中位 "
+        + peUse.toFixed(1) + " 倍 ≈ " + fair
+        + "（區間 " + fairLow + "～" + fairHigh + "）";
+    }
+    let valuation = "無法判斷";
+    let valuationTone = "";
+    if (close != null && fair != null) {
+      if (close <= fairLow) {
+        valuation = "相對偏低（低於合理區間下緣）";
+        valuationTone = "up";
+      } else if (close <= fair) {
+        valuation = "接近合理偏低";
+        valuationTone = "up";
+      } else if (close <= fairHigh) {
+        valuation = "落在合理區間上半";
+        valuationTone = "";
+      } else {
+        valuation = "相對偏高（高於合理區間上緣）";
+        valuationTone = "down";
+      }
+    }
+
+    // 營收：連續 YoY 正成長月數
+    const revRows = (disclose && disclose.revenue && disclose.revenue.rows) || [];
+    let revStreak = 0;
+    for (let i = 0; i < Math.min(6, revRows.length); i++) {
+      if (revRows[i] && revRows[i].yoy != null && revRows[i].yoy > 0) revStreak += 1;
+      else break;
+    }
+    const revLatest = revRows[0];
+    let revNote = "月營收資料不足";
+    let revTone = "";
+    if (revLatest && revLatest.yoy != null) {
+      revNote = "最近月營收 YoY "
+        + (revLatest.yoy > 0 ? "+" : "") + revLatest.yoy.toFixed(1) + "%"
+        + (revStreak >= 3 ? "，已連續 " + revStreak + " 個月正成長" : "");
+      revTone = revLatest.yoy > 0 ? "up" : revLatest.yoy < 0 ? "down" : "";
+    }
+
+    const debtRatio = finQ && finQ.debtRatio != null ? finQ.debtRatio : null;
+    let debtNote = debtRatio != null
+      ? ("負債比近似 " + debtRatio.toFixed(1) + "%")
+      : "負債比暫無";
+    if (debtRatio != null && debtRatio >= 60) debtNote += "（偏高，需搭配現金流）";
+    else if (debtRatio != null && debtRatio <= 35) debtNote += "（偏低檔）";
+    const cashNote = "營業／自由現金流請至 MOPS 現金流量表核對（此版先列負債比）";
+
+    // 均線敘述
+    const mas = (tech && tech.mas) || [];
+    function maOf(name) {
+      return mas.find(function (m) { return m.name === name; }) || null;
+    }
+    const ma5 = maOf("5 日");
+    const ma20 = maOf("20 日");
+    const ma60 = maOf("60 日");
+    const maNotes = [];
+    if (ma20) {
+      maNotes.push(close != null && ma20.value != null
+        ? (ma20.above ? "股價在 20 日線之上（" + ma20.value + "）" : "股價在 20 日線之下（" + ma20.value + "）")
+        : "20 日線 " + (ma20.value != null ? ma20.value : "—"));
+    }
+    if (ma60) {
+      maNotes.push(ma60.above ? "站上 60 日線" : "跌破／低於 60 日線，提高警覺");
+    }
+    if (ma5 && ma20 && ma5.value != null && ma20.value != null) {
+      if (ma5.value > ma20.value) maNotes.push("5 日線在 20 日線上方（短線偏強參考）");
+      else maNotes.push("5 日線仍在 20 日線下方");
+    }
+    if (!maNotes.length) maNotes.push("均線資料不足");
+
+    const supports = (tech && tech.supports) || [];
+    const resistances = (tech && tech.resistances) || [];
+    const supportPx = supports.length ? supports[supports.length - 1] : (advice.levels && advice.levels.buy);
+    const resistPx = resistances.length ? resistances[0] : (advice.levels && advice.levels.sell);
+
+    let kdNote = "KD 資料不足";
+    if (kdNow.k != null && kdNow.d != null) {
+      kdNote = "K " + kdNow.k + " / D " + kdNow.d;
+      if (kdNow.zone === "hot") kdNote += "（短期偏熱）";
+      else if (kdNow.zone === "cold") kdNote += "（短期偏弱／超賣區）";
+      if (kdNow.cross === "golden") kdNote += " · K 上穿 D";
+      else if (kdNow.cross === "dead") kdNote += " · K 下穿 D";
+    }
+
+    // 分批買進：合理偏低 + 支撐
+    const batches = [];
+    if (close != null) {
+      const b1 = fairLow != null ? Math.min(close, fairLow) : (supportPx != null ? supportPx : close);
+      const b2 = supportPx != null
+        ? roundPx(Math.min(b1, supportPx))
+        : (atrNow ? roundPx(b1 - 0.5 * atrNow) : roundPx(b1 * 0.97));
+      const b3 = atrNow
+        ? roundPx(Math.min(b2, (supportPx != null ? supportPx : b2) - atrNow * 0.5))
+        : roundPx(b2 * 0.97);
+      batches.push({ part: "第一筆 30%", price: roundPx(b1), note: "接近現價／合理下緣，先建底倉" });
+      batches.push({ part: "第二筆 30%", price: roundPx(b2), note: "回測支撐／均線再加" });
+      batches.push({ part: "第三筆 40%", price: roundPx(b3), note: "更深回檔；若基本面惡化則停止加碼" });
+    }
+
+    const stop = (advice.levels && advice.levels.stop) || (close != null && atrNow ? roundPx(close - 1.5 * atrNow) : null);
+    const target1 = resistPx != null
+      ? resistPx
+      : (fair != null ? fair : (close != null && atrNow ? roundPx(close + 1.5 * atrNow) : null));
+    const target2 = fairHigh != null
+      ? fairHigh
+      : (target1 != null && atrNow ? roundPx(target1 + atrNow) : null);
+    let rr = null;
+    if (close != null && stop != null && target1 != null && close > stop) {
+      rr = (target1 - close) / (close - stop);
+      if (!isFinite(rr) || rr < 0) rr = null;
+    }
+
+    const checklist = [
+      { step: "1. 篩選好公司", ok: epsTone !== "down" && (roe == null || roe >= 5), text: epsNote + "；" + roeNote },
+      { step: "2. 評估合理價格", ok: valuationTone !== "down", text: fairNote + " → " + valuation },
+      { step: "3. 等待買點", ok: kdNow.zone === "cold" || kdNow.cross === "golden" || (ma20 && close != null && ma20.value != null && Math.abs(close - ma20.value) / close <= 0.03), text: maNotes[0] + "；" + kdNote },
+      { step: "4. 分批進場", ok: batches.length > 0, text: batches.length ? ("計畫 " + batches.map(function (b) { return b.price; }).join("／") + " 元") : "—" },
+      { step: "5. 設定風險", ok: stop != null, text: stop != null ? ("停損約 " + stop + (rr != null ? ("，風報比 1:" + rr.toFixed(2)) : "")) : "—" },
+      { step: "6. 分批賣出", ok: target1 != null, text: target1 != null ? ("壓力／目標約 " + target1 + (target2 != null ? (" → " + target2) : "")) : "—" }
+    ];
+
+    return {
+      ok: true,
+      name: advice.name,
+      code: stockId,
+      close: close,
+      advice: advice.advice,
+      score: advice.score,
+      atr: atrNow,
+      detail: detail,
+      disclose: disclose,
+      fund: advice.fund,
+      chip: advice.chip,
+      tech: tech,
+      patterns: advice.patterns,
+      buyPoints: advice.buyPoints,
+      sellPoints: advice.sellPoints,
+      body: {
+        eps: { note: epsNote, tone: epsTone, years: epsYears },
+        roe: { value: roe != null ? Math.round(roe * 10) / 10 : null, note: roeNote, grade: roeG },
+        pe: {
+          value: per && per.per != null ? per.per : null,
+          histMed: peHistMed != null ? Math.round(peHistMed * 10) / 10 : null,
+          pbr: per && per.pbr != null ? per.pbr : null,
+          yield: per && per.yield != null ? per.yield : null
+        },
+        fair: { mid: fair, low: fairLow, high: fairHigh, note: fairNote, valuation: valuation, tone: valuationTone },
+        revenue: { note: revNote, tone: revTone, streak: revStreak, rows: revRows.slice(0, 6) },
+        debt: { ratio: debtRatio, note: debtNote, cashNote: cashNote },
+        ma: { notes: maNotes, mas: mas },
+        levels: { support: supportPx, resist: resistPx },
+        kd: Object.assign({}, kdNow, { note: kdNote }),
+        volume: { note: volumeNote, tone: volumeTone },
+        batches: batches,
+        exit: {
+          stop: stop,
+          target1: target1,
+          target2: target2,
+          rr: rr != null ? Math.round(rr * 100) / 100 : null
+        },
+        checklist: checklist
+      }
     };
   }
 
@@ -7936,6 +8331,7 @@
     explainKRange: explainKRange,
     watchChips: watchChips,
     stockAdvice: stockAdvice,
+    stockInvestPlan: stockInvestPlan,
     intradaySessionDiagnose: intradaySessionDiagnose,
     watchSessionDiagnose: watchSessionDiagnose,
     yahooOneMinBars: yahooOneMinBars,

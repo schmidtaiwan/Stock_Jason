@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 301;
+  const PAGE_BUILD = 302;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -4549,6 +4549,7 @@
     const view = $("view-stock");
     const btn = $("stock-detail-toggle");
     const details = $("stock-chart-details");
+    const invest = $("stock-invest");
     const extra = $("stock-detail");
     const mops = $("stock-mops");
     if (view) view.classList.toggle("chart-compact", !stockDetailsOn);
@@ -4557,7 +4558,7 @@
       btn.textContent = stockDetailsOn ? "細部資料" : "顯示細部";
     }
     if (details) details.hidden = !stockDetailsOn;
-    [extra, mops].forEach(function (el) {
+    [invest, extra, mops].forEach(function (el) {
       if (!el) return;
       if (!stockDetailsOn) el.classList.add("chart-details-collapsed");
       else el.classList.remove("chart-details-collapsed");
@@ -7219,6 +7220,119 @@
     }
   }
 
+  function renderStockInvest(pack) {
+    const box = $("stock-invest");
+    if (!box) return;
+    if (!pack) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    if (!pack.ok) {
+      box.innerHTML = '<article class="card stock-invest-card"><p class="note">' +
+        esc(pack.reason || "投資分析暫不可用") + "</p></article>";
+      return;
+    }
+    const b = pack.body || {};
+    const adviceCls = String(pack.advice || "").indexOf("買") >= 0
+      ? "up"
+      : (String(pack.advice || "").indexOf("賣") >= 0 || String(pack.advice || "").indexOf("減") >= 0 ? "down" : "");
+    const epsYears = (b.eps && b.eps.years) || [];
+    const epsTable = epsYears.length
+      ? '<table class="eps-table invest-eps"><thead><tr><th>年</th><th>EPS</th><th>別</th></tr></thead><tbody>' +
+        epsYears.map(function (row) {
+          return "<tr><td>" + row.year + "</td><td>" +
+            (row.eps == null ? "—" : Number(row.eps).toFixed(2)) +
+            "</td><td>" + esc(row.kind) + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : "";
+    const batches = (b.batches || []).map(function (row) {
+      return "<tr><td>" + esc(row.part) + "</td><td>" + fmt(row.price) +
+        "</td><td>" + esc(row.note) + "</td></tr>";
+    }).join("");
+    const checklist = (b.checklist || []).map(function (row) {
+      return '<li class="' + (row.ok ? "up" : "") + '"><strong>' + esc(row.step) +
+        "</strong> " + esc(row.text) + "</li>";
+    }).join("");
+    const maLis = ((b.ma && b.ma.notes) || []).map(function (n) {
+      return "<li>" + esc(n) + "</li>";
+    }).join("");
+    const fundNotes = ((pack.fund && pack.fund.notes) || []).map(function (n) {
+      return "<li>" + esc(n) + "</li>";
+    }).join("");
+
+    box.innerHTML =
+      '<article class="card stock-invest-card">' +
+      "<h3>投資分析表 · " + esc(pack.name || "") + " " + esc(pack.code || "") +
+      ' · <span class="' + adviceCls + '">' + esc(pack.advice || "觀望") + "</span></h3>" +
+      "<p>現價 " + fmt(pack.close) +
+      (pack.atr != null ? " · ATR " + fmt(pack.atr) : "") +
+      " · 綜合分 " + esc(String(pack.score)) +
+      '</p><p class="fine">順序依 SOP：基本面 → 合理價 → 技術買點 → 分批進場 → 賣出／停損。規則試算，非投資建議。</p>' +
+
+      "<h4>一、公司體質</h4>" +
+      '<ul class="stat-list">' +
+      '<li><span>EPS</span><strong class="' + esc((b.eps && b.eps.tone) || "") + '">' +
+      esc((b.eps && b.eps.note) || "—") + "</strong></li>" +
+      '<li><span>ROE</span><strong class="' + esc((b.roe && b.roe.grade && b.roe.grade.tone) || "") + '">' +
+      (b.roe && b.roe.value != null ? b.roe.value.toFixed(1) + "% · " : "") +
+      esc((b.roe && b.roe.grade && b.roe.grade.label) || "—") + "</strong></li>" +
+      "<li><span>本益比</span><strong>" +
+      (b.pe && b.pe.value != null ? Number(b.pe.value).toFixed(1) + " 倍" : "—") +
+      (b.pe && b.pe.histMed != null ? "（歷史中位 " + Number(b.pe.histMed).toFixed(1) + "）" : "") +
+      "</strong></li>" +
+      '<li><span>合理價</span><strong class="' + esc((b.fair && b.fair.tone) || "") + '">' +
+      (b.fair && b.fair.mid != null
+        ? (fmt(b.fair.low) + "～" + fmt(b.fair.high) + " · " + esc(b.fair.valuation))
+        : "—") +
+      "</strong></li>" +
+      '<li><span>營收</span><strong class="' + esc((b.revenue && b.revenue.tone) || "") + '">' +
+      esc((b.revenue && b.revenue.note) || "—") + "</strong></li>" +
+      "<li><span>負債／現金流</span><strong>" + esc((b.debt && b.debt.note) || "—") +
+      "</strong><small>" + esc((b.debt && b.debt.cashNote) || "") + "</small></li>" +
+      "</ul>" + epsTable +
+      (fundNotes ? "<p class=\"fine\">三率備註</p><ul class=\"stat-list\">" + fundNotes + "</ul>" : "") +
+
+      "<h4>二、技術面買點</h4>" +
+      '<ul class="stat-list">' +
+      "<li><span>均線</span><strong></strong></li></ul><ul>" + maLis + "</ul>" +
+      '<ul class="stat-list">' +
+      "<li><span>支撐</span><strong>" + (b.levels && b.levels.support != null ? fmt(b.levels.support) : "—") + "</strong></li>" +
+      "<li><span>壓力</span><strong>" + (b.levels && b.levels.resist != null ? fmt(b.levels.resist) : "—") + "</strong></li>" +
+      "<li><span>KD</span><strong>" + esc((b.kd && b.kd.note) || "—") + "</strong></li>" +
+      '<li><span>成交量</span><strong class="' + esc((b.volume && b.volume.tone) || "") + '">' +
+      esc((b.volume && b.volume.note) || "—") + "</strong></li>" +
+      "</ul>" +
+
+      "<h4>三、分批買進計畫</h4>" +
+      (batches
+        ? '<div class="watch-table-wrap"><table class="watch-table invest-batch"><thead><tr><th>批次</th><th>參考價</th><th>說明</th></tr></thead><tbody>' +
+          batches + "</tbody></table></div>"
+        : '<p class="note">尚無分批計畫</p>') +
+      '<p class="fine">分批不是越跌越買；若基本面惡化應停止加碼。</p>' +
+
+      "<h4>四、賣出／停損</h4>" +
+      '<ul class="stat-list">' +
+      "<li><span>停損</span><strong class=\"down\">" +
+      (b.exit && b.exit.stop != null ? fmt(b.exit.stop) : "—") + "</strong></li>" +
+      "<li><span>目標一</span><strong class=\"up\">" +
+      (b.exit && b.exit.target1 != null ? fmt(b.exit.target1) : "—") + "</strong></li>" +
+      "<li><span>目標二</span><strong class=\"up\">" +
+      (b.exit && b.exit.target2 != null ? fmt(b.exit.target2) : "—") + "</strong></li>" +
+      "<li><span>風報比</span><strong>" +
+      (b.exit && b.exit.rr != null ? ("1 : " + b.exit.rr) : "—") + "</strong></li>" +
+      "</ul>" +
+      ((pack.sellPoints || []).length
+        ? "<ul>" + pack.sellPoints.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>"
+        : "") +
+
+      "<h4>五、SOP 檢查清單</h4>" +
+      '<ol class="invest-checklist">' + checklist + "</ol>" +
+      '<p class="fine">最低／最高點事後才知道；目標是合理偏低買、高估減碼。詳細財報與營收表見下方公開資訊。</p>' +
+      "</article>";
+  }
+
   function renderStockDetail(detail, chipx) {
     const box = $("stock-detail");
     if (!box) return;
@@ -7232,20 +7346,33 @@
     const own = detail.ownership || {};
     const m = detail.margins || {};
     const per = detail.per;
+    // 順序：行情 → 三率 → EPS／估值摘要 → 籌碼 → 量能（與上方投資分析表互補）
     const quoteHtml = q
-      ? '<article class="card"><h3>今日行情 ' + esc(q.date.slice(5)) + "</h3><p>收 " + fmt(q.close) +
+      ? '<article class="card"><h3>0. 今日行情 ' + esc(q.date.slice(5)) + "</h3><p>收 " + fmt(q.close) +
         ' <span class="' + pctClass((q.spread || 0) / (q.close - (q.spread || 0) || 1)) + '">' +
         (q.spread > 0 ? "+" : "") + fmt(q.spread) + "</span></p><p>最高 " + fmt(q.high) + " · 最低 " + fmt(q.low) +
         " · 成交 " + (q.volume != null ? Math.round(q.volume / 1000).toLocaleString("zh-Hant") + " 張" : "—") +
         "</p></article>"
       : "";
-    const chipsHtml = '<article class="card"><h3>今日籌碼日報 ' + esc((detail.chipDate || "").slice(5)) +
+    const finHtml = '<article class="card"><h3>1. 財務三率（毛利／營益／淨利）</h3><ul class="stat-list">' +
+      "<li><span>毛利率</span><strong>" + formatRateTriple(m.grossHist || [m.gross], m.grossTrend) + "</strong></li>" +
+      "<li><span>營益率</span><strong>" + formatRateTriple(m.opHist || [m.op], m.opTrend) + "</strong></li>" +
+      "<li><span>淨利率</span><strong>" + formatRateTriple(m.netHist || [m.net], m.netTrend) + "</strong></li>" +
+      '</ul><p class="fine">依序本季／上季／上上季；符號為本季對上季。資料截至 ' + esc(m.date || "—") + "。</p></article>";
+    const epsHtml = '<article class="card"><h3>2. EPS／本益比明細</h3><table class="eps-table"><thead><tr><th>年</th><th>EPS</th><th>別</th></tr></thead><tbody>' +
+      (detail.epsYears || []).map(function (row) {
+        return "<tr><td>" + row.year + "</td><td>" + (row.eps == null ? "—" : row.eps.toFixed(2)) + "</td><td>" + esc(row.kind) + "</td></tr>";
+      }).join("") + "</tbody></table><p>本益比 " + (per && per.per != null ? per.per.toFixed(2) + " 倍" : "—") +
+      " · 股價淨值比 " + (per && per.pbr != null ? per.pbr.toFixed(2) : "—") +
+      " · 殖利率 " + (per && per.yield != null ? per.yield.toFixed(2) + "%" : "—") +
+      '</p><p class="fine">前兩年為財報季 EPS 加總；今年未滿四季會年化。後兩年依近兩年成長粗估，不是券商正式預估。合理價見上方投資分析表。</p></article>';
+    const chipsHtml = '<article class="card"><h3>3. 今日籌碼日報 ' + esc((detail.chipDate || "").slice(5)) +
       '</h3><div class="chip-grid">' + (detail.chipCards || []).map(function (c) {
         return '<div class="chip-cell"><span class="tag ' + c.tone.cls + '">' + esc(c.tone.label) +
           "</span><div>" + esc(c.name) + '</div><strong class="' + (c.net > 0 ? "up" : c.net < 0 ? "down" : "") + '">' +
           lotsText(c.net) + "</strong></div>";
       }).join("") + '</div><p class="fine">依當日買賣超佔成交比重粗分大買／中買／中立／中賣／大賣。</p></article>';
-    const ownHtml = '<article class="card"><h3>籌碼分佈</h3><ul class="stat-list">' +
+    const ownHtml = '<article class="card"><h3>4. 籌碼分佈（近 5 日）</h3><ul class="stat-list">' +
       "<li><span>外資持股占比</span><strong>" + pctText(own.foreignPct) + "</strong></li>" +
       "<li><span>外資剩餘可投資占比</span><strong>" + pctText(own.foreignRemain) + "</strong></li>" +
       '<li><span>近 5 日外資買賣超</span><strong class="' + ((own.flow5 && own.flow5.foreign) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.foreign) + "</strong></li>" +
@@ -7253,19 +7380,7 @@
       '<li><span>近 5 日自營買賣超</span><strong class="' + ((own.flow5 && own.flow5.dealer) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.dealer) + "</strong></li>" +
       '<li><span>近 5 日法人合計</span><strong class="' + ((own.flow5 && own.flow5.total) > 0 ? "up" : "down") + '">' + lotsText(own.flow5 && own.flow5.total) + "</strong></li>" +
       '</ul><p class="fine">持股占比目前公開資料主要是外資；投信／自營以近 5 日買賣超代表法人籌碼流向。</p></article>';
-    const finHtml = '<article class="card"><h3>財務狀況（三率）</h3><ul class="stat-list">' +
-      "<li><span>毛利率</span><strong>" + formatRateTriple(m.grossHist || [m.gross], m.grossTrend) + "</strong></li>" +
-      "<li><span>營益率</span><strong>" + formatRateTriple(m.opHist || [m.op], m.opTrend) + "</strong></li>" +
-      "<li><span>淨利率</span><strong>" + formatRateTriple(m.netHist || [m.net], m.netTrend) + "</strong></li>" +
-      '</ul><p class="fine">依序本季／上季／上上季；符號為本季對上季。資料截至 ' + esc(m.date || "—") + "。</p></article>";
-    const epsHtml = '<article class="card"><h3>EPS 與本益比</h3><table class="eps-table"><thead><tr><th>年</th><th>EPS</th><th>別</th></tr></thead><tbody>' +
-      (detail.epsYears || []).map(function (row) {
-        return "<tr><td>" + row.year + "</td><td>" + (row.eps == null ? "—" : row.eps.toFixed(2)) + "</td><td>" + esc(row.kind) + "</td></tr>";
-      }).join("") + "</tbody></table><p>本益比 " + (per && per.per != null ? per.per.toFixed(2) + " 倍" : "—") +
-      " · 股價淨值比 " + (per && per.pbr != null ? per.pbr.toFixed(2) : "—") +
-      " · 殖利率 " + (per && per.yield != null ? per.yield.toFixed(2) + "%" : "—") +
-      '</p><p class="fine">前兩年為財報季 EPS 加總；今年未滿四季會年化。後兩年依近兩年成長粗估（基期過低或成長過猛則略過／限幅），不是券商正式預估。</p></article>';
-    const volHtml = '<article class="card"><h3>近 60 日成交張數</h3><ul class="vol-list">' +
+    const volHtml = '<article class="card"><h3>5. 近 60 日成交張數</h3><ul class="vol-list">' +
       (detail.volumes || []).map(function (row) {
         return "<li><span>" + esc(row.date.slice(5)) + '</span><strong class="' + (row.spread > 0 ? "up" : row.spread < 0 ? "down" : "") + '">' +
           row.lots.toLocaleString("zh-Hant") + "</strong></li>";
@@ -7290,7 +7405,7 @@
             }).join("") + "</ul>"
             : "")
         : '<p class="fine">' + esc(chipx.note || "") + "</p>";
-      healthHtml = '<article class="card"><h3>籌碼健檢 · ' + esc(chipx.bias) +
+      healthHtml = '<article class="card"><h3>6. 籌碼健檢 · ' + esc(chipx.bias) +
         ' <span class="tag ' + (chipx.tone && chipx.tone.cls || "") + '">' + esc(chipx.tone && chipx.tone.label || "") +
         "</span></h3><ul class=\"stat-list health-list\">" + lights +
         "</ul><ul class=\"stat-list\">" +
@@ -7299,56 +7414,77 @@
         "<li><span>集中度近似 5 日</span><strong>" + (chipx.conc && chipx.conc.d5 != null ? (chipx.conc.d5 * 100).toFixed(1) + "%" : "—") + "</strong></li>" +
         "</ul>" + brokerHtml + "</article>";
     }
-    box.innerHTML = quoteHtml + chipsHtml + healthHtml + ownHtml + finHtml + epsHtml + volHtml;
+    box.innerHTML = quoteHtml + finHtml + epsHtml + chipsHtml + ownHtml + healthHtml + volHtml;
   }
 
   async function loadStockDetail(row) {
     const box = $("stock-detail");
     const mopsBox = $("stock-mops");
+    const investBox = $("stock-invest");
     if (!box) return;
     if (!row) {
       stockChipCostLines = null;
+      renderStockInvest(null);
       renderStockDetail(null);
       if (mopsBox) { mopsBox.hidden = true; mopsBox.innerHTML = ""; }
       return;
     }
     box.hidden = false;
     box.innerHTML = '<article class="card"><p class="status">正在讀籌碼與財務…</p></article>';
+    if (investBox) {
+      investBox.hidden = false;
+      investBox.innerHTML = '<article class="card"><p class="status">正在建立投資分析表…</p></article>';
+    }
     if (mopsBox) {
       mopsBox.hidden = false;
       mopsBox.innerHTML = '<article class="card"><p class="status">正在讀公開資訊（營收／財報／股利）…</p></article>';
     }
     try {
-      const detail = await M.stockDetail(row.secid, row.code);
+      const tasks = [
+        M.stockInvestPlan
+          ? M.stockInvestPlan(row.secid, row.code)
+          : M.stockDetail(row.secid, row.code).then(function (d) {
+            return { ok: false, detail: d, reason: "投資分析模組未載入" };
+          }),
+        (C && C.analyzeChip)
+          ? C.analyzeChip(row.code || M.twStockId(row.secid, row.code)).catch(function () { return null; })
+          : Promise.resolve(null)
+      ];
+      const got = await Promise.all(tasks);
       if (!state.stock || state.stock.secid !== row.secid) return;
-      let chipx = null;
-      if (C && C.analyzeChip) {
-        try {
-          chipx = await C.analyzeChip(row.code || M.twStockId(row.secid, row.code));
-        } catch (err) { chipx = null; }
-      }
-      if (!state.stock || state.stock.secid !== row.secid) return;
+      const invest = got[0];
+      const chipx = got[1];
+      const disclose = invest && invest.disclose ? invest.disclose : null;
       if (chipx && chipx.ok) {
         stockChipCostLines = { cost20: chipx.cost20, cost60: chipx.cost60 };
         if (state.stockPlot) drawStock();
       } else {
         stockChipCostLines = null;
       }
-      renderStockDetail(detail, chipx);
+      renderStockInvest(invest && invest.ok ? invest : null);
+      const detail = invest && invest.detail && invest.detail.ok ? invest.detail : null;
+      if (detail) renderStockDetail(detail, chipx);
+      else {
+        box.innerHTML = '<article class="card"><p class="note">' +
+          esc((invest && invest.reason) || "明細讀取失敗") + "</p></article>";
+      }
+      if (mopsBox) {
+        if (disclose && disclose.ok) renderMops(disclose, mopsBox);
+        else {
+          mopsBox.innerHTML = '<article class="card"><p class="note">' +
+            esc((disclose && disclose.reason) || "公開資訊讀取失敗") + "</p></article>";
+        }
+      }
       syncStockDetailsUi();
     } catch (err) {
       if (!state.stock || state.stock.secid !== row.secid) return;
       stockChipCostLines = null;
       box.innerHTML = '<article class="card"><p class="note">' + esc(err.message || "明細讀取失敗") + "</p></article>";
-    }
-    if (mopsBox && M.stockDisclose) {
-      try {
-        const pack = await M.stockDisclose(row.secid, row.code);
-        if (!state.stock || state.stock.secid !== row.secid) return;
-        renderMops(pack, mopsBox);
-        syncStockDetailsUi();
-      } catch (err) {
-        if (!state.stock || state.stock.secid !== row.secid) return;
+      if (investBox) {
+        investBox.innerHTML = '<article class="card"><p class="note">' +
+          esc(err.message || "投資分析讀取失敗") + "</p></article>";
+      }
+      if (mopsBox) {
         mopsBox.innerHTML = '<article class="card"><p class="note">' +
           esc(err.message || "公開資訊讀取失敗") + "</p></article>";
       }

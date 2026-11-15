@@ -991,6 +991,7 @@ canvas {
 #view-watch,
 #view-chart,
 .panel,
+.stock-invest,
 .stock-detail,
 .stock-mops,
 .stock-top,
@@ -1002,6 +1003,7 @@ canvas {
 #view-stock,
 #view-tool,
 .panel,
+.stock-invest,
 .stock-detail,
 .stock-mops {
   overflow-x: hidden;
@@ -1036,6 +1038,27 @@ canvas {
 }
 .legend { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .foreign { margin-top: 10px; }
+.stock-invest {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+.stock-invest.chart-details-collapsed { display: none !important; }
+.stock-invest-card h3 { margin: 0 0 8px; font-size: 17px; }
+.stock-invest-card h4 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  color: #c5d0dc;
+}
+.stock-invest .invest-checklist {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.stock-invest .invest-batch { min-width: 280px; font-size: 13px; }
 .stock-detail { margin-top: 12px; display: grid; gap: 10px; }
 .stock-detail .card h3 { margin: 0 0 8px; font-size: 16px; }
 .stock-live {
