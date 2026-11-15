@@ -3178,9 +3178,10 @@
       return fromDriveCloud();
     }
 
-    // 非開盤：短等 Bridge，否則 Drive
+    // 非開盤：多等 Bridge（手機 relay 常 >3s），否則 Drive
     if (bridgeKnown === false) return fromDriveCloud();
-    const n2 = await bridgeWithBudget(3000);
+    const mobileOff = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
+    const n2 = await bridgeWithBudget(mobileOff ? 12000 : 6000);
     if (n2 > 0) return n2;
     return fromDriveCloud();
   }
@@ -4508,7 +4509,8 @@
     const list = items || [];
     if (!list.length) return [];
     const wantFubon = preferFubonQuotes();
-    // 選富邦：台股成交價以 Live Bridge／Drive 富邦為主；否則證交所 MIS
+    const bridgeOn = bridgeLiveOnline();
+    // 成交價：Bridge／富邦快取優先（休市／MIS 掛掉時仍能顯示）；開盤且選 MIS 時再以 MIS 補洞／覆寫
     const codes = [];
     const secids = [];
     list.forEach(function (item) {
@@ -4526,11 +4528,17 @@
     });
     const forceMis = !wantFubon && isMisForceWindow();
     if (forceMis) bustLiveCaches(secids);
+    // 休市可接受較舊的富邦最後一盤；Bridge 在線時強制寫入 cache
+    const fubonMaxAge = isTwSessionOpen()
+      ? (wantFubon || bridgeOn
+        ? Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 5 * 60_000)
+        : FUBON_DRIVE_SEED_MAX_AGE_MS)
+      : Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 7 * 86400000);
     try {
       await hydrateFubonFromDrive(codes, {
-        maxAgeMs: wantFubon ? Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 5 * 60_000) : FUBON_DRIVE_SEED_MAX_AGE_MS,
+        maxAgeMs: fubonMaxAge,
         force: true,
-        forceOverwrite: wantFubon
+        forceOverwrite: wantFubon || bridgeOn || !isTwSessionOpen()
       });
     } catch (errFb) { /* ignore */ }
     if (!wantFubon) {
@@ -4548,8 +4556,16 @@
         if (byCode[id] && byCode[id].price > 0) return;
         const hit = misQuoteCache.get(id);
         if (!hit || !hit.quote || !(hit.quote.price > 0)) return;
-        if (wantFubon && !hit.fromFubonDrive) return;
-        byCode[id] = hit.quote;
+        // 選富邦或 Bridge 在線／休市：允許富邦快取當成交價
+        if (wantFubon || bridgeOn || !isTwSessionOpen()) {
+          byCode[id] = hit.quote;
+          return;
+        }
+        if (hit.fromFubonDrive && !forceMis) {
+          byCode[id] = hit.quote;
+          return;
+        }
+        if (!hit.fromFubonDrive) byCode[id] = hit.quote;
       });
     }
     fillFromCache(codes);
@@ -4565,14 +4581,25 @@
         } catch (errMis) { /* ignore */ }
       }
     } else {
+      // 不可整表覆寫：MIS 空／失敗時要保留上面已灌入的富邦／Bridge 價
+      let misBoard = {};
       try {
-        if (forceMis) byCode = await misQuotesForced(codes) || {};
-        else byCode = await misQuotes(codes) || {};
+        if (forceMis) misBoard = await misQuotesForced(codes) || {};
+        else misBoard = await misQuotes(codes) || {};
       } catch (err) {
-        try { byCode = await misQuotes(codes) || {}; } catch (err2) { byCode = {}; }
+        try { misBoard = await misQuotes(codes) || {}; } catch (err2) { misBoard = {}; }
       }
       codes.forEach(function (id) {
+        const mq = misBoard[id];
+        if (forceMis && mq && mq.price > 0) {
+          byCode[id] = mq;
+          return;
+        }
         if (byCode[id] && byCode[id].price > 0) return;
+        if (mq && mq.price > 0) {
+          byCode[id] = mq;
+          return;
+        }
         const hit = misQuoteCache.get(id);
         if (hit && hit.quote && hit.quote.price > 0) byCode[id] = hit.quote;
       });
