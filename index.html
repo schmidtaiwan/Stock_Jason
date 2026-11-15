@@ -21,7 +21,7 @@
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 312;
+    var PAGE = 313;
     var urls = [
       // 優先同源／raw；jsDelivr @main 常慢半拍，放最後且僅作參考
       "build.json?_=" + Date.now() + "&r=" + Math.random(),
@@ -703,7 +703,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
-    var PAGE = 312;
+    var PAGE = 313;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");

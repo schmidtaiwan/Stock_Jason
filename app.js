@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 312;
+  const PAGE_BUILD = 313;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -984,30 +984,62 @@
         }
       }
 
-      // 富邦：Bridge 有 fubon-live；Bridge 離線時改讀雲端備援
+      // 富邦：優先看 health.fubon（輕量）；live 空／大包 502 時不要誤判紅燈
       const bridgeOk = connState.bridge.state === "ok";
       const bridgeWarn = connState.bridge.state === "warn";
       const twiiFubonOk = connState.fubon && connState.fubon.state === "ok" &&
         /加權已用富邦|富邦來源/.test(String(connState.fubon.detail || ""));
       if (bridgeOk) {
+        let health = connState.kgi._health || connState.fubon._health || null;
+        if (!health && B.health) {
+          health = await B.health().catch(function () { return null; });
+          if (health) {
+            connState.kgi._health = health;
+            connState.fubon._health = health;
+          }
+        }
+        const fubonOn = !!(health && (health.fubon === true || health.fubon === "true"));
+        const hq = health && health.fubonQuotes != null ? Number(health.fubonQuotes) : NaN;
         let liveOk = false;
+        let liveN = isFinite(hq) ? hq : 0;
+        let ageSec = null;
         let liveDetail = "";
         try {
-          const snap = B && B.readFubonLive ? await B.readFubonLive() : null;
-          const n = snap && snap.byCode ? Object.keys(snap.byCode).length : 0;
-          const at = snap && Number(snap.at || 0);
-          const ageSec = at > 0 ? Math.round((Date.now() - at) / 1000) : null;
-          liveOk = n > 0;
-          liveDetail = liveOk
-            ? ("連線正常。\nBridge 富邦快取 " + n + " 檔" +
+          // health 已有檔數時不必硬抓大包（Funnel 易 502）
+          if (!(liveN > 0) && B && B.readFubonLive) {
+            const snap = await B.readFubonLive();
+            liveN = snap && snap.byCode ? Object.keys(snap.byCode).length : 0;
+            const at = snap && Number(snap.at || 0);
+            ageSec = at > 0 ? Math.round((Date.now() - at) / 1000) : null;
+          }
+          liveOk = liveN > 0;
+          if (liveOk) {
+            liveDetail = "連線正常。\nBridge 富邦快取 " + liveN + " 檔" +
               (ageSec != null ? ("，約 " + ageSec + " 秒前更新。") : "。") +
-              (pref === "fubon" ? "\n目前加權來源：富邦。" : "\n目前加權來源：證交所 MIS。"))
-            : "連線異常。\nBridge 已通，但尚無富邦報價快取。請確認 LiveBridge 已登入富邦。";
+              (pref === "fubon" ? "\n目前加權來源：富邦。" : "\n目前加權來源：證交所 MIS。");
+          } else if (fubonOn) {
+            liveDetail = "連線中。\nLiveBridge 已登入富邦（庫存 " +
+              (health && health.holdings != null ? health.holdings : "?") +
+              " 檔），行情快取尚在刷新或盤後暫無價。\n" +
+              (health && health.status ? ("狀態：" + health.status + "\n") : "") +
+              "點此燈可重探；若一直無報價請在家裡按「登入富邦並啟動」。";
+          } else {
+            liveDetail = "連線異常。\nBridge 已通，但尚未登入富邦。\n請在 LiveBridge 按「登入富邦並啟動」。";
+          }
         } catch (err) {
-          liveDetail = "連線異常。\n讀取 Bridge 富邦報價失敗：" +
-            ((err && err.message) ? err.message : String(err || ""));
+          if (fubonOn) {
+            liveDetail = "連線中。\n已登入富邦，但讀取報價快取失敗（" +
+              ((err && err.message) ? err.message : String(err || "")) +
+              "）。\n多半是 Funnel／大包逾時；庫存仍可用。點此燈重探。";
+          } else {
+            liveDetail = "連線異常。\n讀取 Bridge 富邦報價失敗：" +
+              ((err && err.message) ? err.message : String(err || ""));
+          }
         }
-        setConnItem("fubon", liveOk ? "ok" : "bad", liveDetail);
+        // 已登入 → 綠／黃；未登入才紅
+        if (liveOk) setConnItem("fubon", "ok", liveDetail);
+        else if (fubonOn) setConnItem("fubon", "warn", liveDetail);
+        else setConnItem("fubon", "bad", liveDetail);
       } else {
         let driveLive = connState.bridge._cloudLive || null;
         if (!driveLive && D.readFubonLive) {
