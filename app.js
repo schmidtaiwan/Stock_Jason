@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 284;
+  const PAGE_BUILD = 285;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -2298,7 +2298,6 @@
         (!allOn && !fubonLocked
           ? '<button type="button" class="ghost" id="watch-group-rename" role="menuitem">重新命名</button>'
           : "") +
-        '<button type="button" class="ghost" id="watch-group-export" role="menuitem">匯出富邦 JSON</button>' +
         (!allOn && !fubonLocked && groups.length > 1
           ? '<button type="button" class="ghost danger" id="watch-group-del" role="menuitem">刪除群組</button>'
           : "");
@@ -7755,10 +7754,6 @@
     else if (t.id === "watch-group-rename") {
       setWatchGroupEditMenuOpen(false);
       renameWatchGroup();
-    }
-    else if (t.id === "watch-group-export") {
-      setWatchGroupEditMenuOpen(false);
-      exportWatchGroupFubonJson();
     }
     else if (t.id === "watch-group-del") {
       setWatchGroupEditMenuOpen(false);
