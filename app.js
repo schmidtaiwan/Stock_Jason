@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 279;
+  const PAGE_BUILD = 280;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -3069,6 +3069,9 @@
     watchTapeJudgeTimer = 0;
   }
 
+  let watchTapeHintBusy = false;
+  let watchTapeHintPending = false;
+
   function watchTapeHintsMissing() {
     if (!book.watch || !book.watch.length) return false;
     return book.watch.some(function (item) {
@@ -3076,6 +3079,16 @@
       if (!code) return false;
       const hit = watchTapeCache[code];
       return !hit || !hit.hint;
+    });
+  }
+
+  function clearWatchTapeBusyFlags() {
+    Object.keys(watchTapeCache).forEach(function (code) {
+      const hit = watchTapeCache[code];
+      if (hit && hit.busy) {
+        hit.busy = false;
+        if (!hit.hint) hit.at = 0;
+      }
     });
   }
 
@@ -3094,8 +3107,22 @@
 
     const box = $("watch-list");
     if (box && !isWatchMini() && book.watch && book.watch.length) {
-      watchTapeHintGen += 1;
-      refreshWatchTapeHints(box, watchTapeHintGen).catch(function () { /* ignore */ });
+      // 單飛：避免重入把 busy 卡成「…」且中斷半途佇列
+      if (watchTapeHintBusy) {
+        watchTapeHintPending = true;
+      } else {
+        watchTapeHintBusy = true;
+        watchTapeHintGen += 1;
+        const gen = watchTapeHintGen;
+        refreshWatchTapeHints(box, gen).catch(function () { /* ignore */ }).then(function () {
+          watchTapeHintBusy = false;
+          if (gen !== watchTapeHintGen) clearWatchTapeBusyFlags();
+          if (watchTapeHintPending) {
+            watchTapeHintPending = false;
+            if (watchTapeHintsMissing()) runTapeJudgeIfDue(true);
+          }
+        });
+      }
     }
     // 個股頁：強制下一輪用新槽位重算判讀
     if (state.view === "stock" && state.stock) {
@@ -5201,7 +5228,7 @@
     if (myGen !== watchTapeHintGen) return;
     applyWatchTapeCacheToBox(box);
 
-    const FAIL_TTL = 60_000;
+    const FAIL_TTL = isTapeJudgeWindow() ? 60_000 : 12_000;
     const need = [];
     book.watch.forEach(function (item) {
       const code = String(item && item.code || "").toUpperCase();
@@ -5212,13 +5239,13 @@
       if (hit && !hit.hint && hit.at && (now - hit.at) < FAIL_TTL) return;
       if (need.indexOf(code) < 0) need.push(code);
     });
-    // 焦點代號先抓；休市放寬批次（last-session 預抓）
+    // 焦點代號先抓；休市一次清完目前群組
     need.sort(function (a, b) {
       if (a === focusCode) return -1;
       if (b === focusCode) return 1;
       return 0;
     });
-    const queue = need.slice(0, isTapeJudgeWindow() ? 12 : 40);
+    const queue = need.slice(0, isTapeJudgeWindow() ? 12 : Math.max(40, book.watch.length));
     queue.forEach(function (code) {
       const prev = watchTapeCache[code] || { at: 0, hint: null };
       watchTapeCache[code] = { at: prev.at, hint: prev.hint, slot: prev.slot, busy: true };
@@ -5227,16 +5254,23 @@
 
     let cursor = 0;
     const workers = [];
-    const CONC = 3;
+    const CONC = isTapeJudgeWindow() ? 3 : 5;
     async function worker() {
       while (cursor < queue.length) {
-        if (myGen !== watchTapeHintGen) return;
+        if (myGen !== watchTapeHintGen) {
+          clearWatchTapeBusyFlags();
+          return;
+        }
         const i = cursor++;
         const code = queue[i];
         let tape = null;
         try {
           if (M.fetchFubonTapeFromDrive) tape = await M.fetchFubonTapeFromDrive(code);
         } catch (err) { tape = null; }
+        if (myGen !== watchTapeHintGen) {
+          clearWatchTapeBusyFlags();
+          return;
+        }
         const hint = tape && tape.ticks ? hintFromTapeTicks(tape.ticks, {}) : null;
         watchTapeCache[code] = { at: Date.now(), hint: hint, slot: slot, busy: false };
         if (box.isConnected) {

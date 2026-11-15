@@ -467,7 +467,12 @@
     const id = String(code || "").trim().toUpperCase();
     if (!id) return null;
     try {
-      const tape = await fetchJson("/api/fubon-tape/" + encodeURIComponent(id), false);
+      // 休市 on-demand 可能現算 1 分Ｋ，手機給較長逾時
+      const tape = await fetchJson(
+        "/api/fubon-tape/" + encodeURIComponent(id),
+        false,
+        isMobileUa() ? 22000 : 14000
+      );
       if (!tape || !Array.isArray(tape.ticks) || tape.ticks.length < 4) return null;
       return tape;
     } catch (err) {
