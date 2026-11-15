@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=303">
+  <link rel="stylesheet" href="app.css?v=304">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 303;
+    var PAGE = 304;
     var urls = [
       "build.json?_=" + Date.now() + "&r=" + Math.random(),
       "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now(),
@@ -213,6 +213,9 @@
             <strong id="stock-title">個股</strong>
             <button id="stock-back" class="ghost" type="button">回自選</button>
           </div>
+          <div id="stock-session" class="stock-session stock-session-top" hidden></div>
+          <div id="stock-live" class="stock-live stock-live-top" hidden></div>
+          <div id="stock-actors" class="stock-actors stock-actors-top" hidden></div>
           <div class="range-row">
             <div id="stock-ranges" class="ranges"></div>
             <div class="span-dates" aria-label="個股區間日期">
@@ -240,7 +243,6 @@
             </div>
             <button id="stock-detail-toggle" class="ghost chart-detail-btn" type="button" aria-pressed="true">細部資料</button>
           </div>
-          <div id="stock-session" class="stock-session" hidden></div>
           <div class="card chart-card">
             <canvas id="stock-chart" width="640" height="520"></canvas>
             <p id="stock-chart-status" class="status" role="status"></p>
@@ -269,8 +271,6 @@
           </div>
           <div id="stock-k-patterns" class="k-patterns stock-k-patterns-foot" hidden></div>
           <div id="stock-invest" class="stock-invest" hidden></div>
-          <div id="stock-live" class="stock-live" hidden></div>
-          <div id="stock-actors" class="stock-actors" hidden></div>
           <div id="stock-detail" class="stock-detail" hidden></div>
           <div id="stock-mops" class="stock-mops" hidden></div>
           <p id="stock-hover" class="tip" hidden></p>
@@ -700,7 +700,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本，按「立即更新」才會真的換到新 JS（勿再寫死 v=268）
-    var PAGE = 303;
+    var PAGE = 304;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");

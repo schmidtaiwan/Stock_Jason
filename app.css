@@ -1225,6 +1225,24 @@ canvas {
 .stock-session {
   margin: 8px 0 10px;
 }
+/* 個股：盤中診斷／足跡置於「今」時間列上方 */
+.stock-session-top {
+  margin: 6px 0 8px;
+  order: 0;
+}
+.stock-live-top,
+.stock-actors-top {
+  margin: 0 0 8px;
+}
+.stock-live-top .stock-live-card,
+.stock-actors-top .card {
+  padding: 8px 10px;
+}
+.stock-top > .stock-session-top,
+.stock-top > .stock-live-top,
+.stock-top > .stock-actors-top {
+  width: 100%;
+}
 .stock-session-card {
   padding: 8px 10px;
 }
