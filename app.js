@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 274;
+  const PAGE_BUILD = 275;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -487,12 +487,12 @@
     }
   }
 
-  /** 頂部連線燈號：富邦／MIS／家裡／雲碟 */
+  /** 頂部連線燈號：富邦／MIS／家裡／谷歌 */
   const connState = {
     fubon: { state: "unknown", title: "富邦", detail: "尚未檢查" },
     mis: { state: "unknown", title: "MIS（證交所）", detail: "尚未檢查" },
     bridge: { state: "unknown", title: "家裡", detail: "尚未檢查" },
-    drive: { state: "unknown", title: "雲碟", detail: "尚未檢查" }
+    drive: { state: "unknown", title: "谷歌", detail: "尚未檢查" }
   };
   let connLampBound = false;
   let connRefreshBusy = false;
@@ -688,7 +688,7 @@
         const tok = D.accessToken ? D.accessToken() : "";
         if (!email) {
           setConnItem("drive", "bad",
-            "尚未 Google 登入。\n雲碟備援（行情／自選／籌碼）需登入後才可用。");
+            "尚未 Google 登入。\n谷歌雲端備援（行情／自選／籌碼）需登入後才可用。");
         } else if (D.isAllowed && !D.isAllowed(email)) {
           setConnItem("drive", "bad",
             "帳號不在白名單。\n目前：" + email + "\n請改用允許的 Gmail。");
@@ -719,7 +719,7 @@
         }
       } catch (driveErr) {
         setConnItem("drive", "bad",
-          "雲碟檢查失敗。\n原因：" + ((driveErr && driveErr.message) ? driveErr.message : String(driveErr || "")));
+          "谷歌檢查失敗。\n原因：" + ((driveErr && driveErr.message) ? driveErr.message : String(driveErr || "")));
       }
 
       paintConnLamps();
