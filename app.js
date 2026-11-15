@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 302;
+  const PAGE_BUILD = 303;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7220,6 +7220,133 @@
     }
   }
 
+  const RESEARCH_CHECK_ITEMS = [
+    { id: "f1", group: "基本面", w: 25, label: "三率穩定或改善" },
+    { id: "f2", group: "基本面", w: 25, label: "營收持續成長" },
+    { id: "f3", group: "基本面", w: 25, label: "EPS 經常性獲利成長" },
+    { id: "f4", group: "基本面", w: 25, label: "產業競爭優勢" },
+    { id: "v1", group: "估值", w: 25, label: "Forward PE 合理" },
+    { id: "v2", group: "估值", w: 25, label: "低於歷史合理估值區間" },
+    { id: "v3", group: "估值", w: 25, label: "同業比較具有吸引力" },
+    { id: "v4", group: "估值", w: 25, label: "有足夠安全邊際" },
+    { id: "h1", group: "財務健檢", w: 15, label: "ROE 品質良好" },
+    { id: "h2", group: "財務健檢", w: 15, label: "營業現金流健康" },
+    { id: "h3", group: "財務健檢", w: 15, label: "負債及償債能力合理" },
+    { id: "c1", group: "籌碼", w: 15, label: "外資與投信趨勢" },
+    { id: "c2", group: "籌碼", w: 15, label: "大股東持股變化" },
+    { id: "c3", group: "籌碼", w: 15, label: "融資籌碼風險" },
+    { id: "t1", group: "技術與量能", w: 10, label: "中期趨勢" },
+    { id: "t2", group: "技術與量能", w: 10, label: "支撐與壓力" },
+    { id: "t3", group: "技術與量能", w: 10, label: "量價配合" },
+    { id: "p1", group: "公開資訊", w: 10, label: "法說會展望" },
+    { id: "p2", group: "公開資訊", w: 10, label: "重大訊息" },
+    { id: "p3", group: "公開資訊", w: 10, label: "潛在風險與股本變動" }
+  ];
+  const RESEARCH_HORIZON_KEY = "sj-research-horizon";
+  const RESEARCH_DEPTH_KEY = "sj-research-depth";
+  const RESEARCH_CHECK_KEY = "sj-research-check|";
+
+  function researchCheckStore(code) {
+    const key = RESEARCH_CHECK_KEY + String(code || "").toUpperCase();
+    return {
+      load: function () {
+        try {
+          return JSON.parse(localStorage.getItem(key) || "{}") || {};
+        } catch (err) { return {}; }
+      },
+      save: function (map) {
+        try { localStorage.setItem(key, JSON.stringify(map || {})); } catch (err) { /* ignore */ }
+      },
+      clear: function () {
+        try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+      }
+    };
+  }
+
+  function researchMetaLoad() {
+    let horizon = "swing";
+    let depth = "full";
+    try {
+      horizon = localStorage.getItem(RESEARCH_HORIZON_KEY) || "swing";
+      depth = localStorage.getItem(RESEARCH_DEPTH_KEY) || "full";
+    } catch (err) { /* ignore */ }
+    return { horizon: horizon, depth: depth };
+  }
+
+  function researchMetaSave(horizon, depth) {
+    try {
+      if (horizon) localStorage.setItem(RESEARCH_HORIZON_KEY, horizon);
+      if (depth) localStorage.setItem(RESEARCH_DEPTH_KEY, depth);
+    } catch (err) { /* ignore */ }
+  }
+
+  function researchCheckScore(map) {
+    const groups = {};
+    RESEARCH_CHECK_ITEMS.forEach(function (item) {
+      if (!groups[item.group]) groups[item.group] = { w: item.w, n: 0, on: 0 };
+      groups[item.group].n += 1;
+      if (map[item.id]) groups[item.group].on += 1;
+    });
+    let done = 0;
+    let score = 0;
+    Object.keys(groups).forEach(function (g) {
+      const row = groups[g];
+      done += row.on;
+      if (row.n > 0) score += row.w * (row.on / row.n);
+    });
+    return { done: done, total: RESEARCH_CHECK_ITEMS.length, score: Math.round(score * 10) / 10 };
+  }
+
+  function bindStockResearchUi(code) {
+    const box = $("stock-invest");
+    if (!box || !code) return;
+    const store = researchCheckStore(code);
+    const meta = researchMetaLoad();
+    const horizonEl = box.querySelector("[data-research-horizon]");
+    const depthEl = box.querySelector("[data-research-depth]");
+    if (horizonEl) horizonEl.value = meta.horizon;
+    if (depthEl) depthEl.value = meta.depth;
+    function paintScore() {
+      const map = store.load();
+      const sc = researchCheckScore(map);
+      const doneEl = box.querySelector("[data-research-done]");
+      const scoreEl = box.querySelector("[data-research-score]");
+      if (doneEl) doneEl.textContent = sc.done + "/" + sc.total;
+      if (scoreEl) scoreEl.textContent = sc.score.toFixed(1) + " / 100";
+    }
+    box.querySelectorAll("[data-research-check]").forEach(function (el) {
+      const id = el.getAttribute("data-research-check");
+      const map = store.load();
+      el.checked = !!map[id];
+      el.addEventListener("change", function () {
+        const next = store.load();
+        if (el.checked) next[id] = 1;
+        else delete next[id];
+        store.save(next);
+        paintScore();
+      });
+    });
+    if (horizonEl) {
+      horizonEl.addEventListener("change", function () {
+        researchMetaSave(horizonEl.value, depthEl && depthEl.value);
+      });
+    }
+    if (depthEl) {
+      depthEl.addEventListener("change", function () {
+        researchMetaSave(horizonEl && horizonEl.value, depthEl.value);
+      });
+    }
+    const resetBtn = box.querySelector("[data-research-reset]");
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function () {
+        store.clear();
+        box.querySelectorAll("[data-research-check]").forEach(function (el) { el.checked = false; });
+        paintScore();
+      });
+    }
+    paintScore();
+  }
+
   function renderStockInvest(pack) {
     const box = $("stock-invest");
     if (!box) return;
@@ -7235,6 +7362,11 @@
       return;
     }
     const b = pack.body || {};
+    const q = b.quote || {};
+    const mg = b.margins || {};
+    const rp = b.report || {};
+    const fair = b.fair || {};
+    const sc = fair.scenarios || {};
     const adviceCls = String(pack.advice || "").indexOf("買") >= 0
       ? "up"
       : (String(pack.advice || "").indexOf("賣") >= 0 || String(pack.advice || "").indexOf("減") >= 0 ? "down" : "");
@@ -7251,86 +7383,201 @@
       return "<tr><td>" + esc(row.part) + "</td><td>" + fmt(row.price) +
         "</td><td>" + esc(row.note) + "</td></tr>";
     }).join("");
-    const checklist = (b.checklist || []).map(function (row) {
-      return '<li class="' + (row.ok ? "up" : "") + '"><strong>' + esc(row.step) +
-        "</strong> " + esc(row.text) + "</li>";
-    }).join("");
     const maLis = ((b.ma && b.ma.notes) || []).map(function (n) {
       return "<li>" + esc(n) + "</li>";
     }).join("");
-    const fundNotes = ((pack.fund && pack.fund.notes) || []).map(function (n) {
+    const maRows = ((b.ma && b.ma.mas) || []).map(function (m) {
+      return "<tr><td>" + esc(m.name) + "</td><td>" +
+        (m.value != null ? fmt(m.value) : "—") +
+        '</td><td class="' + (m.above ? "up" : "down") + '">' +
+        (m.above ? "之上" : "之下") + "</td></tr>";
+    }).join("");
+    const chipLis = ((b.chips && b.chips.notes) || []).map(function (n) {
       return "<li>" + esc(n) + "</li>";
     }).join("");
+    const links = (b.publicInfo && b.publicInfo.links) || {};
+    const linkRow = [
+      links.material ? '<a href="' + esc(links.material) + '" target="_blank" rel="noopener">重大訊息</a>' : "",
+      links.financial ? '<a href="' + esc(links.financial) + '" target="_blank" rel="noopener">財務報表</a>' : "",
+      links.ir ? '<a href="' + esc(links.ir) + '" target="_blank" rel="noopener">法說</a>' : "",
+      links.dividend ? '<a href="' + esc(links.dividend) + '" target="_blank" rel="noopener">股利</a>' : ""
+    ].filter(Boolean).join(" · ");
+
+    let checkHtml = "";
+    let lastGroup = "";
+    RESEARCH_CHECK_ITEMS.forEach(function (item) {
+      if (item.group !== lastGroup) {
+        if (lastGroup) checkHtml += "</div>";
+        checkHtml += '<div class="research-check-group"><h5>' + esc(item.group) +
+          "（權重 " + item.w + "%）</h5>";
+        lastGroup = item.group;
+      }
+      checkHtml += '<label class="research-check-item"><input type="checkbox" data-research-check="' +
+        esc(item.id) + '"> ' + esc(item.label) + "</label>";
+    });
+    if (lastGroup) checkHtml += "</div>";
 
     box.innerHTML =
-      '<article class="card stock-invest-card">' +
-      "<h3>投資分析表 · " + esc(pack.name || "") + " " + esc(pack.code || "") +
+      '<article class="card stock-invest-card" data-research-code="' + esc(pack.code || "") + '">' +
+      "<h3>個股研究報告 · " + esc(pack.name || "") + " " + esc(pack.code || "") +
       ' · <span class="' + adviceCls + '">' + esc(pack.advice || "觀望") + "</span></h3>" +
       "<p>現價 " + fmt(pack.close) +
       (pack.atr != null ? " · ATR " + fmt(pack.atr) : "") +
-      " · 綜合分 " + esc(String(pack.score)) +
-      '</p><p class="fine">順序依 SOP：基本面 → 合理價 → 技術買點 → 分批進場 → 賣出／停損。規則試算，非投資建議。</p>' +
+      " · 綜合分 " + esc(String(pack.score)) + "</p>" +
+      '<div class="research-meta">' +
+      '<label>投資時間 <select data-research-horizon>' +
+      '<option value="short">短線（1～10 日）</option>' +
+      '<option value="swing">波段（1～6 月）</option>' +
+      '<option value="mid">中長期（6～24 月）</option>' +
+      '<option value="long">長期（2～5 年）</option>' +
+      "</select></label>" +
+      '<label>分析深度 <select data-research-depth>' +
+      '<option value="full">完整：七大模組＋估值＋買賣</option>' +
+      '<option value="value">深入估值</option>' +
+      '<option value="entry">進場判斷</option>' +
+      "</select></label></div>" +
+      '<p class="fine">固定流程：行情 → 三率 → EPS → 籌碼 → 量能 → 健檢 → 公開資訊 → 合理估值 → 買賣決策。' +
+      "基本面決定值不值得投資，估值決定付多少錢，籌碼／技術協助何時進場。規則試算，非投資建議。</p>" +
 
-      "<h4>一、公司體質</h4>" +
+      "<h4>01 行情分析</h4>" +
       '<ul class="stat-list">' +
-      '<li><span>EPS</span><strong class="' + esc((b.eps && b.eps.tone) || "") + '">' +
+      "<li><span>現價</span><strong>" + fmt(q.close != null ? q.close : pack.close) + "</strong></li>" +
+      "<li><span>52 週高低</span><strong>" +
+      (q.lo52 != null && q.hi52 != null ? (fmt(q.lo52) + "～" + fmt(q.hi52)) : "—") +
+      (q.pct52 != null ? ("（約在區間 " + q.pct52 + "%）") : "") + "</strong></li>" +
+      "<li><span>趨勢判斷</span><strong>" + esc((b.ma && b.ma.bias) || "—") + "</strong></li>" +
+      "<li><span>支撐／壓力</span><strong>" +
+      (b.levels && b.levels.support != null ? fmt(b.levels.support) : "—") + " / " +
+      (b.levels && b.levels.resist != null ? fmt(b.levels.resist) : "—") + "</strong></li>" +
+      "<li><span>KD</span><strong>" + esc((b.kd && b.kd.note) || "—") + "</strong></li>" +
+      "</ul>" +
+      (maRows
+        ? '<div class="watch-table-wrap"><table class="watch-table invest-batch"><thead><tr><th>均線</th><th>數值</th><th>相對</th></tr></thead><tbody>' +
+          maRows + "</tbody></table></div>"
+        : "<ul>" + maLis + "</ul>") +
+
+      "<h4>02 三率分析</h4>" +
+      '<ul class="stat-list">' +
+      "<li><span>毛利率</span><strong>" + formatRateTriple(mg.grossHist || [mg.gross], null) + "</strong></li>" +
+      "<li><span>營益率</span><strong>" + formatRateTriple(mg.opHist || [mg.op], null) + "</strong></li>" +
+      "<li><span>稅後淨利率</span><strong>" + formatRateTriple(mg.netHist || [mg.net], null) + "</strong></li>" +
+      "<li><span>三率趨勢</span><strong>" + esc(mg.bias || mg.trend || "—") + "</strong></li>" +
+      "</ul><p class=\"fine\">資料日 " + esc(mg.date || "—") + "；請與同產業比較，勿跨產業硬比高低。</p>" +
+
+      "<h4>03 EPS 明細</h4>" +
+      '<ul class="stat-list">' +
+      '<li><span>研判</span><strong class="' + esc((b.eps && b.eps.tone) || "") + '">' +
       esc((b.eps && b.eps.note) || "—") + "</strong></li>" +
+      "<li><span>使用 EPS（TTM／年化／前瞻）</span><strong>" +
+      (b.eps && b.eps.ttm != null ? Number(b.eps.ttm).toFixed(2) : "—") + "</strong></li>" +
+      "</ul>" + epsTable +
+      '<p class="fine">後兩年若為粗估，需以法說／訂單驗證；一次性業外不可當常態 EPS。</p>' +
+
+      "<h4>04 籌碼分析</h4>" +
+      '<ul class="stat-list"><li><span>籌碼偏向</span><strong>' +
+      esc((b.chips && b.chips.bias) || "—") + "</strong><small>" +
+      esc((b.chips && b.chips.date) || "") + "</small></li></ul>" +
+      (chipLis ? "<ul class=\"stat-list\">" + chipLis + "</ul>" : "") +
+      '<p class="fine">籌碼是輔助，不能取代基本面。融資／大股東細節請對照下方公開資訊與健檢。</p>' +
+
+      "<h4>05 量能分析</h4>" +
+      '<ul class="stat-list">' +
+      '<li><span>量價判斷</span><strong class="' + esc((b.volume && b.volume.tone) || "") + '">' +
+      esc((b.volume && b.volume.note) || "—") + "</strong></li>" +
+      "<li><span>5／20／60 日均量</span><strong>" +
+      (b.volume && b.volume.avg5 != null ? b.volume.avg5.toLocaleString("zh-Hant") : "—") + " / " +
+      (b.volume && b.volume.avg20 != null ? b.volume.avg20.toLocaleString("zh-Hant") : "—") + " / " +
+      (b.volume && b.volume.avg60 != null ? b.volume.avg60.toLocaleString("zh-Hant") : "—") +
+      " 張</strong></li>" +
+      "<li><span>相對 20 日倍數</span><strong>" +
+      (b.volume && b.volume.ratio20 != null ? (b.volume.ratio20 + "×") : "—") + "</strong></li>" +
+      "</ul>" +
+
+      "<h4>06 公司健檢</h4>" +
+      '<ul class="stat-list">' +
+      "<li><span>健檢結論</span><strong>" + esc((b.health && b.health.bias) || "—") + "</strong></li>" +
       '<li><span>ROE</span><strong class="' + esc((b.roe && b.roe.grade && b.roe.grade.tone) || "") + '">' +
       (b.roe && b.roe.value != null ? b.roe.value.toFixed(1) + "% · " : "") +
       esc((b.roe && b.roe.grade && b.roe.grade.label) || "—") + "</strong></li>" +
-      "<li><span>本益比</span><strong>" +
-      (b.pe && b.pe.value != null ? Number(b.pe.value).toFixed(1) + " 倍" : "—") +
-      (b.pe && b.pe.histMed != null ? "（歷史中位 " + Number(b.pe.histMed).toFixed(1) + "）" : "") +
+      "<li><span>負債比</span><strong>" +
+      (b.health && b.health.debtRatio != null ? b.health.debtRatio.toFixed(1) + "%" : "—") +
       "</strong></li>" +
-      '<li><span>合理價</span><strong class="' + esc((b.fair && b.fair.tone) || "") + '">' +
-      (b.fair && b.fair.mid != null
-        ? (fmt(b.fair.low) + "～" + fmt(b.fair.high) + " · " + esc(b.fair.valuation))
-        : "—") +
-      "</strong></li>" +
-      '<li><span>營收</span><strong class="' + esc((b.revenue && b.revenue.tone) || "") + '">' +
-      esc((b.revenue && b.revenue.note) || "—") + "</strong></li>" +
-      "<li><span>負債／現金流</span><strong>" + esc((b.debt && b.debt.note) || "—") +
-      "</strong><small>" + esc((b.debt && b.debt.cashNote) || "") + "</small></li>" +
-      "</ul>" + epsTable +
-      (fundNotes ? "<p class=\"fine\">三率備註</p><ul class=\"stat-list\">" + fundNotes + "</ul>" : "") +
-
-      "<h4>二、技術面買點</h4>" +
-      '<ul class="stat-list">' +
-      "<li><span>均線</span><strong></strong></li></ul><ul>" + maLis + "</ul>" +
-      '<ul class="stat-list">' +
-      "<li><span>支撐</span><strong>" + (b.levels && b.levels.support != null ? fmt(b.levels.support) : "—") + "</strong></li>" +
-      "<li><span>壓力</span><strong>" + (b.levels && b.levels.resist != null ? fmt(b.levels.resist) : "—") + "</strong></li>" +
-      "<li><span>KD</span><strong>" + esc((b.kd && b.kd.note) || "—") + "</strong></li>" +
-      '<li><span>成交量</span><strong class="' + esc((b.volume && b.volume.tone) || "") + '">' +
-      esc((b.volume && b.volume.note) || "—") + "</strong></li>" +
+      "<li><span>現金流</span><strong>" + esc((b.health && b.health.cashNote) || "—") + "</strong></li>" +
       "</ul>" +
 
-      "<h4>三、分批買進計畫</h4>" +
+      "<h4>07 公開資訊</h4>" +
+      "<p>" + esc((b.publicInfo && b.publicInfo.bias) || "—") + "</p>" +
+      (linkRow ? '<p class="fine mops-links">' + linkRow + "</p>" : "") +
+      '<p class="fine">' + esc((b.publicInfo && b.publicInfo.tip) || "") +
+      " 詳細營收／財報／股利見下方區塊。</p>" +
+
+      "<h4>08 合理估值（三層情境）</h4>" +
+      '<ul class="stat-list">' +
+      "<li><span>合理 EPS</span><strong>" +
+      (fair.eps != null ? Number(fair.eps).toFixed(2) : "—") + "</strong></li>" +
+      "<li><span>歷史 PE 低／中／高</span><strong>" +
+      (b.pe && b.pe.histLow != null ? Number(b.pe.histLow).toFixed(1) : "—") + " / " +
+      (b.pe && b.pe.histMed != null ? Number(b.pe.histMed).toFixed(1) : "—") + " / " +
+      (b.pe && b.pe.histHigh != null ? Number(b.pe.histHigh).toFixed(1) : "—") +
+      "</strong></li>" +
+      "<li><span>悲觀估值</span><strong>" +
+      (sc.bear && sc.bear.price != null ? fmt(sc.bear.price) : "—") +
+      (sc.bear && sc.bear.pe != null ? ("（PE " + sc.bear.pe + "）") : "") + "</strong></li>" +
+      '<li><span>基準估值</span><strong class="up">' +
+      (sc.base && sc.base.price != null ? fmt(sc.base.price) : "—") +
+      (sc.base && sc.base.pe != null ? ("（PE " + sc.base.pe + "）") : "") + "</strong></li>" +
+      "<li><span>樂觀估值</span><strong>" +
+      (sc.bull && sc.bull.price != null ? fmt(sc.bull.price) : "—") +
+      (sc.bull && sc.bull.pe != null ? ("（PE " + sc.bull.pe + "）") : "") + "</strong></li>" +
+      '<li><span>安全邊際買進參考（−20%）</span><strong class="up">' +
+      (fair.safetyBuy != null ? fmt(fair.safetyBuy) : "—") + "</strong></li>" +
+      '<li><span>相對現價</span><strong class="' + esc(fair.tone || "") + '">' +
+      esc(fair.valuation || "—") + "</strong></li>" +
+      "</ul><p class=\"fine\">" + esc(fair.note || "") + "</p>" +
+
+      "<h4>09 買賣決策</h4>" +
       (batches
         ? '<div class="watch-table-wrap"><table class="watch-table invest-batch"><thead><tr><th>批次</th><th>參考價</th><th>說明</th></tr></thead><tbody>' +
           batches + "</tbody></table></div>"
         : '<p class="note">尚無分批計畫</p>') +
-      '<p class="fine">分批不是越跌越買；若基本面惡化應停止加碼。</p>' +
-
-      "<h4>四、賣出／停損</h4>" +
       '<ul class="stat-list">' +
-      "<li><span>停損</span><strong class=\"down\">" +
+      '<li><span>停損</span><strong class="down">' +
       (b.exit && b.exit.stop != null ? fmt(b.exit.stop) : "—") + "</strong></li>" +
-      "<li><span>目標一</span><strong class=\"up\">" +
-      (b.exit && b.exit.target1 != null ? fmt(b.exit.target1) : "—") + "</strong></li>" +
-      "<li><span>目標二</span><strong class=\"up\">" +
+      '<li><span>目標一／二</span><strong class="up">' +
+      (b.exit && b.exit.target1 != null ? fmt(b.exit.target1) : "—") + " / " +
       (b.exit && b.exit.target2 != null ? fmt(b.exit.target2) : "—") + "</strong></li>" +
       "<li><span>風報比</span><strong>" +
       (b.exit && b.exit.rr != null ? ("1 : " + b.exit.rr) : "—") + "</strong></li>" +
       "</ul>" +
-      ((pack.sellPoints || []).length
-        ? "<ul>" + pack.sellPoints.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>"
-        : "") +
 
-      "<h4>五、SOP 檢查清單</h4>" +
-      '<ol class="invest-checklist">' + checklist + "</ol>" +
-      '<p class="fine">最低／最高點事後才知道；目標是合理偏低買、高估減碼。詳細財報與營收表見下方公開資訊。</p>' +
+      "<h4>研究報告摘要</h4>" +
+      '<div class="watch-table-wrap"><table class="watch-table invest-batch research-summary">' +
+      "<thead><tr><th>分析項目</th><th>最終結論</th></tr></thead><tbody>" +
+      "<tr><td>公司體質</td><td>" + esc(rp.body || "—") + "</td></tr>" +
+      "<tr><td>三率趨勢</td><td>" + esc(rp.margins || "—") + "</td></tr>" +
+      "<tr><td>EPS</td><td>" + esc(rp.eps || "—") + "</td></tr>" +
+      "<tr><td>籌碼</td><td>" + esc(rp.chip || "—") + "</td></tr>" +
+      "<tr><td>量能</td><td>" + esc(rp.volume || "—") + "</td></tr>" +
+      "<tr><td>財務健檢</td><td>" + esc(rp.health || "—") + "</td></tr>" +
+      "<tr><td>公開資訊</td><td>" + esc(rp.publicInfo || "—") + "</td></tr>" +
+      "<tr><td>合理 EPS</td><td>" + (rp.fairEps != null ? Number(rp.fairEps).toFixed(2) : "—") + "</td></tr>" +
+      "<tr><td>合理 PE</td><td>" + (rp.fairPe != null ? Number(rp.fairPe).toFixed(1) + " 倍" : "—") + "</td></tr>" +
+      "<tr><td>合理價值</td><td>" + (rp.fairValue != null ? fmt(rp.fairValue) : "—") + "</td></tr>" +
+      "<tr><td>便宜價（安全邊際）</td><td>" + (rp.cheap != null ? fmt(rp.cheap) : "—") + "</td></tr>" +
+      "<tr><td>觀察買進價</td><td>" + (rp.watchBuy != null ? fmt(rp.watchBuy) : "—") + "</td></tr>" +
+      "<tr><td>估值過高區</td><td>" + (rp.rich != null ? fmt(rp.rich) : "—") + "</td></tr>" +
+      "<tr><td>停損條件</td><td>" + esc(rp.stopNote || "—") + "</td></tr>" +
+      "</tbody></table></div>" +
+
+      "<h4>研究檢查表</h4>" +
+      '<p>已完成 <strong data-research-done>0/20</strong> · 加權完成度 <strong data-research-score>0.0 / 100</strong></p>' +
+      '<div class="research-check-grid">' + checkHtml + "</div>" +
+      '<p class="fine">分數只代表你已勾選確認的研究完成度，不代表股票品質或預期報酬。' +
+      "財報重大疑慮、現金流長期背離、一次性收益、治理問題等，不可用其他高分抵銷。</p>" +
+      '<button type="button" class="ghost" data-research-reset>重設檢查表</button>' +
       "</article>";
+
+    bindStockResearchUi(pack.code);
   }
 
   function renderStockDetail(detail, chipx) {

@@ -6742,35 +6742,76 @@
 
     let daily = [];
     try {
-      daily = await bars(secid, "180d");
+      daily = await bars(secid, "1y");
     } catch (err) {
-      try { daily = await historyBars(secid, stockId, 180); } catch (e2) { daily = []; }
+      try { daily = await historyBars(secid, stockId, 280); } catch (e2) {
+        try { daily = await bars(secid, "180d"); } catch (e3) { daily = []; }
+      }
+    }
+    if (daily.length < 60) {
+      try {
+        const more = await historyBars(secid, stockId, 280);
+        if (more && more.length > daily.length) daily = more;
+      } catch (eMore) { /* keep */ }
     }
     const kdNow = daily.length >= 20 ? kd(daily, 9, 3, 3) : { k: null, d: null, cross: "", zone: "mid" };
+    const closesLong = daily.map(function (b) { return Number(b.c); });
+    const volsLong = daily.map(function (b) { return Number(b.v) || 0; });
+    function avgSlice(arr, n) {
+      if (!arr.length) return null;
+      const slice = arr.slice(-n);
+      if (!slice.length) return null;
+      return slice.reduce(function (a, b) { return a + b; }, 0) / slice.length;
+    }
+    function smaAt(arr, n) {
+      if (arr.length < n) return null;
+      let s = 0;
+      for (let i = arr.length - n; i < arr.length; i++) s += arr[i];
+      return s / n;
+    }
+    const ma120v = smaAt(closesLong, 120);
+    const ma240v = smaAt(closesLong, 240);
+    const week52 = daily.slice(-252);
+    let hi52 = null;
+    let lo52 = null;
+    week52.forEach(function (b) {
+      const h = Number(b.h != null ? b.h : b.c);
+      const l = Number(b.l != null ? b.l : b.c);
+      if (isFinite(h)) hi52 = hi52 == null ? h : Math.max(hi52, h);
+      if (isFinite(l)) lo52 = lo52 == null ? l : Math.min(lo52, l);
+    });
+    const volAvg5 = avgSlice(volsLong, 5);
+    const volAvg20 = avgSlice(volsLong, 20);
+    const volAvg60 = avgSlice(volsLong, 60);
+    const volLast = volsLong.length ? volsLong[volsLong.length - 1] : null;
+    const volRatio20 = (volLast != null && volAvg20 > 0) ? volLast / volAvg20 : null;
 
     // 量能：近 5 日 vs 前 20 日均量
     let volumeNote = "成交量資料不足";
     let volumeTone = "";
+    let volumeBias = "中性";
     if (daily.length >= 25) {
       const last = daily[daily.length - 1];
       const prev = daily[daily.length - 2];
-      const vols = daily.slice(-21, -1).map(function (b) { return Number(b.v) || 0; });
-      const avg = vols.reduce(function (a, b) { return a + b; }, 0) / Math.max(1, vols.length);
       const v = Number(last.v) || 0;
       const up = last.c >= (prev && prev.c != null ? prev.c : last.c);
-      const ratio = avg > 0 ? v / avg : null;
+      const ratio = volRatio20;
       if (ratio != null) {
         if (up && ratio >= 1.3) {
-          volumeNote = "上漲且量增（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 買盤可能增強";
+          volumeNote = "上漲且量增（約 " + (ratio * 100).toFixed(0) + "% 的 20 日均量）→ 買盤可能增強";
           volumeTone = "up";
+          volumeBias = "偏多";
         } else if (up && ratio < 0.7) {
           volumeNote = "上漲但量縮（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 觀察動能";
           volumeTone = "";
+          volumeBias = "中性";
         } else if (!up && ratio >= 1.5) {
           volumeNote = "下跌爆量（約 " + (ratio * 100).toFixed(0) + "% 均量）→ 留意賣壓";
           volumeTone = "down";
+          volumeBias = "偏空";
         } else {
-          volumeNote = "量能大致正常（約 " + (ratio * 100).toFixed(0) + "% 均量）";
+          volumeNote = "量能大致正常（約 " + (ratio * 100).toFixed(0) + "% 的 20 日均量）";
+          volumeBias = "中性";
         }
       }
     }
@@ -6841,13 +6882,20 @@
     const roeG = roeGrade(roe);
     if (roe != null) roeNote = "近四季粗估 ROE " + roe.toFixed(1) + "%（" + roeG.label + "）";
 
-    // 合理價：用近 3～5 年本益比中位數 × 前瞻／年化 EPS
+    // 合理價：歷史 PE 低／中／高 × 前瞻／年化 EPS（三層情境）
     let peHistMed = null;
+    let peHistLow = null;
+    let peHistHigh = null;
     try {
-      const peRows = await finMind("TaiwanStockPER", stockId, isoDaysAgo(1400)).catch(function () { return []; });
+      const peRows = await finMind("TaiwanStockPER", stockId, isoDaysAgo(1800)).catch(function () { return []; });
       const peVals = (peRows || []).map(function (r) { return num(r.PER); })
-        .filter(function (p) { return p != null && p > 3 && p < 60; });
+        .filter(function (p) { return p != null && p > 3 && p < 60; })
+        .sort(function (a, b) { return a - b; });
       peHistMed = medianNums(peVals);
+      if (peVals.length >= 5) {
+        peHistLow = peVals[Math.floor((peVals.length - 1) * 0.25)];
+        peHistHigh = peVals[Math.floor((peVals.length - 1) * 0.75)];
+      }
     } catch (errPe) { /* ignore */ }
     const epsNowRow = epsYears.find(function (r) { return r.year === new Date().getFullYear(); })
       || epsYears.filter(function (r) { return r.eps != null; }).slice(-1)[0];
@@ -6855,35 +6903,45 @@
     const epsUse = (epsFwdRow && epsFwdRow.eps > 0)
       ? epsFwdRow.eps
       : (epsNowRow && epsNowRow.eps > 0 ? epsNowRow.eps : null);
-    const peUse = peHistMed != null
+    const peBear = peHistLow != null ? peHistLow : (peHistMed != null ? peHistMed * 0.75 : null);
+    const peBase = peHistMed != null
       ? peHistMed
       : (per && per.per > 0 && per.per < 60 ? per.per : null);
+    const peBull = peHistHigh != null ? peHistHigh : (peHistMed != null ? peHistMed * 1.25 : null);
     let fair = null;
     let fairLow = null;
     let fairHigh = null;
     let fairNote = "合理價資料不足（缺 EPS 或歷史本益比）";
-    if (epsUse != null && peUse != null) {
-      fair = roundPx(epsUse * peUse);
-      fairLow = roundPx(epsUse * peUse * 0.85);
-      fairHigh = roundPx(epsUse * peUse * 1.15);
-      fairNote = "以 EPS " + epsUse.toFixed(2) + " × 歷史本益比中位 "
-        + peUse.toFixed(1) + " 倍 ≈ " + fair
-        + "（區間 " + fairLow + "～" + fairHigh + "）";
+    let scenarioBear = null;
+    let scenarioBase = null;
+    let scenarioBull = null;
+    let safetyBuy = null;
+    if (epsUse != null && peBase != null) {
+      scenarioBase = roundPx(epsUse * peBase);
+      scenarioBear = peBear != null ? roundPx(epsUse * peBear) : roundPx(scenarioBase * 0.75);
+      scenarioBull = peBull != null ? roundPx(epsUse * peBull) : roundPx(scenarioBase * 1.25);
+      fair = scenarioBase;
+      fairLow = scenarioBear;
+      fairHigh = scenarioBull;
+      safetyBuy = roundPx(scenarioBase * 0.8);
+      fairNote = "預估 EPS " + epsUse.toFixed(2) + " × 基準 PE "
+        + Number(peBase).toFixed(1) + " 倍 → 基準合理價 " + fair
+        + "；安全邊際 20% 參考買進價 " + safetyBuy;
     }
     let valuation = "無法判斷";
     let valuationTone = "";
-    if (close != null && fair != null) {
-      if (close <= fairLow) {
-        valuation = "相對偏低（低於合理區間下緣）";
+    if (close != null && fair != null && safetyBuy != null) {
+      if (close <= safetyBuy) {
+        valuation = "低於安全邊際買進參考價";
         valuationTone = "up";
       } else if (close <= fair) {
-        valuation = "接近合理偏低";
+        valuation = "低於／接近基準合理價";
         valuationTone = "up";
       } else if (close <= fairHigh) {
-        valuation = "落在合理區間上半";
+        valuation = "落在合理～樂觀區間";
         valuationTone = "";
       } else {
-        valuation = "相對偏高（高於合理區間上緣）";
+        valuation = "高於樂觀估值，風險報酬可能不對稱";
         valuationTone = "down";
       }
     }
@@ -6913,14 +6971,22 @@
     else if (debtRatio != null && debtRatio <= 35) debtNote += "（偏低檔）";
     const cashNote = "營業／自由現金流請至 MOPS 現金流量表核對（此版先列負債比）";
 
-    // 均線敘述
-    const mas = (tech && tech.mas) || [];
+    // 均線敘述（含 120／240）
+    const mas = ((tech && tech.mas) || []).slice();
+    if (ma120v != null) {
+      mas.push({ name: "120 日", value: roundPx(ma120v), above: close != null && close >= ma120v });
+    }
+    if (ma240v != null) {
+      mas.push({ name: "240 日", value: roundPx(ma240v), above: close != null && close >= ma240v });
+    }
     function maOf(name) {
       return mas.find(function (m) { return m.name === name; }) || null;
     }
     const ma5 = maOf("5 日");
     const ma20 = maOf("20 日");
     const ma60 = maOf("60 日");
+    const ma120 = maOf("120 日");
+    const ma240 = maOf("240 日");
     const maNotes = [];
     if (ma20) {
       maNotes.push(close != null && ma20.value != null
@@ -6930,11 +6996,23 @@
     if (ma60) {
       maNotes.push(ma60.above ? "站上 60 日線" : "跌破／低於 60 日線，提高警覺");
     }
+    if (ma120) {
+      maNotes.push(ma120.above ? "站上 120 日線（中長期偏強參考）" : "低於 120 日線");
+    }
+    if (ma240) {
+      maNotes.push(ma240.above ? "站上 240 日線（長期趨勢偏多參考）" : "低於 240 日線，長期趨勢需提高警覺");
+    }
     if (ma5 && ma20 && ma5.value != null && ma20.value != null) {
       if (ma5.value > ma20.value) maNotes.push("5 日線在 20 日線上方（短線偏強參考）");
       else maNotes.push("5 日線仍在 20 日線下方");
     }
     if (!maNotes.length) maNotes.push("均線資料不足");
+    let trendBias = "中性";
+    if (ma20 && ma60 && ma20.above && ma60.above) trendBias = "偏多";
+    else if (ma20 && ma60 && !ma20.above && !ma60.above) trendBias = "偏空";
+    const pct52 = (close != null && hi52 != null && lo52 != null && hi52 > lo52)
+      ? Math.round((close - lo52) / (hi52 - lo52) * 1000) / 10
+      : null;
 
     const supports = (tech && tech.supports) || [];
     const resistances = (tech && tech.resistances) || [];
@@ -6987,6 +7065,54 @@
       { step: "6. 分批賣出", ok: target1 != null, text: target1 != null ? ("壓力／目標約 " + target1 + (target2 != null ? (" → " + target2) : "")) : "—" }
     ];
 
+    const m = (detail && detail.margins) || (advice.fund && advice.fund.margins) || {};
+    function marginTrendLabel(tr) {
+      if (!tr || !tr.cls) return "持平／資料不足";
+      if (tr.cls === "up") return "改善";
+      if (tr.cls === "down") return "惡化";
+      return "持平";
+    }
+    const marginTrend = marginTrendLabel(m.opTrend || m.grossTrend || m.netTrend);
+    let marginBias = "持平";
+    if (m.grossTrend && m.grossTrend.cls === "up" && m.opTrend && m.opTrend.cls === "up") marginBias = "改善";
+    else if ((m.grossTrend && m.grossTrend.cls === "down") || (m.opTrend && m.opTrend.cls === "down")) marginBias = "惡化";
+
+    const chipScore = advice.chip && advice.chip.score != null ? advice.chip.score : 0;
+    const chipBias = chipScore >= 1 ? "偏多" : chipScore <= -1 ? "偏空" : "中性";
+    const healthBias = (roe != null && roe >= 10 && (debtRatio == null || debtRatio < 60))
+      ? "正常"
+      : (roe != null && roe < 5) || (debtRatio != null && debtRatio >= 65)
+        ? "需注意"
+        : "普通";
+    let bodyGrade = "普通";
+    if (epsTone === "up" && (roe == null || roe >= 10) && marginBias !== "惡化") bodyGrade = "優良";
+    else if (epsTone === "down" || (roe != null && roe < 5) || marginBias === "惡化") bodyGrade = "有風險";
+
+    const pubLinks = (disclose && disclose.links) || {};
+    const pubBias = (disclose && disclose.news && disclose.news.items && disclose.news.items.length)
+      ? "有近期新聞／訊息可核對"
+      : "請至 MOPS 核對重訊／法說";
+
+    const report = {
+      body: bodyGrade,
+      margins: marginBias,
+      eps: epsNote,
+      chip: chipBias,
+      volume: volumeBias,
+      health: healthBias,
+      publicInfo: pubBias,
+      fairEps: epsUse != null ? Math.round(epsUse * 100) / 100 : null,
+      fairPe: peBase != null ? Math.round(Number(peBase) * 10) / 10 : null,
+      fairValue: fair,
+      cheap: safetyBuy,
+      watchBuy: batches.length ? batches[0].price : safetyBuy,
+      rich: fairHigh,
+      stop: stop,
+      stopNote: stop != null
+        ? ("收盤跌破 " + stop + " 或基本面惡化則重新評估出場")
+        : "先自訂停損條件"
+    };
+
     return {
       ok: true,
       name: advice.name,
@@ -7004,21 +7130,81 @@
       buyPoints: advice.buyPoints,
       sellPoints: advice.sellPoints,
       body: {
-        eps: { note: epsNote, tone: epsTone, years: epsYears },
+        eps: { note: epsNote, tone: epsTone, years: epsYears, ttm: epsUse, forward: epsFwdRow && epsFwdRow.eps },
         roe: { value: roe != null ? Math.round(roe * 10) / 10 : null, note: roeNote, grade: roeG },
         pe: {
           value: per && per.per != null ? per.per : null,
           histMed: peHistMed != null ? Math.round(peHistMed * 10) / 10 : null,
+          histLow: peHistLow != null ? Math.round(peHistLow * 10) / 10 : null,
+          histHigh: peHistHigh != null ? Math.round(peHistHigh * 10) / 10 : null,
           pbr: per && per.pbr != null ? per.pbr : null,
           yield: per && per.yield != null ? per.yield : null
         },
-        fair: { mid: fair, low: fairLow, high: fairHigh, note: fairNote, valuation: valuation, tone: valuationTone },
+        fair: {
+          mid: fair,
+          low: fairLow,
+          high: fairHigh,
+          safetyBuy: safetyBuy,
+          note: fairNote,
+          valuation: valuation,
+          tone: valuationTone,
+          scenarios: {
+            bear: { pe: peBear != null ? Math.round(Number(peBear) * 10) / 10 : null, price: scenarioBear },
+            base: { pe: peBase != null ? Math.round(Number(peBase) * 10) / 10 : null, price: scenarioBase },
+            bull: { pe: peBull != null ? Math.round(Number(peBull) * 10) / 10 : null, price: scenarioBull }
+          },
+          eps: epsUse
+        },
         revenue: { note: revNote, tone: revTone, streak: revStreak, rows: revRows.slice(0, 6) },
         debt: { ratio: debtRatio, note: debtNote, cashNote: cashNote },
-        ma: { notes: maNotes, mas: mas },
+        ma: { notes: maNotes, mas: mas, bias: trendBias },
         levels: { support: supportPx, resist: resistPx },
         kd: Object.assign({}, kdNow, { note: kdNote }),
-        volume: { note: volumeNote, tone: volumeTone },
+        volume: {
+          note: volumeNote,
+          tone: volumeTone,
+          bias: volumeBias,
+          avg5: volAvg5 != null ? Math.round(volAvg5 / 1000) : null,
+          avg20: volAvg20 != null ? Math.round(volAvg20 / 1000) : null,
+          avg60: volAvg60 != null ? Math.round(volAvg60 / 1000) : null,
+          ratio20: volRatio20 != null ? Math.round(volRatio20 * 100) / 100 : null
+        },
+        quote: {
+          close: close,
+          hi52: hi52 != null ? roundPx(hi52) : null,
+          lo52: lo52 != null ? roundPx(lo52) : null,
+          pct52: pct52,
+          atr: atrNow
+        },
+        margins: {
+          gross: m.gross,
+          op: m.op,
+          net: m.net,
+          grossHist: m.grossHist,
+          opHist: m.opHist,
+          netHist: m.netHist,
+          trend: marginTrend,
+          bias: marginBias,
+          date: m.date
+        },
+        chips: {
+          bias: chipBias,
+          notes: (advice.chip && advice.chip.notes) || [],
+          cards: (advice.chip && advice.chip.cards) || [],
+          date: advice.chip && advice.chip.date
+        },
+        health: {
+          bias: healthBias,
+          roe: roe != null ? Math.round(roe * 10) / 10 : null,
+          debtRatio: debtRatio,
+          note: roeNote + "；" + debtNote,
+          cashNote: cashNote
+        },
+        publicInfo: {
+          bias: pubBias,
+          links: pubLinks,
+          tip: (disclose && disclose.tip) || "以 MOPS／證交所／櫃買官方資料為準"
+        },
         batches: batches,
         exit: {
           stop: stop,
@@ -7026,7 +7212,8 @@
           target2: target2,
           rr: rr != null ? Math.round(rr * 100) / 100 : null
         },
-        checklist: checklist
+        checklist: checklist,
+        report: report
       }
     };
   }

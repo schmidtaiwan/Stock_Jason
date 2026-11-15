@@ -1059,6 +1059,50 @@ canvas {
   line-height: 1.45;
 }
 .stock-invest .invest-batch { min-width: 280px; font-size: 13px; }
+.stock-invest .research-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 8px 0 10px;
+}
+.stock-invest .research-meta label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted, #9aa8b8);
+}
+.stock-invest .research-meta select {
+  min-width: 11em;
+  background: #1a222c;
+  color: #e8eef7;
+  border: 1px solid #2a3542;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.stock-invest .research-check-grid {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+.stock-invest .research-check-group h5 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #c5d0dc;
+}
+.stock-invest .research-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 4px;
+  color: #d7e0ea;
+}
+.stock-invest .research-summary td:first-child {
+  color: var(--muted, #9aa8b8);
+  white-space: nowrap;
+}
 .stock-detail { margin-top: 12px; display: grid; gap: 10px; }
 .stock-detail .card h3 { margin: 0 0 8px; font-size: 16px; }
 .stock-live {
