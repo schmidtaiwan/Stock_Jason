@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 260;
+  const PAGE_BUILD = 261;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -3154,7 +3154,8 @@
 
   function startLiveClock() {
     if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(liveTick, 10000);
+    // 5 秒：開盤自選即時；並讓 LiveBridge 判定「網頁在線」而優先 HTTP、降頻 Drive
+    liveTimer = setInterval(liveTick, 5000);
     startTwiiClock();
     startTapeJudgeClock();
     document.addEventListener("visibilitychange", function () {

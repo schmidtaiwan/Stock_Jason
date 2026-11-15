@@ -3106,52 +3106,71 @@
     return n;
   }
 
+  function bridgeLiveOnline() {
+    const B = fubonLiveBridgeApi();
+    if (!B || !B.canReach || !B.canReach()) return false;
+    if (typeof B.isOnline === "function" && B.isOnline() === false) return false;
+    return true;
+  }
+
   async function hydrateFubonFromDrive(needIds, opts) {
     opts = opts || {};
     if (!(needIds && needIds.length)) return 0;
     const now = Date.now();
-    const applyOpts = { forceOverwrite: !!(opts.forceOverwrite || preferFubonQuotes()) };
-    if (!opts.force && now - fubonDriveReadAt < 5000 && fubonDriveSnap) {
-      return applyFubonDriveSnap(
-        fubonDriveSnap,
-        opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
-        null,
-        applyOpts
-      );
+    const sessionOpen = isTwSessionOpen();
+    const bridgeOn = bridgeLiveOnline();
+    const applyOpts = {
+      forceOverwrite: !!(opts.forceOverwrite || preferFubonQuotes() || (sessionOpen && bridgeOn))
+    };
+    const defaultAge = sessionOpen
+      ? (bridgeOn ? 20_000 : Math.max(FUBON_DRIVE_MAX_AGE_MS, 3 * 60_000))
+      : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000);
+    const maxAge = opts.maxAgeMs != null ? opts.maxAgeMs : defaultAge;
+
+    if (!opts.force && now - fubonDriveReadAt < 3000 && fubonDriveSnap) {
+      return applyFubonDriveSnap(fubonDriveSnap, maxAge, null, applyOpts);
     }
     fubonDriveReadAt = now;
 
-    // 優先 Tailscale Live Bridge，其次 Google Drive（已知離線則跳過橋，避免手機卡住）
     const B = fubonLiveBridgeApi();
     const bridgeKnown = B && B.isOnline ? B.isOnline() : null;
-    if (B && bridgeKnown !== false) {
+
+    async function fromBridge() {
+      if (!B || bridgeKnown === false) return 0;
       try {
         const snap = await B.readFubonLive();
-        if (snap) {
-          return applyFubonDriveSnap(
-            snap,
-            opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
-            "fubon-tailscale",
-            applyOpts
-          );
-        }
-      } catch (err) { /* fall through */ }
+        if (!snap) return 0;
+        return applyFubonDriveSnap(snap, maxAge, "fubon-tailscale", applyOpts);
+      } catch (err) {
+        return 0;
+      }
     }
 
-    const D = fubonDriveApi();
-    if (!D) return 0;
-    try {
-      const snap = await D.readFubonLive();
-      if (!snap) return 0;
-      return applyFubonDriveSnap(
-        snap,
-        opts.maxAgeMs || FUBON_DRIVE_MAX_AGE_MS,
-        "fubon-drive",
-        applyOpts
-      );
-    } catch (err) {
-      return 0;
+    async function fromDriveCloud() {
+      const D = fubonDriveApi();
+      if (!D) return 0;
+      try {
+        const snap = await D.readFubonLive();
+        if (!snap) return 0;
+        return applyFubonDriveSnap(snap, maxAge, "fubon-drive", applyOpts);
+      } catch (err) {
+        return 0;
+      }
     }
+
+    // 開盤：Bridge 在線 → 即時優先；失敗才雲端。Bridge 離線 → 只雲端。
+    if (sessionOpen) {
+      if (bridgeKnown !== false) {
+        const n = await fromBridge();
+        if (n > 0) return n;
+      }
+      return fromDriveCloud();
+    }
+
+    // 非開盤：Bridge → Drive
+    const n2 = await fromBridge();
+    if (n2 > 0) return n2;
+    return fromDriveCloud();
   }
 
   async function fetchFubonTapeFromDrive(code, dateYmd) {
@@ -4347,11 +4366,18 @@
     });
     if (!need.length) return out;
 
-    // 先吃雲端／Bridge 快照：優先富邦橋接，再 MIS 快照
+    // 開盤＋Bridge 在線：優先即時富邦橋；離線才雲端／MIS
+    const open = isTwSessionOpen();
+    const bridgeOn = open && bridgeLiveOnline();
     await hydrateFubonFromDrive(need, {
-      maxAgeMs: isTwSessionOpen() ? FUBON_DRIVE_MAX_AGE_MS : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000)
+      maxAgeMs: open
+        ? (bridgeOn ? 20_000 : Math.max(FUBON_DRIVE_MAX_AGE_MS, 3 * 60_000))
+        : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000),
+      forceOverwrite: bridgeOn
     });
-    await hydrateMisFromDrive(need);
+    if (!bridgeOn) {
+      await hydrateMisFromDrive(need);
+    }
     need = need.filter(function (id) {
       if (out[id]) return false;
       const hit = misCacheGet(id);
@@ -4363,8 +4389,8 @@
     });
     if (!need.length) return out;
 
-    // 開盤才直連 MIS；非開盤只吃雲端／Bridge／快取
-    if (!isTwSessionOpen()) {
+    // 非開盤只吃雲端／Bridge／快取
+    if (!open) {
       ids.forEach(function (id) {
         if (out[id]) return;
         const hit = misCacheGet(id) || (misQuoteCache.get(id) && misQuoteCache.get(id).quote) || null;
@@ -4372,6 +4398,9 @@
       });
       return out;
     }
+
+    // 開盤且 Bridge 已補齊大部分：缺的再直連 MIS；Bridge 在線時少打 MIS
+    if (bridgeOn && need.length === 0) return out;
 
     let fetched = false;
     const run = misQueue.then(async function () {
