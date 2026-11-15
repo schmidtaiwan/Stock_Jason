@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 262;
+  const PAGE_BUILD = 263;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -484,6 +484,172 @@
     checkFreshBuild();
     if (!showVer._poll) {
       showVer._poll = setInterval(checkFreshBuild, 15000);
+    }
+  }
+
+  /** 頂部連線燈號：富邦／MIS／LiveBridge */
+  const connState = {
+    fubon: { state: "unknown", title: "富邦", detail: "尚未檢查" },
+    mis: { state: "unknown", title: "MIS（證交所）", detail: "尚未檢查" },
+    bridge: { state: "unknown", title: "LiveBridge", detail: "尚未檢查" }
+  };
+  let connLampBound = false;
+  let connRefreshBusy = false;
+
+  function setConnItem(key, state, detail) {
+    if (!connState[key]) return;
+    connState[key].state = state;
+    connState[key].detail = detail || "";
+  }
+
+  function paintConnLamps() {
+    const box = $("conn-lamps");
+    if (!box) return;
+    box.querySelectorAll(".conn-lamp").forEach(function (btn) {
+      const key = btn.getAttribute("data-conn");
+      const item = connState[key];
+      const dot = btn.querySelector(".conn-dot");
+      if (!item || !dot) return;
+      dot.setAttribute("data-state", item.state);
+      const label = item.state === "ok" ? "正常" : item.state === "bad" ? "異常" : item.state === "warn" ? "檢查中" : "未知";
+      btn.title = item.title + "：" + label + "（點擊看說明）";
+      btn.setAttribute("aria-label", item.title + " " + label);
+    });
+  }
+
+  function openConnLampPop(key) {
+    const item = connState[key];
+    const pop = $("conn-lamp-pop");
+    const title = $("conn-lamp-pop-title");
+    const body = $("conn-lamp-pop-body");
+    if (!item || !pop || !title || !body) return;
+    const stateTxt = item.state === "ok" ? "連線正常"
+      : item.state === "bad" ? "連線異常"
+      : item.state === "warn" ? "檢查中／不穩定"
+      : "狀態未知";
+    title.textContent = item.title + " · " + stateTxt;
+    body.textContent = item.detail || "尚無說明";
+    pop.hidden = false;
+  }
+
+  function closeConnLampPop() {
+    const pop = $("conn-lamp-pop");
+    if (pop) pop.hidden = true;
+  }
+
+  function bindConnLamps() {
+    if (connLampBound) return;
+    const box = $("conn-lamps");
+    if (!box) return;
+    connLampBound = true;
+    box.addEventListener("click", function (ev) {
+      const btn = ev.target.closest(".conn-lamp");
+      if (!btn) return;
+      openConnLampPop(btn.getAttribute("data-conn"));
+    });
+    const closeBtn = $("conn-lamp-pop-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeConnLampPop);
+    const pop = $("conn-lamp-pop");
+    if (pop) {
+      pop.addEventListener("click", function (ev) {
+        if (ev.target === pop) closeConnLampPop();
+      });
+    }
+  }
+
+  async function refreshConnLamps() {
+    if (connRefreshBusy) {
+      paintConnLamps();
+      return;
+    }
+    connRefreshBusy = true;
+    try {
+      const B = window.SJLiveBridge;
+      const pref = getTwiiSourcePref();
+      const open = typeof isTwMarketOpen === "function" && isTwMarketOpen();
+
+      // Bridge / Tailscale
+      if (!B || !B.canReach || !B.canReach()) {
+        setConnItem("bridge", "bad",
+          "尚未設定 LiveBridge 網址（google_config.js 的 liveBridgeBaseUrl）。\n網頁無法走 Tailscale 即時報價。");
+      } else {
+        let online = B.isOnline ? B.isOnline() : null;
+        if (online == null && B.probe) {
+          try { await B.probe(); } catch (err) { /* ignore */ }
+          online = B.isOnline ? B.isOnline() : null;
+        }
+        if (online === true) {
+          const health = B.health ? await B.health().catch(function () { return null; }) : null;
+          const build = health && health.build != null ? ("LB " + health.build) : "LiveBridge";
+          const who = health && health.webWho ? ("\n目前在線：" + health.webWho) : "";
+          setConnItem("bridge", "ok",
+            "連線正常。\n已連上 Tailscale LiveBridge（" + build + "）。" + who +
+            "\n開盤時自選會優先吃 Bridge 即時資料。");
+        } else if (online === false) {
+          const err = B.lastError ? B.lastError() : "";
+          setConnItem("bridge", "bad",
+            "連線異常。\n打不到 Tailscale LiveBridge。\n" +
+            (err ? ("原因：" + err + "\n") : "") +
+            "請確認 Win11 LiveBridge 已啟動，且 Tailscale Serve 指向本機埠。");
+        } else {
+          setConnItem("bridge", "warn",
+            "檢查中。\n已設定 Bridge 網址，但尚未確認是否可連。稍後會再探測。");
+        }
+      }
+
+      // 富邦：Bridge 有 fubon-live，或偏好富邦且最近加權成功
+      const bridgeOk = connState.bridge.state === "ok";
+      if (bridgeOk) {
+        let liveOk = false;
+        let liveDetail = "";
+        try {
+          const snap = B && B.readFubonLive ? await B.readFubonLive() : null;
+          const n = snap && snap.byCode ? Object.keys(snap.byCode).length : 0;
+          const at = snap && Number(snap.at || 0);
+          const ageSec = at > 0 ? Math.round((Date.now() - at) / 1000) : null;
+          liveOk = n > 0;
+          liveDetail = liveOk
+            ? ("連線正常。\nBridge 富邦快取 " + n + " 檔" +
+              (ageSec != null ? ("，約 " + ageSec + " 秒前更新。") : "。") +
+              (pref === "fubon" ? "\n目前加權來源：富邦。" : "\n目前加權來源：證交所 MIS。"))
+            : "連線異常。\nBridge 已通，但尚無富邦報價快取。請確認 LiveBridge 已登入富邦。";
+        } catch (err) {
+          liveDetail = "連線異常。\n讀取 Bridge 富邦報價失敗：" +
+            ((err && err.message) ? err.message : String(err || ""));
+        }
+        setConnItem("fubon", liveOk ? "ok" : "bad", liveDetail);
+      } else if (pref === "fubon") {
+        setConnItem("fubon", "bad",
+          "連線異常。\n已選富邦來源，但 LiveBridge 未連線，無法取得富邦即時。\n請先啟動 LiveBridge／Tailscale，或改回證交所 MIS。");
+      } else {
+        setConnItem("fubon", bridgeOk ? "ok" : "warn",
+          bridgeOk
+            ? "連線正常（備援）。\n目前加權用 MIS；富邦快取可在改選富邦時使用。"
+            : "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
+      }
+
+      // MIS：依最近加權結果＋是否強制時段
+      if (connState.mis._lastOk === true) {
+        setConnItem("mis", "ok",
+          "連線正常。\n證交所 MIS 加權／報價讀取成功。" +
+          (connState.mis._lastAt
+            ? ("\n最近成功：" + new Date(connState.mis._lastAt).toLocaleTimeString("zh-TW", { hour12: false }))
+            : "") +
+          (open ? "\n開盤中可持續更新。" : "\n非開盤時段可能僅顯示最近快照。"));
+      } else if (connState.mis._lastOk === false) {
+        const forceMis = M && M.isMisForceWindow && M.isMisForceWindow();
+        setConnItem("mis", "bad",
+          (forceMis ? "連線異常（MIS 重試中）。\n" : "連線異常。\n") +
+          "證交所 MIS 讀取失敗。" +
+          (connState.mis._lastErr ? ("\n原因：" + connState.mis._lastErr) : "") +
+          "\n可稍後重試，或改選富邦（需 LiveBridge）。");
+      } else {
+        setConnItem("mis", "warn", "檢查中。\n尚未完成第一次 MIS／加權探測。");
+      }
+
+      paintConnLamps();
+    } finally {
+      connRefreshBusy = false;
     }
   }
 
@@ -1088,6 +1254,21 @@
       chgEl.textContent = pts + pctTxt;
       formatTwiiLag(q);
       paintTwiiSource(q);
+      const src = String((q && q.source) || getTwiiSourcePref() || "").toLowerCase();
+      if (src.indexOf("fubon") >= 0) {
+        setConnItem("fubon", "ok",
+          "連線正常。\n加權已用富邦來源更新。" +
+          (q.price != null ? ("\n目前約 " + Math.round(q.price) + " 點。") : ""));
+      } else {
+        connState.mis._lastOk = true;
+        connState.mis._lastAt = Date.now();
+        connState.mis._lastErr = "";
+        setConnItem("mis", "ok",
+          "連線正常。\n證交所 MIS 加權讀取成功。" +
+          (q.price != null ? ("\n目前約 " + Math.round(q.price) + " 點。") : ""));
+      }
+      paintConnLamps();
+      refreshConnLamps().catch(function () { /* ignore */ });
     } catch (err) {
       if (seq !== twiiSeq) return;
       const forceMis = M.isMisForceWindow && M.isMisForceWindow();
@@ -1103,6 +1284,19 @@
       // 失敗也不把紅框改回證交所；維持使用者選擇
       paintTwiiSource({ source: getTwiiSourcePref() === "fubon" ? "fubon" : "mis" });
       if ($("twii-lag")) { $("twii-lag").hidden = true; $("twii-lag").textContent = ""; }
+      const pref = getTwiiSourcePref();
+      const msg = (err && err.message) ? err.message : String(err || "加權讀取失敗");
+      if (pref === "fubon") {
+        setConnItem("fubon", "bad", "連線異常。\n富邦加權讀取失敗。\n原因：" + msg);
+      } else {
+        connState.mis._lastOk = false;
+        connState.mis._lastErr = msg;
+        setConnItem("mis", "bad",
+          (forceMis ? "連線異常（MIS 重試中）。\n" : "連線異常。\n") +
+          "證交所 MIS 加權讀取失敗。\n原因：" + msg);
+      }
+      paintConnLamps();
+      refreshConnLamps().catch(function () { /* ignore */ });
     } finally {
       if (seq === twiiSeq) twiiBusy = false;
     }
@@ -2838,6 +3032,7 @@
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
       if (!document.hidden) paintTwii();
       if (!document.hidden && state.view === "watch") paintWatchQuotes();
+      refreshConnLamps().catch(function () { /* ignore */ });
       if (!open) return;
       if (!document.hidden && state.view === "chart") await loadChart();
       else if (!document.hidden && state.view === "stock" && state.stock) await loadStockLive(state.stock, true);
@@ -8188,6 +8383,9 @@
     if (D.account() && !D.account().picture && D.fetchAccount) {
       D.fetchAccount().then(function () { paintChrome(true); }).catch(function () { /* 頭像可略過 */ });
     }
+    bindConnLamps();
+    paintConnLamps();
+    refreshConnLamps().catch(function () { /* ignore */ });
     paintTwii(true);
     startLiveClock();
     syncUsBoardFoldUi();

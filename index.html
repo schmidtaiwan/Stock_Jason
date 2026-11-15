@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=262">
+  <link rel="stylesheet" href="app.css?v=263">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
@@ -94,6 +94,27 @@
             <span id="twii-chg" class="twii-chg">—</span>
             <span id="twii-lag" class="twii-lag" hidden></span>
             <span id="twii-src" class="twii-src">證交所</span>
+          </div>
+        </div>
+        <div id="conn-lamps" class="conn-lamps" role="group" aria-label="連線燈號">
+          <button type="button" class="conn-lamp" data-conn="fubon" aria-label="富邦連線狀態">
+            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+            <span class="conn-name">富邦</span>
+          </button>
+          <button type="button" class="conn-lamp" data-conn="mis" aria-label="MIS 連線狀態">
+            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+            <span class="conn-name">MIS</span>
+          </button>
+          <button type="button" class="conn-lamp" data-conn="bridge" aria-label="LiveBridge 連線狀態">
+            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+            <span class="conn-name">橋</span>
+          </button>
+        </div>
+        <div id="conn-lamp-pop" class="conn-lamp-pop" hidden role="dialog" aria-modal="true" aria-labelledby="conn-lamp-pop-title">
+          <div class="conn-lamp-pop-card">
+            <h3 id="conn-lamp-pop-title">連線說明</h3>
+            <p id="conn-lamp-pop-body" class="conn-lamp-pop-body"></p>
+            <button type="button" id="conn-lamp-pop-close" class="primary">關閉</button>
           </div>
         </div>
         <div class="tools">
@@ -647,12 +668,12 @@
   </div>
 
   <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="google_config.js?v=262"></script>
-  <script src="drive.js?v=262"></script>
-  <script src="liveBridge.js?v=262"></script>
-  <script src="sakata.js?v=262"></script>
-  <script src="market.js?v=262"></script>
-  <script src="chips.js?v=262"></script>
-  <script src="app.js?v=262"></script>
+  <script src="google_config.js?v=263"></script>
+  <script src="drive.js?v=263"></script>
+  <script src="liveBridge.js?v=263"></script>
+  <script src="sakata.js?v=263"></script>
+  <script src="market.js?v=263"></script>
+  <script src="chips.js?v=263"></script>
+  <script src="app.js?v=263"></script>
 </body>
 </html>
