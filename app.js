@@ -1,6 +1,8 @@
 (function () {
-  const PAGE_BUILD = 257;
+  const PAGE_BUILD = 258;
   const PAGE_DATE = "2026-11-15";
+  /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
+  const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
   const FUBON_GROUP_NAME = "富邦庫存";
@@ -33,6 +35,9 @@
   /** @type {Record<string,{at:number,hint:{text:string,tone:string,title:string}|null,busy?:boolean}>} */
   const watchTapeCache = Object.create(null);
   let watchTapeHintGen = 0;
+  let watchTapeJudgeTimer = 0;
+  let lastTapeJudgeSlot = "";
+  let stockActorsJudgeCache = null;
   let chipCostLines = null;
   let stockChipCostLines = null;
   let toolWatchGroupId = "";
@@ -1386,6 +1391,7 @@
         "偏空：位於當日均價（VWAP）下方且近端偏弱。",
         "觀望：特徵未一面倒，等更明確價量轉折。",
         "偏多／可買：站上均價、低檔有大單承接，且非早盤沖高出貨型態。",
+        "盤中 08:30–13:30 每 15 分鐘更新一次判斷（對齊 :00／:15／:30／:45）。",
         "進入個股可看完整推演、10:00 時點快照與逐筆樣本。僅供參考，非投資建議。"
       ]
     },
@@ -2715,23 +2721,93 @@
       : "個股";
   }
 
-  function isTwMarketOpen(now) {
+  function taipeiClockParts(now) {
     const d = now || new Date();
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Taipei",
       weekday: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false
     }).formatToParts(d);
     const map = {};
     parts.forEach(function (p) { if (p.type !== "literal") map[p.type] = p.value; });
-    const wd = map.weekday;
-    if (wd === "Sat" || wd === "Sun") return false;
     const hh = Number(map.hour);
     const mm = Number(map.minute);
-    const mins = hh * 60 + mm;
-    return mins >= 9 * 60 && mins <= 13 * 60 + 30;
+    return {
+      weekday: map.weekday,
+      day: map.year + "-" + map.month + "-" + map.day,
+      hour: hh,
+      minute: mm,
+      mins: hh * 60 + mm
+    };
+  }
+
+  function isTwMarketOpen(now) {
+    const c = taipeiClockParts(now);
+    if (c.weekday === "Sat" || c.weekday === "Sun") return false;
+    return c.mins >= 9 * 60 && c.mins <= 13 * 60 + 30;
+  }
+
+  /** 足跡判斷時段：平日 08:30–13:30（含開盤前準備） */
+  function isTapeJudgeWindow(now) {
+    const c = taipeiClockParts(now);
+    if (c.weekday === "Sat" || c.weekday === "Sun") return false;
+    return c.mins >= 8 * 60 + 30 && c.mins <= 13 * 60 + 30;
+  }
+
+  /** 15 分鐘槽位鍵，例如 2026-11-15|570（09:30） */
+  function tapeJudgeSlotKey(now) {
+    const c = taipeiClockParts(now);
+    if (c.weekday === "Sat" || c.weekday === "Sun") return "";
+    if (c.mins < 8 * 60 + 30 || c.mins > 13 * 60 + 30) return "";
+    const slotMins = Math.floor(c.mins / 15) * 15;
+    return c.day + "|" + slotMins;
+  }
+
+  function tapeJudgeFresh(at, nowMs) {
+    if (!(at > 0)) return false;
+    return (nowMs || Date.now()) - at < TAPE_JUDGE_INTERVAL_MS;
+  }
+
+  function stopTapeJudgeClock() {
+    if (watchTapeJudgeTimer) clearInterval(watchTapeJudgeTimer);
+    watchTapeJudgeTimer = 0;
+  }
+
+  function runTapeJudgeIfDue(force) {
+    const slot = tapeJudgeSlotKey();
+    const inWin = isTapeJudgeWindow();
+    if (!force) {
+      if (!inWin) return;
+      if (slot && slot === lastTapeJudgeSlot) return;
+    }
+    if (slot) lastTapeJudgeSlot = slot;
+
+    const box = $("watch-list");
+    if (box && !isWatchMini() && book.watch && book.watch.length) {
+      watchTapeHintGen += 1;
+      refreshWatchTapeHints(box, watchTapeHintGen).catch(function () { /* ignore */ });
+    }
+    // 個股頁：強制下一輪用新槽位重算判讀
+    if (state.view === "stock" && state.stock) {
+      stockActorsJudgeCache = null;
+      loadStockLive(state.stock, true);
+    }
+  }
+
+  function startTapeJudgeClock() {
+    stopTapeJudgeClock();
+    // 每 20 秒檢查是否跨過 15 分槽（08:30／08:45／…／13:30）
+    watchTapeJudgeTimer = setInterval(function () {
+      if (document.hidden) return;
+      runTapeJudgeIfDue(false);
+    }, 20_000);
+    // 進頁先跑一次（有快取則 refreshWatchTapeHints 內 TTL 會擋）
+    runTapeJudgeIfDue(true);
   }
 
   function liveSecids() {
@@ -3080,6 +3156,7 @@
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(liveTick, 10000);
     startTwiiClock();
+    startTapeJudgeClock();
     document.addEventListener("visibilitychange", function () {
       const open = isTwMarketOpen();
       const misForce = M.isMisForceWindow && M.isMisForceWindow();
@@ -3088,6 +3165,7 @@
         liveTick();
       } else if (document.hidden && hasWatchAlerts() && open) liveTick();
       if (!document.hidden && state.view === "pulse") loadUsBoard({ quiet: true });
+      if (!document.hidden && isTapeJudgeWindow()) runTapeJudgeIfDue(false);
     });
   }
 
@@ -4771,7 +4849,8 @@
     const focusCode = state.stock && state.stock.code
       ? String(state.stock.code).toUpperCase() : "";
     const now = Date.now();
-    const TTL = 90_000;
+    const TTL = TAPE_JUDGE_INTERVAL_MS;
+    const slot = tapeJudgeSlotKey() || ("off|" + taipeiDay());
 
     // 當前個股盤中足跡優先
     if (focusCode && stockLiveTape && stockLiveTape.length >= 4) {
@@ -4779,7 +4858,7 @@
         price: state.stock && state.stock.price,
         pct: state.stock && state.stock.pct
       });
-      watchTapeCache[focusCode] = { at: now, hint: hint };
+      watchTapeCache[focusCode] = { at: now, hint: hint, slot: slot };
     }
 
     // 一次撈 live 內嵌 tapes（若有）
@@ -4796,9 +4875,9 @@
       if (live) {
         const embed = function (id, tape) {
           if (!id || !tape || !Array.isArray(tape.ticks) || tape.ticks.length < 4) return;
-          if (watchTapeCache[id] && watchTapeCache[id].at > now - TTL && watchTapeCache[id].hint) return;
+          if (watchTapeCache[id] && tapeJudgeFresh(watchTapeCache[id].at, now) && watchTapeCache[id].hint) return;
           const hint = hintFromTapeTicks(tape.ticks, {});
-          watchTapeCache[id] = { at: now, hint: hint };
+          watchTapeCache[id] = { at: now, hint: hint, slot: slot };
         };
         if (live.focusTape) {
           embed(String(live.focus || live.focusTape.code || "").toUpperCase(), live.focusTape);
@@ -4819,7 +4898,7 @@
       const code = String(item && item.code || "").toUpperCase();
       if (!code) return;
       const hit = watchTapeCache[code];
-      if (hit && hit.at > now - TTL) return;
+      if (hit && tapeJudgeFresh(hit.at, now)) return;
       if (need.indexOf(code) < 0) need.push(code);
     });
     // 焦點代號先抓；其餘最多 10 檔避免拖垮
@@ -4831,7 +4910,7 @@
     const queue = need.slice(0, 12);
     queue.forEach(function (code) {
       const prev = watchTapeCache[code] || { at: 0, hint: null };
-      watchTapeCache[code] = { at: prev.at, hint: prev.hint, busy: true };
+      watchTapeCache[code] = { at: prev.at, hint: prev.hint, slot: prev.slot, busy: true };
     });
     applyWatchTapeCacheToBox(box);
 
@@ -4848,7 +4927,7 @@
           if (M.fetchFubonTapeFromDrive) tape = await M.fetchFubonTapeFromDrive(code);
         } catch (err) { tape = null; }
         const hint = tape && tape.ticks ? hintFromTapeTicks(tape.ticks, {}) : null;
-        watchTapeCache[code] = { at: Date.now(), hint: hint, busy: false };
+        watchTapeCache[code] = { at: Date.now(), hint: hint, slot: slot, busy: false };
         if (box.isConnected) {
           book.watch.forEach(function (item, idx) {
             if (String(item && item.code || "").toUpperCase() !== code) return;
@@ -4961,14 +5040,15 @@
       paintWatchQuotes();
       if (!mini) {
         applyWatchTapeCacheToBox(box);
-        const stale = book.watch.some(function (item) {
-          const code = String(item && item.code || "").toUpperCase();
-          const hit = code && watchTapeCache[code];
-          return !hit || !(hit.at > Date.now() - 90_000);
-        });
-        if (stale) {
-          watchTapeHintGen += 1;
-          refreshWatchTapeHints(box, watchTapeHintGen).catch(function () { /* ignore */ });
+        // 足跡判斷僅 08:30–13:30 每 15 分更新；其餘時段只套用快取
+        if (isTapeJudgeWindow()) {
+          const slot = tapeJudgeSlotKey();
+          const stale = !slot || slot !== lastTapeJudgeSlot || book.watch.some(function (item) {
+            const code = String(item && item.code || "").toUpperCase();
+            const hit = code && watchTapeCache[code];
+            return !hit || !tapeJudgeFresh(hit.at);
+          });
+          if (stale) runTapeJudgeIfDue(true);
         }
       }
       return;
@@ -4980,9 +5060,10 @@
     applyCachedWatchQuotes(box);
     if (!mini) {
       applyWatchTapeCacheToBox(box);
-      watchTapeHintGen += 1;
-      const tapeGen = watchTapeHintGen;
-      refreshWatchTapeHints(box, tapeGen).catch(function () { /* ignore */ });
+      // 進表先顯示快取；判斷更新交給 15 分時鐘（首次 force）
+      if (isTapeJudgeWindow() || !Object.keys(watchTapeCache).length) {
+        runTapeJudgeIfDue(true);
+      }
     }
     // 盤後／剛登入：watchBoard 會先灌雲端 mis-live 快照再補 MIS
     withWatchTimeout(M.watchBoard(book.watch), 22000, null).then(function (rows) {
@@ -5010,11 +5091,7 @@
           watchLastChips = chips || { date: "", byCode: {} };
           paintWatchChipRows(box, watchLastChips);
         });
-      if (!mini) {
-        watchTapeHintGen += 1;
-        const tapeGen2 = watchTapeHintGen;
-        refreshWatchTapeHints(box, tapeGen2).catch(function () { /* ignore */ });
-      }
+      // 足跡判斷改由 startTapeJudgeClock 每 15 分觸發，此處不重複狂刷
     });
   }
 
@@ -5337,12 +5414,28 @@
     const box = $("stock-actors");
     if (!box || !M || !M.analyzeTapeActors) return;
     meta = meta || {};
-    const pack = M.analyzeTapeActors(stockLiveTape, {
-      pct: bookQ && bookQ.pct,
-      limitUp: bookQ && bookQ.limitUp,
-      price: bookQ && bookQ.price,
-      ref: bookQ && bookQ.ref
-    });
+    const slot = tapeJudgeSlotKey() || ("off|" + taipeiDay());
+    const code = state.stock && state.stock.code
+      ? String(state.stock.code).toUpperCase() : "";
+    let pack = null;
+    // 判讀每 15 分重算；同槽位重用快取（逐筆樣本仍用最新 tape 渲染）
+    if (stockActorsJudgeCache &&
+        stockActorsJudgeCache.code === code &&
+        stockActorsJudgeCache.slot === slot &&
+        stockActorsJudgeCache.pack &&
+        stockActorsJudgeCache.pack.ok) {
+      pack = stockActorsJudgeCache.pack;
+    } else {
+      pack = M.analyzeTapeActors(stockLiveTape, {
+        pct: bookQ && bookQ.pct,
+        limitUp: bookQ && bookQ.limitUp,
+        price: bookQ && bookQ.price,
+        ref: bookQ && bookQ.ref
+      });
+      if (pack && pack.ok) {
+        stockActorsJudgeCache = { code: code, slot: slot, pack: pack, at: Date.now() };
+      }
+    }
     if (!pack) {
       box.hidden = true;
       box.innerHTML = "";
@@ -5931,11 +6024,16 @@
         tapeDate: fubonTape && fubonTape.date ? String(fubonTape.date) : ""
       });
       if (code && stockLiveTape && stockLiveTape.length >= 4) {
-        const hint = hintFromTapeTicks(stockLiveTape, {
-          price: bookQ && bookQ.price,
-          pct: bookQ && bookQ.pct
-        });
-        watchTapeCache[code] = { at: Date.now(), hint: hint };
+        const slotNow = tapeJudgeSlotKey() || ("off|" + taipeiDay());
+        const prev = watchTapeCache[code];
+        // 自選足跡欄：僅在新 15 分槽或尚無快取時覆寫判斷
+        if (!prev || !tapeJudgeFresh(prev.at) || prev.slot !== slotNow) {
+          const hint = hintFromTapeTicks(stockLiveTape, {
+            price: bookQ && bookQ.price,
+            pct: bookQ && bookQ.pct
+          });
+          watchTapeCache[code] = { at: Date.now(), hint: hint, slot: slotNow };
+        }
       }
     } catch (err) {
       if (!quiet) {
