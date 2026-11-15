@@ -293,6 +293,34 @@
     }
   }
 
+  /** 日Ｋ預抓包（免 Google 登入）；開盤時網頁優先用此取代遠端歷史 API。 */
+  async function readHistDaily(code) {
+    if (!canReach()) return null;
+    try {
+      const id = String(code || "").trim().toUpperCase();
+      if (id) {
+        const one = await fetchJson("/api/hist-daily/" + encodeURIComponent(id), false);
+        if (one && Array.isArray(one.bars) && one.bars.length >= 3) return one;
+      }
+      const pack = await fetchJson("/api/hist-daily", false);
+      if (!pack || !pack.byCode) return pack;
+      if (id && pack.byCode[id]) {
+        const row = pack.byCode[id];
+        return {
+          ok: true,
+          source: pack.source || "fubon-hist",
+          code: id,
+          bars: Array.isArray(row) ? row : (row.bars || []),
+          asOf: pack.asOf,
+          at: pack.at
+        };
+      }
+      return pack;
+    } catch (err) {
+      return null;
+    }
+  }
+
   async function health() {
     if (!canReach()) return null;
     try {
@@ -314,6 +342,7 @@
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,
     readFubonHoldings: readFubonHoldings,
+    readHistDaily: readHistDaily,
     health: health,
   };
 })(window);

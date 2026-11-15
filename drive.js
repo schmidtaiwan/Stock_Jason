@@ -625,6 +625,41 @@
     return readJsonByFileId(id);
   }
 
+  /** Live Bridge 上傳的日Ｋ預抓（hist-daily.json／hist-daily-{code}.json）。 */
+  async function readHistDaily(code) {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const idCode = String(code || "").trim().toUpperCase();
+
+    async function tryId(id) {
+      if (!id) return null;
+      try {
+        return await readJsonByFileId(id);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    if (idCode) {
+      const flat = await tryId(await findBookFile("hist-daily-" + idCode + ".json"));
+      if (flat && Array.isArray(flat.bars) && flat.bars.length >= 3) return flat;
+    }
+
+    const pack = await tryId(await findBookFile("hist-daily.json"));
+    if (!pack) return null;
+    if (idCode && pack.byCode && pack.byCode[idCode]) {
+      const row = pack.byCode[idCode];
+      return {
+        ok: true,
+        source: pack.source || "fubon-hist",
+        code: idCode,
+        bars: Array.isArray(row) ? row : (row.bars || []),
+        asOf: pack.asOf,
+        at: pack.at
+      };
+    }
+    return pack;
+  }
+
   async function readFubonTape(code, dateYmd) {
     if (!account || !isAllowed(accountEmail())) return null;
     const idCode = String(code || "").trim().toUpperCase();
@@ -898,6 +933,7 @@
     readFubonLive: readFubonLive,
     readFubonHoldings: readFubonHoldings,
     readFubonTape: readFubonTape,
+    readHistDaily: readHistDaily,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

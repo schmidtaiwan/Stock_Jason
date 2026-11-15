@@ -1610,9 +1610,98 @@
     return num / Math.sqrt(dx * dy);
   }
 
+  /** LiveBridge／Drive 預抓日Ｋ（開盤時優先，免打 FinMind／東財）。 */
+  let histDailyPack = null;
+  let histDailyPackAt = 0;
+  const histDailyCodeCache = Object.create(null);
+
+  function normalizeHistBars(raw) {
+    if (!raw) return [];
+    const list = Array.isArray(raw) ? raw
+      : (raw.bars && Array.isArray(raw.bars) ? raw.bars : []);
+    return list.map(function (b) {
+      return {
+        t: String(b.t || b.date || "").slice(0, 10),
+        o: num(b.o != null ? b.o : b.open),
+        h: num(b.h != null ? b.h : b.high),
+        l: num(b.l != null ? b.l : b.low),
+        c: num(b.c != null ? b.c : b.close),
+        v: num(b.v != null ? b.v : b.volume) || 0
+      };
+    }).filter(function (b) { return b.t && b.c != null && b.c > 0; })
+      .sort(function (a, b) { return a.t < b.t ? -1 : (a.t > b.t ? 1 : 0); });
+  }
+
+  async function fetchHistDailyCloud(code) {
+    const id = String(code || "").trim().toUpperCase();
+    if (!id) return null;
+    const now = Date.now();
+    const hit = histDailyCodeCache[id];
+    if (hit && now - hit.at < 5 * 60_000 && hit.bars && hit.bars.length >= 3) {
+      return hit.bars;
+    }
+
+    async function fromBridge() {
+      const B = global.SJLiveBridge;
+      if (!B || !B.readHistDaily) return null;
+      if (B.isOnline && B.isOnline() === false) return null;
+      try {
+        const pack = await B.readHistDaily(id);
+        return normalizeHistBars(pack);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    async function fromDrive() {
+      const D = global.SJDrive;
+      if (!D || !D.readHistDaily || !D.account || !D.account()) return null;
+      try {
+        const pack = await D.readHistDaily(id);
+        return normalizeHistBars(pack);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    // 先試已快取的整包
+    if (histDailyPack && now - histDailyPackAt < 5 * 60_000 && histDailyPack.byCode && histDailyPack.byCode[id]) {
+      const bars = normalizeHistBars(histDailyPack.byCode[id]);
+      if (bars.length >= 3) {
+        histDailyCodeCache[id] = { at: now, bars: bars };
+        return bars;
+      }
+    }
+
+    let bars = await fromBridge();
+    if (!(bars && bars.length >= 3)) bars = await fromDrive();
+    if (bars && bars.length >= 3) {
+      histDailyCodeCache[id] = { at: now, bars: bars };
+      return bars;
+    }
+    return null;
+  }
+
   async function historyBars(secid, code, days) {
     const want = Math.max(40, Number(days) || 180);
     const stockId = twStockId(secid, code);
+
+    // 1) Bridge／Drive 預抓日Ｋ（網頁未登入也可走 Bridge）
+    if (stockId) {
+      try {
+        const cloud = await fetchHistDailyCloud(stockId);
+        if (cloud && cloud.length >= 5) {
+          // 雲端通常備 60 根；要更長才回落 FinMind／東財
+          if (want <= cloud.length + 10 || cloud.length >= 40) {
+            const cut = cloud.slice(-Math.min(want, cloud.length));
+            cut.symbolName = toTW(code || stockId);
+            cut.source = "fubon-hist";
+            return cut;
+          }
+        }
+      } catch (err) { /* fall through */ }
+    }
+
     if (stockId) {
       const rows = await finMind("TaiwanStockPrice", stockId, isoDaysAgo(Math.ceil(want * 1.7) + 40)).catch(function () { return []; });
       const bars = rows.map(function (row) {
