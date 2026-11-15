@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 308;
+  const PAGE_BUILD = 309;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -821,7 +821,16 @@
     box.addEventListener("click", function (ev) {
       const btn = ev.target.closest(".conn-lamp");
       if (!btn) return;
-      openConnLampPop(btn.getAttribute("data-conn"));
+      const key = btn.getAttribute("data-conn");
+      openConnLampPop(key);
+      // 點燈強制重探（尤其家裡／富邦／凱基），避免紅燈卡住
+      setConnLampPopStatus("重新探測連線…", true);
+      refreshConnLamps({ force: true }).then(function () {
+        openConnLampPop(key);
+        setConnLampPopStatus("", false);
+      }).catch(function () {
+        setConnLampPopStatus("探測失敗，請稍後再試", true);
+      });
     });
     const closeBtn = $("conn-lamp-pop-close");
     if (closeBtn) closeBtn.addEventListener("click", closeConnLampPop);
@@ -906,18 +915,44 @@
             "\n開盤時自選會優先吃 Bridge 即時資料。");
         } else if (online === false) {
           const err = B.lastError ? B.lastError() : "";
-          setConnItem("bridge", "bad",
-            "連線異常。\n打不到 Tailscale LiveBridge。\n" +
-            (err ? ("原因：" + err + "\n") : "") +
-            "請確認手機 Tailscale 已連線、Win11 LiveBridge 已開，且 Chrome 若跳出「允許區域網路」請按允許。");
+          // 雲端備援若仍新鮮 → 黃燈；完全斷 → 紅燈
+          let cloudFresh = false;
+          let cloudAge = null;
+          try {
+            if (D.readFubonLive) {
+              const live = await Promise.race([
+                D.readFubonLive().catch(function () { return null; }),
+                new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 3500); })
+              ]);
+              const at = live && Number(live.at || 0);
+              if (at > 0) {
+                cloudAge = Math.round((Date.now() - at) / 1000);
+                cloudFresh = cloudAge <= 180;
+                connState.bridge._cloudLive = live;
+                connState.bridge._cloudAge = cloudAge;
+              }
+            }
+          } catch (eCloud) { /* ignore */ }
+          if (cloudFresh) {
+            setConnItem("bridge", "warn",
+              "家裡 Bridge 直連失敗，但雲端備援約 " + cloudAge + " 秒前仍有更新。\n" +
+              (err ? ("直連原因：" + err + "\n") : "") +
+              "請確認手機 Tailscale 已連、Win11 LiveBridge 已開；Chrome 若問區域網路請允許。點此燈可重探。");
+          } else {
+            setConnItem("bridge", "bad",
+              "連線異常。\n打不到 Tailscale LiveBridge。\n" +
+              (err ? ("原因：" + err + "\n") : "") +
+              "請確認手機 Tailscale 已連線、Win11 LiveBridge 已開，且 Chrome 若跳出「允許區域網路」請按允許。\n點此燈可強制重探。");
+          }
         } else {
           setConnItem("bridge", "warn",
             "檢查中。\n已設定 Bridge 網址，但尚未確認是否可連。稍後會再探測。");
         }
       }
 
-      // 富邦：Bridge 有 fubon-live；Bridge 離線時若加權已用富邦／雲端成功則黃燈而非紅燈
+      // 富邦：Bridge 有 fubon-live；Bridge 離線時改讀雲端備援
       const bridgeOk = connState.bridge.state === "ok";
+      const bridgeWarn = connState.bridge.state === "warn";
       const twiiFubonOk = connState.fubon && connState.fubon.state === "ok" &&
         /加權已用富邦|富邦來源/.test(String(connState.fubon.detail || ""));
       if (bridgeOk) {
@@ -939,18 +974,36 @@
             ((err && err.message) ? err.message : String(err || ""));
         }
         setConnItem("fubon", liveOk ? "ok" : "bad", liveDetail);
-      } else if (pref === "fubon" && twiiFubonOk) {
-        setConnItem("fubon", "warn",
-          "加權已有富邦數字（可能來自雲端備援）。\n但家裡 Bridge 尚未連上，即時庫存／自選可能不完整。\n請確認 Tailscale／LiveBridge，或點「家裡」燈看說明。");
-      } else if (pref === "fubon") {
-        setConnItem("fubon", "bad",
-          "連線異常。\n已選富邦來源，但 LiveBridge 未連線，無法取得富邦即時。\n請先啟動 LiveBridge／Tailscale，或改回證交所 MIS。");
       } else {
-        setConnItem("fubon", "warn",
-          "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
+        let driveLive = connState.bridge._cloudLive || null;
+        if (!driveLive && D.readFubonLive) {
+          try {
+            driveLive = await Promise.race([
+              D.readFubonLive().catch(function () { return null; }),
+              new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 3500); })
+            ]);
+          } catch (eL) { driveLive = null; }
+        }
+        const n = driveLive && driveLive.byCode ? Object.keys(driveLive.byCode).length : 0;
+        const at = driveLive && Number(driveLive.at || 0);
+        const ageSec = at > 0 ? Math.round((Date.now() - at) / 1000) : null;
+        if (n > 0 && ageSec != null && ageSec <= 300) {
+          setConnItem("fubon", "warn",
+            "家裡未直連，改用雲端富邦備援 " + n + " 檔（約 " + ageSec + " 秒前）。\n" +
+            "即時／庫存可能延遲。請開 Tailscale＋LiveBridge，或點「家裡」重探。");
+        } else if (pref === "fubon" && twiiFubonOk) {
+          setConnItem("fubon", "warn",
+            "加權已有富邦數字（可能來自雲端備援）。\n但家裡 Bridge 尚未連上，即時庫存／自選可能不完整。\n請確認 Tailscale／LiveBridge，或點「家裡」燈看說明。");
+        } else if (pref === "fubon") {
+          setConnItem("fubon", "bad",
+            "連線異常。\n已選富邦來源，但 LiveBridge 未連線且雲端備援過舊／無資料。\n請先啟動 LiveBridge／Tailscale，或改回證交所 MIS。");
+        } else {
+          setConnItem("fubon", "warn",
+            "未使用富邦即時。\n目前加權來源為證交所 MIS；家裡 Bridge 離線。");
+        }
       }
 
-      // 凱基：依 LiveBridge health.kgi／kgiHoldings（InventorySum）
+      // 凱基：依 LiveBridge health；離線時改讀雲端 kgi-holdings
       if (bridgeOk) {
         let health = connState.kgi._health;
         if (!health && B.health) {
@@ -971,8 +1024,25 @@
             "連線異常。\nBridge 已通，但尚未登入凱基。\n請在 LiveBridge 填凱基帳密並確認本機憑證已匯入。");
         }
       } else {
-        setConnItem("kgi", "warn",
-          "家裡 Bridge 未連線。\n凱基庫存需透過 LiveBridge 抓 InventorySum 後上傳雲端。");
+        let kgiCloud = null;
+        try {
+          if (D.readKgiHoldings) {
+            kgiCloud = await Promise.race([
+              D.readKgiHoldings().catch(function () { return null; }),
+              new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 3500); })
+            ]);
+          }
+        } catch (eK) { kgiCloud = null; }
+        const rows = kgiCloud && (kgiCloud.holdings || kgiCloud.rows || kgiCloud.items);
+        const kn = Array.isArray(rows) ? rows.length
+          : (kgiCloud && kgiCloud.count != null ? Number(kgiCloud.count) : 0);
+        if (kn > 0) {
+          setConnItem("kgi", "warn",
+            "家裡未直連，改用雲端凱基庫存約 " + kn + " 檔。\n請開 Tailscale＋LiveBridge 以即時同步。");
+        } else {
+          setConnItem("kgi", "warn",
+            "家裡 Bridge 未連線。\n凱基庫存需透過 LiveBridge 抓 InventorySum 後上傳雲端。");
+        }
       }
 
       // MIS：不論目前加權是富邦或證交所，都實際探測是否正常

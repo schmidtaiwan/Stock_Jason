@@ -433,7 +433,8 @@
       if (known != null) return known;
     }
     const mobile = isMobileUa();
-    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : 3000);
+    // 桌面也給足時間：冷啟／PNA 預檢常超過 3 秒
+    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : 6000);
     const tries = mobile ? 2 : 2;
     for (let i = 0; i < tries; i++) {
       try {
