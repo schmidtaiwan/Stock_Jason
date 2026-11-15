@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 269;
+  const PAGE_BUILD = 270;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -577,15 +577,16 @@
       const pref = getTwiiSourcePref();
       const open = typeof isTwMarketOpen === "function" && isTwMarketOpen();
 
-      // Bridge / Tailscale
+      // Bridge / Tailscale：強制重探（勿用短暫失敗快取卡住紅燈）
       if (!B || !B.canReach || !B.canReach()) {
         setConnItem("bridge", "bad",
           "尚未設定 LiveBridge 網址（google_config.js 的 liveBridgeBaseUrl）。\n網頁無法走 Tailscale 即時報價。");
       } else {
-        let online = B.isOnline ? B.isOnline() : null;
-        if (online == null && B.probe) {
-          try { await B.probe(); } catch (err) { /* ignore */ }
-          online = B.isOnline ? B.isOnline() : null;
+        let online = null;
+        if (B.probe) {
+          try { online = !!(await B.probe(0, true)); } catch (err) { online = false; }
+        } else if (B.isOnline) {
+          online = B.isOnline();
         }
         if (online === true) {
           const health = B.health ? await B.health().catch(function () { return null; }) : null;
@@ -599,15 +600,17 @@
           setConnItem("bridge", "bad",
             "連線異常。\n打不到 Tailscale LiveBridge。\n" +
             (err ? ("原因：" + err + "\n") : "") +
-            "請確認 Win11 LiveBridge 已啟動，且 Tailscale Serve 指向本機埠。");
+            "請確認手機 Tailscale 已連線、Win11 LiveBridge 已開，且 Chrome 若跳出「允許區域網路」請按允許。");
         } else {
           setConnItem("bridge", "warn",
             "檢查中。\n已設定 Bridge 網址，但尚未確認是否可連。稍後會再探測。");
         }
       }
 
-      // 富邦：Bridge 有 fubon-live，或偏好富邦且最近加權成功
+      // 富邦：Bridge 有 fubon-live；Bridge 離線時若加權已用富邦／雲端成功則黃燈而非紅燈
       const bridgeOk = connState.bridge.state === "ok";
+      const twiiFubonOk = connState.fubon && connState.fubon.state === "ok" &&
+        /加權已用富邦|富邦來源/.test(String(connState.fubon.detail || ""));
       if (bridgeOk) {
         let liveOk = false;
         let liveDetail = "";
@@ -627,18 +630,22 @@
             ((err && err.message) ? err.message : String(err || ""));
         }
         setConnItem("fubon", liveOk ? "ok" : "bad", liveDetail);
+      } else if (pref === "fubon" && twiiFubonOk) {
+        setConnItem("fubon", "warn",
+          "加權已有富邦數字（可能來自雲端備援）。\n但家裡 Bridge 尚未連上，即時庫存／自選可能不完整。\n請確認 Tailscale／LiveBridge，或點「家裡」燈看說明。");
       } else if (pref === "fubon") {
         setConnItem("fubon", "bad",
           "連線異常。\n已選富邦來源，但 LiveBridge 未連線，無法取得富邦即時。\n請先啟動 LiveBridge／Tailscale，或改回證交所 MIS。");
       } else {
-        setConnItem("fubon", bridgeOk ? "ok" : "warn",
-          bridgeOk
-            ? "連線正常（備援）。\n目前加權用 MIS；富邦快取可在改選富邦時使用。"
-            : "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
+        setConnItem("fubon", "warn",
+          "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
       }
 
-      // MIS：依最近加權結果＋是否強制時段
-      if (connState.mis._lastOk === true) {
+      // MIS：用富邦加權時不要一直黃燈「檢查中」
+      if (pref === "fubon" && connState.mis._lastOk !== true && connState.mis._lastOk !== false) {
+        setConnItem("mis", "warn",
+          "目前加權用富邦，未探測證交所 MIS。\n若要檢查 MIS，可把加權來源改回證交所。");
+      } else if (connState.mis._lastOk === true) {
         setConnItem("mis", "ok",
           "連線正常。\n證交所 MIS 加權／報價讀取成功。" +
           (connState.mis._lastAt
@@ -905,6 +912,13 @@
 
   function paintChrome(skipTwii) {
     const account = D.account();
+    try {
+      const B = window.SJLiveBridge;
+      if (B && B.setIdentity) {
+        if (account && account.email) B.setIdentity(account.email, account.name || "");
+        else B.setIdentity("", "");
+      }
+    } catch (e) { /* ignore */ }
     const login = $("login");
     const acctBtn = $("account-btn");
     if (login) login.hidden = !!account;
@@ -8414,7 +8428,15 @@
       window.__sjBridgeHeartbeat = setInterval(function () {
         const B = window.SJLiveBridge;
         if (!B || !B.canReach || !B.canReach()) return;
-        if (B.health) {
+        try {
+          const acc = D.account && D.account();
+          if (B.setIdentity) {
+            if (acc && acc.email) B.setIdentity(acc.email, acc.name || "");
+          }
+        } catch (e) { /* ignore */ }
+        if (B.probe) {
+          B.probe(0, true).catch(function () { /* ignore */ });
+        } else if (B.health) {
           B.health().catch(function () { /* ignore */ });
         }
         refreshConnLamps().catch(function () { /* ignore */ });

@@ -45,7 +45,29 @@
     return "";
   }
 
+  let _forcedEmail = "";
+  let _forcedName = "";
+  const MEMBER_LS = "sj-bridge-member-email";
+  const MEMBER_NAME_LS = "sj-bridge-member-name";
+
+  /** 由 app.js 在登入／登出時呼叫，避免手機讀不到 SJDrive.account。 */
+  function setIdentity(email, name) {
+    _forcedEmail = String(email || "").trim().toLowerCase();
+    _forcedName = String(name || "").trim();
+    try {
+      if (_forcedEmail) {
+        localStorage.setItem(MEMBER_LS, _forcedEmail);
+        if (_forcedName) localStorage.setItem(MEMBER_NAME_LS, _forcedName);
+        else localStorage.removeItem(MEMBER_NAME_LS);
+      } else {
+        localStorage.removeItem(MEMBER_LS);
+        localStorage.removeItem(MEMBER_NAME_LS);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   function accountEmail() {
+    if (_forcedEmail) return _forcedEmail;
     try {
       const D = global.SJDrive;
       if (D && typeof D.account === "function") {
@@ -53,20 +75,24 @@
         if (a && a.email) return String(a.email).trim().toLowerCase();
       }
     } catch (e) { /* ignore */ }
-    // 備援：直接讀 session（避免 SJDrive.account 尚未就緒時被標成訪客）
     try {
       const raw = sessionStorage.getItem("sj-g-token");
-      if (!raw) return "";
-      const data = JSON.parse(raw);
-      if (!data || !data.email) return "";
-      if (!(Number(data.exp) > Date.now())) return "";
-      return String(data.email).trim().toLowerCase();
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.email && Number(data.exp) > Date.now()) {
+          return String(data.email).trim().toLowerCase();
+        }
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      return String(localStorage.getItem(MEMBER_LS) || "").trim().toLowerCase();
     } catch (e) {
       return "";
     }
   }
 
   function accountName() {
+    if (_forcedName) return _forcedName;
     try {
       const D = global.SJDrive;
       if (D && typeof D.account === "function") {
@@ -76,9 +102,13 @@
     } catch (e) { /* ignore */ }
     try {
       const raw = sessionStorage.getItem("sj-g-token");
-      if (!raw) return "";
-      const data = JSON.parse(raw);
-      return data && data.name ? String(data.name).trim() : "";
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.name) return String(data.name).trim();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      return String(localStorage.getItem(MEMBER_NAME_LS) || "").trim();
     } catch (e) {
       return "";
     }
@@ -177,19 +207,20 @@
       }, ms);
 
       window.addEventListener("message", onMsg);
-      const ident = clientIdentityHeaders();
+      const ident = clientIdentity();
+      let cleanPath = String(apiPath || "/api/health");
+      try {
+        const u = new URL(cleanPath, "https://bridge.local");
+        cleanPath = u.pathname || "/api/health";
+      } catch (e) {
+        cleanPath = cleanPath.split("?")[0] || "/api/health";
+      }
       let relayUrl = root + "/relay.html?id=" + encodeURIComponent(id) +
-        "&path=" + encodeURIComponent(apiPath) +
+        "&path=" + encodeURIComponent(cleanPath) +
         "&parent=" + encodeURIComponent(PAGE_ORIGIN);
-      if (ident["X-SJ-Email"]) {
-        relayUrl += "&sjEmail=" + encodeURIComponent(ident["X-SJ-Email"]);
-      }
-      if (ident["X-SJ-Name"]) {
-        relayUrl += "&sjName=" + encodeURIComponent(ident["X-SJ-Name"]);
-      }
-      if (ident["X-SJ-Guest"]) {
-        relayUrl += "&sjGuest=" + encodeURIComponent(ident["X-SJ-Guest"]);
-      }
+      if (ident.sjEmail) relayUrl += "&sjEmail=" + encodeURIComponent(ident.sjEmail);
+      if (ident.sjName) relayUrl += "&sjName=" + encodeURIComponent(ident.sjName);
+      if (ident.sjGuest) relayUrl += "&sjGuest=" + encodeURIComponent(ident.sjGuest);
       const url = relayUrl;
       try {
         document.body.appendChild(iframe);
@@ -214,32 +245,31 @@
     }
   }
 
-  function clientIdentityHeaders() {
-    const headers = {};
+  /** 身分只走 query（避免自訂 header 觸發 CORS／PNA 預檢，手機常因此 Failed to fetch）。 */
+  function clientIdentity() {
     const email = accountEmail();
     if (email) {
-      headers["X-SJ-Email"] = email;
+      const out = { sjEmail: email };
       const name = accountName();
-      if (name) headers["X-SJ-Name"] = name.slice(0, 40);
-    } else {
-      headers["X-SJ-Guest"] = guestId();
+      if (name) out.sjName = name.slice(0, 40);
+      return out;
     }
-    return headers;
+    return { sjGuest: guestId() };
   }
 
-  /** 身分同時塞 query（Tailscale／部分環境會丟自訂 header）。 */
   function withIdentityQuery(path, ident) {
     let p = String(path || "/");
+    try {
+      const u = new URL(p, "https://bridge.local");
+      u.searchParams.delete("sjEmail");
+      u.searchParams.delete("sjName");
+      u.searchParams.delete("sjGuest");
+      p = u.pathname + (u.search || "");
+    } catch (e) { /* keep p */ }
     const parts = [];
-    if (ident && ident["X-SJ-Email"]) {
-      parts.push("sjEmail=" + encodeURIComponent(ident["X-SJ-Email"]));
-    }
-    if (ident && ident["X-SJ-Name"]) {
-      parts.push("sjName=" + encodeURIComponent(ident["X-SJ-Name"]));
-    }
-    if (ident && ident["X-SJ-Guest"]) {
-      parts.push("sjGuest=" + encodeURIComponent(ident["X-SJ-Guest"]));
-    }
+    if (ident && ident.sjEmail) parts.push("sjEmail=" + encodeURIComponent(ident.sjEmail));
+    if (ident && ident.sjName) parts.push("sjName=" + encodeURIComponent(ident.sjName));
+    if (ident && ident.sjGuest) parts.push("sjGuest=" + encodeURIComponent(ident.sjGuest));
     if (!parts.length) return p;
     return p + (p.indexOf("?") >= 0 ? "&" : "?") + parts.join("&");
   }
@@ -247,15 +277,16 @@
   async function fetchJson(path, needAuth, timeoutMs) {
     const root = baseUrl();
     if (!root) return null;
-    const headers = clientIdentityHeaders();
-    const apiPath = withIdentityQuery(path, headers);
+    const ident = clientIdentity();
+    const apiPath = withIdentityQuery(path, ident);
+    const headers = {};
     const token = accessToken();
-    // health／live／tape 不要帶 Authorization（避免多餘 CORS 預檢）
     if (needAuth) {
       if (!token) return null;
       headers.Authorization = "Bearer " + token;
     }
-    const ms = timeoutMs > 0 ? timeoutMs : FETCH_MS;
+    const mobile = isMobileUa();
+    const ms = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : FETCH_MS);
     const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     let timer = null;
     if (ctrl) {
@@ -284,28 +315,44 @@
 
     try {
       let data;
-      try {
-        data = await doFetch("");
-      } catch (firstErr) {
-        // 手機 Failed to fetch：改 relay（不帶 auth 的路徑）
-        const msg = String((firstErr && firstErr.message) || firstErr || "");
-        const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local/i.test(msg);
-        if (useRelay) {
+      if (mobile && !needAuth) {
+        try {
+          data = await fetchViaRelay(apiPath, Math.max(ms, 15000));
+          _relayReady = true;
+        } catch (relayErr) {
           try {
-            data = await fetchViaRelay(apiPath, Math.max(ms, 12000));
-            _relayReady = true;
-          } catch (relayErr) {
+            data = await doFetch("");
+          } catch (e1) {
+            try {
+              data = await doFetch("local");
+            } catch (e2) {
+              throw relayErr;
+            }
+          }
+        }
+      } else {
+        try {
+          data = await doFetch("");
+        } catch (firstErr) {
+          const msg = String((firstErr && firstErr.message) || firstErr || "");
+          const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local|abort/i.test(msg);
+          if (useRelay) {
+            try {
+              data = await fetchViaRelay(apiPath, Math.max(ms, 15000));
+              _relayReady = true;
+            } catch (relayErr) {
+              try {
+                data = await doFetch("local");
+              } catch (e2) {
+                throw firstErr;
+              }
+            }
+          } else {
             try {
               data = await doFetch("local");
             } catch (e2) {
               throw firstErr;
             }
-          }
-        } else {
-          try {
-            data = await doFetch("local");
-          } catch (e2) {
-            throw firstErr;
           }
         }
       }
@@ -471,7 +518,8 @@
   async function health() {
     if (!canReach()) return null;
     try {
-      return await fetchJson("/api/health", false, 2500);
+      const ms = isMobileUa() ? 15000 : 4000;
+      return await fetchJson("/api/health", false, ms);
     } catch (err) {
       return null;
     }
@@ -480,6 +528,7 @@
   global.SJLiveBridge = {
     baseUrl: baseUrl,
     setBaseUrl: setBaseUrl,
+    setIdentity: setIdentity,
     canUse: canUse,
     canReach: canReach,
     isOnline: isOnline,
