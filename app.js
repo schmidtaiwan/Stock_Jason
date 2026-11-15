@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 278;
+  const PAGE_BUILD = 279;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -3069,12 +3069,26 @@
     watchTapeJudgeTimer = 0;
   }
 
+  function watchTapeHintsMissing() {
+    if (!book.watch || !book.watch.length) return false;
+    return book.watch.some(function (item) {
+      const code = String(item && item.code || "").toUpperCase();
+      if (!code) return false;
+      const hit = watchTapeCache[code];
+      return !hit || !hit.hint;
+    });
+  }
+
   function runTapeJudgeIfDue(force) {
     const slot = tapeJudgeSlotKey();
     const inWin = isTapeJudgeWindow();
     if (!force) {
-      if (!inWin) return;
-      if (slot && slot === lastTapeJudgeSlot) return;
+      if (inWin) {
+        if (slot && slot === lastTapeJudgeSlot) return;
+      } else if (!watchTapeHintsMissing()) {
+        // 休市／週末：已有判讀就不狂刷；缺足跡仍補抓 last-session
+        return;
+      }
     }
     if (slot) lastTapeJudgeSlot = slot;
 
@@ -3092,7 +3106,7 @@
 
   function startTapeJudgeClock() {
     stopTapeJudgeClock();
-    // 每 20 秒檢查是否跨過 15 分槽（08:30／08:45／…／13:30）
+    // 每 20 秒檢查：盤中跨 15 分槽；休市則補缺足跡
     watchTapeJudgeTimer = setInterval(function () {
       if (document.hidden) return;
       runTapeJudgeIfDue(false);
@@ -5187,21 +5201,24 @@
     if (myGen !== watchTapeHintGen) return;
     applyWatchTapeCacheToBox(box);
 
+    const FAIL_TTL = 60_000;
     const need = [];
     book.watch.forEach(function (item) {
       const code = String(item && item.code || "").toUpperCase();
       if (!code) return;
       const hit = watchTapeCache[code];
-      if (hit && tapeJudgeFresh(hit.at, now)) return;
+      // 有判讀且未過期才跳過；空結果只短鎖，休市可再試 Bridge／Drive
+      if (hit && hit.hint && tapeJudgeFresh(hit.at, now)) return;
+      if (hit && !hit.hint && hit.at && (now - hit.at) < FAIL_TTL) return;
       if (need.indexOf(code) < 0) need.push(code);
     });
-    // 焦點代號先抓；其餘最多 10 檔避免拖垮
+    // 焦點代號先抓；休市放寬批次（last-session 預抓）
     need.sort(function (a, b) {
       if (a === focusCode) return -1;
       if (b === focusCode) return 1;
       return 0;
     });
-    const queue = need.slice(0, 12);
+    const queue = need.slice(0, isTapeJudgeWindow() ? 12 : 40);
     queue.forEach(function (code) {
       const prev = watchTapeCache[code] || { at: 0, hint: null };
       watchTapeCache[code] = { at: prev.at, hint: prev.hint, slot: prev.slot, busy: true };
@@ -5334,15 +5351,17 @@
       paintWatchQuotes();
       if (!mini) {
         applyWatchTapeCacheToBox(box);
-        // 足跡判斷僅 08:30–13:30 每 15 分更新；其餘時段只套用快取
+        // 盤中依 15 分槽；休市／缺足跡仍強制補抓 last-session
         if (isTapeJudgeWindow()) {
           const slot = tapeJudgeSlotKey();
           const stale = !slot || slot !== lastTapeJudgeSlot || book.watch.some(function (item) {
             const code = String(item && item.code || "").toUpperCase();
             const hit = code && watchTapeCache[code];
-            return !hit || !tapeJudgeFresh(hit.at);
+            return !hit || !hit.hint || !tapeJudgeFresh(hit.at);
           });
           if (stale) runTapeJudgeIfDue(true);
+        } else if (watchTapeHintsMissing()) {
+          runTapeJudgeIfDue(true);
         }
       }
       return;
@@ -5354,8 +5373,8 @@
     applyCachedWatchQuotes(box);
     if (!mini) {
       applyWatchTapeCacheToBox(box);
-      // 進表先顯示快取；判斷更新交給 15 分時鐘（首次 force）
-      if (isTapeJudgeWindow() || !Object.keys(watchTapeCache).length) {
+      // 進表先顯示快取；缺足跡（含休市）立刻補抓
+      if (isTapeJudgeWindow() || watchTapeHintsMissing()) {
         runTapeJudgeIfDue(true);
       }
     }
