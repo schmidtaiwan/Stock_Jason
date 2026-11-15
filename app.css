@@ -1619,7 +1619,7 @@ textarea { min-height: 120px; resize: vertical; }
   align-items: center;
   min-width: 0;
   flex: 0 1 auto;
-  max-width: 11em;
+  max-width: 14.3em; /* 原 11em × 1.3 */
   margin: 0;
 }
 .watch-group-title {
