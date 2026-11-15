@@ -7972,9 +7972,12 @@
         }
       });
       const days = Object.keys(byDay).sort();
-      if (days.length) {
-        const last = byDay[days[days.length - 1]];
-        const prev = days.length > 1 ? byDay[days[days.length - 2]] : null;
+      // 優先最近一個「有全日／日盤」的交易日；沒有才退夜盤日
+      const fullDays = days.filter(function (d) { return byDay[d].pref >= 2; });
+      const useDays = fullDays.length ? fullDays : days;
+      if (useDays.length) {
+        const last = byDay[useDays[useDays.length - 1]];
+        const prev = useDays.length > 1 ? byDay[useDays[useDays.length - 2]] : null;
         const change = prev && prev.close ? last.close - prev.close : null;
         const pct = prev && prev.close ? (last.close / prev.close - 1) * 100 : null;
         return {
