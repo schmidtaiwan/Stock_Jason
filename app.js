@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 268;
+  const PAGE_BUILD = 269;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -2590,6 +2590,13 @@
     if (state.view === "chart") loadChart();
     else if (state.view === "pulse") loadPulse();
     else if (state.view === "watch") renderWatch(true);
+    // 登入後立刻打 Bridge，讓 LB 燈號從「訪客」升級成信箱／暱稱
+    try {
+      const B = window.SJLiveBridge;
+      if (B && B.canReach && B.canReach() && B.health) {
+        B.health().catch(function () { /* ignore */ });
+      }
+    } catch (e) { /* ignore */ }
     // 登入後：已選富邦或 Jason 會用 LiveBridge → 立刻探活 Tailscale
     if (getTwiiSourcePref() === "fubon") {
       warnIfTailscaleDown("fubon", { force: true }).catch(function () { /* ignore */ });

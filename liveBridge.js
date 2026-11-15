@@ -46,9 +46,42 @@
   }
 
   function accountEmail() {
-    const D = global.SJDrive;
-    if (!D || !D.account || !D.account()) return "";
-    return String(D.account().email || "").trim().toLowerCase();
+    try {
+      const D = global.SJDrive;
+      if (D && typeof D.account === "function") {
+        const a = D.account();
+        if (a && a.email) return String(a.email).trim().toLowerCase();
+      }
+    } catch (e) { /* ignore */ }
+    // 備援：直接讀 session（避免 SJDrive.account 尚未就緒時被標成訪客）
+    try {
+      const raw = sessionStorage.getItem("sj-g-token");
+      if (!raw) return "";
+      const data = JSON.parse(raw);
+      if (!data || !data.email) return "";
+      if (!(Number(data.exp) > Date.now())) return "";
+      return String(data.email).trim().toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function accountName() {
+    try {
+      const D = global.SJDrive;
+      if (D && typeof D.account === "function") {
+        const a = D.account();
+        if (a && a.name) return String(a.name).trim();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      const raw = sessionStorage.getItem("sj-g-token");
+      if (!raw) return "";
+      const data = JSON.parse(raw);
+      return data && data.name ? String(data.name).trim() : "";
+    } catch (e) {
+      return "";
+    }
   }
 
   function isJason() {
@@ -151,6 +184,9 @@
       if (ident["X-SJ-Email"]) {
         relayUrl += "&sjEmail=" + encodeURIComponent(ident["X-SJ-Email"]);
       }
+      if (ident["X-SJ-Name"]) {
+        relayUrl += "&sjName=" + encodeURIComponent(ident["X-SJ-Name"]);
+      }
       if (ident["X-SJ-Guest"]) {
         relayUrl += "&sjGuest=" + encodeURIComponent(ident["X-SJ-Guest"]);
       }
@@ -181,15 +217,38 @@
   function clientIdentityHeaders() {
     const headers = {};
     const email = accountEmail();
-    if (email) headers["X-SJ-Email"] = email;
-    else headers["X-SJ-Guest"] = guestId();
+    if (email) {
+      headers["X-SJ-Email"] = email;
+      const name = accountName();
+      if (name) headers["X-SJ-Name"] = name.slice(0, 40);
+    } else {
+      headers["X-SJ-Guest"] = guestId();
+    }
     return headers;
+  }
+
+  /** 身分同時塞 query（Tailscale／部分環境會丟自訂 header）。 */
+  function withIdentityQuery(path, ident) {
+    let p = String(path || "/");
+    const parts = [];
+    if (ident && ident["X-SJ-Email"]) {
+      parts.push("sjEmail=" + encodeURIComponent(ident["X-SJ-Email"]));
+    }
+    if (ident && ident["X-SJ-Name"]) {
+      parts.push("sjName=" + encodeURIComponent(ident["X-SJ-Name"]));
+    }
+    if (ident && ident["X-SJ-Guest"]) {
+      parts.push("sjGuest=" + encodeURIComponent(ident["X-SJ-Guest"]));
+    }
+    if (!parts.length) return p;
+    return p + (p.indexOf("?") >= 0 ? "&" : "?") + parts.join("&");
   }
 
   async function fetchJson(path, needAuth, timeoutMs) {
     const root = baseUrl();
     if (!root) return null;
     const headers = clientIdentityHeaders();
+    const apiPath = withIdentityQuery(path, headers);
     const token = accessToken();
     // health／live／tape 不要帶 Authorization（避免多餘 CORS 預檢）
     if (needAuth) {
@@ -216,7 +275,7 @@
       if (addressSpace) {
         try { fetchOpts.targetAddressSpace = addressSpace; } catch (e) { /* ignore */ }
       }
-      const res = await fetch(root + path, fetchOpts);
+      const res = await fetch(root + apiPath, fetchOpts);
       if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
       if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
       if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
@@ -233,7 +292,7 @@
         const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local/i.test(msg);
         if (useRelay) {
           try {
-            data = await fetchViaRelay(path, Math.max(ms, 12000));
+            data = await fetchViaRelay(apiPath, Math.max(ms, 12000));
             _relayReady = true;
           } catch (relayErr) {
             try {
