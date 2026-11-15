@@ -563,6 +563,36 @@
   }
 
   /**
+   * Google 雲端硬碟總用量（約）。
+   * @returns {{usageMb:number,limitMb:number|null,usageBytes:number,limitBytes:number|null,summary:string}|null}
+   */
+  async function fetchStorageQuota() {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const res = await driveFetch("https://www.googleapis.com/drive/v3/about?fields=storageQuota");
+    if (!res.ok) await readErr(res, "讀取雲端容量失敗");
+    const data = await res.json();
+    const q = data && data.storageQuota ? data.storageQuota : null;
+    if (!q) return null;
+    const usageBytes = Number(q.usage || 0);
+    const limitRaw = q.limit != null ? Number(q.limit) : NaN;
+    const limitBytes = isFinite(limitRaw) && limitRaw > 0 ? limitRaw : null;
+    const usageMb = Math.round((usageBytes / (1024 * 1024)) * 10) / 10;
+    const limitMb = limitBytes != null
+      ? Math.round((limitBytes / (1024 * 1024)) * 10) / 10
+      : null;
+    const summary = limitMb != null
+      ? ("已用 " + usageMb + " MB／上限 " + limitMb + " MB")
+      : ("已用 " + usageMb + " MB");
+    return {
+      usageBytes: usageBytes,
+      limitBytes: limitBytes,
+      usageMb: usageMb,
+      limitMb: limitMb,
+      summary: summary
+    };
+  }
+
+  /**
    * 上傳擷圖到 StockJason/ISSUE（僅已登入白名單）。
    * @returns {{id:string,name:string,webViewLink?:string}}
    */
@@ -1103,6 +1133,7 @@
     readWatchUniverse: readWatchUniverse,
     uploadIssueScreenshot: uploadIssueScreenshot,
     ensureIssueFolder: ensureIssueFolder,
+    fetchStorageQuota: fetchStorageQuota,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

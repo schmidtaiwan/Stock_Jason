@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 289;
+  const PAGE_BUILD = 290;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -616,7 +616,7 @@
     el.textContent = msg || "";
   }
 
-  function paintDriveIssueActions() {
+  function paintDriveIssueActions(quotaText) {
     const actions = $("conn-lamp-pop-actions");
     if (!actions) return;
     const logged = !!(D && D.account && D.account() && D.isAllowed && D.isAllowed(D.account().email));
@@ -627,10 +627,36 @@
         '<button type="button" class="secondary" id="conn-issue-login">用 Google 登入</button>';
       return;
     }
+    const quotaLine = quotaText
+      ? ('<p class="fine conn-drive-quota">雲端硬碟容量：<strong>' + esc(quotaText) + "</strong></p>")
+      : '<p class="fine conn-drive-quota">雲端硬碟容量：讀取中…</p>';
     actions.hidden = false;
     actions.innerHTML =
+      quotaLine +
       '<p class="fine">上傳擷圖到雲端 <strong>StockJason／ISSUE</strong>，供 Cursor 下抓判斷。</p>' +
       '<button type="button" class="secondary" id="conn-issue-pick">選擇擷圖上傳</button>';
+  }
+
+  async function refreshDriveQuotaInPop() {
+    const actions = $("conn-lamp-pop-actions");
+    if (!actions || actions.hidden) return;
+    if (!(D && D.fetchStorageQuota && D.account && D.account())) return;
+    try {
+      const q = await D.fetchStorageQuota();
+      const el = actions.querySelector(".conn-drive-quota");
+      if (el && q && q.summary) {
+        el.innerHTML = "雲端硬碟容量：<strong>" + esc(q.summary) + "</strong>";
+      }
+      if (q && q.summary) {
+        connState.drive._quota = q.summary;
+        const base = String(connState.drive.detail || "").replace(/\n雲端硬碟容量：.*$/m, "");
+        setConnItem("drive", connState.drive.state,
+          base + (base ? "\n" : "") + "雲端硬碟容量：" + q.summary);
+      }
+    } catch (err) {
+      const el = actions.querySelector(".conn-drive-quota");
+      if (el) el.textContent = "雲端硬碟容量：讀取失敗";
+    }
   }
 
   async function uploadIssueFile(file) {
@@ -726,8 +752,10 @@
     body.textContent = item.detail || "尚無說明";
     setConnLampPopStatus("", false);
     if (actions) {
-      if (key === "drive") paintDriveIssueActions();
-      else {
+      if (key === "drive") {
+        paintDriveIssueActions(connState.drive._quota || "");
+        refreshDriveQuotaInPop().catch(function () { /* ignore */ });
+      } else {
         actions.hidden = true;
         actions.innerHTML = "";
       }
@@ -898,6 +926,19 @@
               new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 4000); })
             ]);
           }
+          let quotaTxt = "";
+          if (D.fetchStorageQuota) {
+            try {
+              const q = await Promise.race([
+                D.fetchStorageQuota().catch(function () { return null; }),
+                new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 4000); })
+              ]);
+              if (q && q.summary) {
+                quotaTxt = "\n雲端硬碟容量：" + q.summary;
+                connState.drive._quota = q.summary;
+              }
+            } catch (errQ) { /* ignore */ }
+          }
           if (live && live.byCode) {
             const at = Number(live.at || 0);
             const ageSec = at > 0 ? Math.round((Date.now() - at) / 1000) : null;
@@ -906,10 +947,14 @@
               "連線正常。\n已登入 " + email +
               "\n雲端 fubon-live " + n + " 檔" +
               (ageSec != null ? ("，約 " + ageSec + " 秒前。") : "。") +
+              quotaTxt +
               "\n家裡離線時可當備援。");
           } else {
             setConnItem("drive", "warn",
-              "已登入 " + email + "\n權杖有效，但暫讀不到雲端行情檔。\n自選／日誌仍可能可用；稍後重試或檢查 LiveBridge 是否有上雲。");
+              "已登入 " + email +
+              "\n權杖有效，但暫讀不到雲端行情檔。" +
+              quotaTxt +
+              "\n自選／日誌仍可能可用；稍後重試或檢查 LiveBridge 是否有上雲。");
           }
         }
       } catch (driveErr) {
