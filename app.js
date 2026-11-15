@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 314;
+  const PAGE_BUILD = 315;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7761,9 +7761,9 @@
 
       "<h4>02 三率分析</h4>" +
       '<ul class="stat-list">' +
-      "<li><span>毛利率</span><strong>" + formatRateTriple(mg.grossHist || [mg.gross], null) + "</strong></li>" +
-      "<li><span>營益率</span><strong>" + formatRateTriple(mg.opHist || [mg.op], null) + "</strong></li>" +
-      "<li><span>稅後淨利率</span><strong>" + formatRateTriple(mg.netHist || [mg.net], null) + "</strong></li>" +
+      "<li><span>毛利率</span><strong>" + formatRateTriple(mg.grossHist || [mg.gross], mg.grossTrend) + "</strong></li>" +
+      "<li><span>營益率</span><strong>" + formatRateTriple(mg.opHist || [mg.op], mg.opTrend) + "</strong></li>" +
+      "<li><span>稅後淨利率</span><strong>" + formatRateTriple(mg.netHist || [mg.net], mg.netTrend) + "</strong></li>" +
       "<li><span>三率趨勢</span><strong>" + esc(mg.bias || mg.trend || "—") + "</strong></li>" +
       "</ul><p class=\"fine\">資料日 " + esc(mg.date || "—") + "；請與同產業比較，勿跨產業硬比高低。</p>" +
 

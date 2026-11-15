@@ -2810,6 +2810,142 @@
     return d > 0 ? { text: "▲", cls: "up" } : { text: "▼", cls: "down" };
   }
 
+  function marginsHistMissing(m) {
+    if (!m) return true;
+    const g = m.grossHist || [];
+    const o = m.opHist || [];
+    const n = m.netHist || [];
+    const hasPrev = (g[1] != null && isFinite(g[1])) || (o[1] != null && isFinite(o[1])) ||
+      (n[1] != null && isFinite(n[1]));
+    const hasPrev2 = (g[2] != null && isFinite(g[2])) || (o[2] != null && isFinite(o[2])) ||
+      (n[2] != null && isFinite(n[2]));
+    return !(hasPrev || hasPrev2);
+  }
+
+  /** FinMind TaiwanStockFinancialStatements → 本季／上季／上上季三率 */
+  function marginsFromFinStatements(fins) {
+    const q = quarterBag(fins || []);
+    if (!q.length) return null;
+    const last = q[q.length - 1];
+    const prev = q.length > 1 ? q[q.length - 2] : null;
+    const prev2 = q.length > 2 ? q[q.length - 3] : null;
+    function marginOf(row, key) {
+      if (!row || !(row.Revenue > 0) || row[key] == null) return null;
+      const v = row[key] / row.Revenue * 100;
+      return isFinite(v) ? Math.round(v * 10) / 10 : null;
+    }
+    function hist(key) {
+      return [marginOf(last, key), marginOf(prev, key), marginOf(prev2, key)];
+    }
+    const grossHist = hist("GrossProfit");
+    const opHist = hist("OperatingIncome");
+    const netHist = hist("IncomeAfterTaxes");
+    if (grossHist[0] == null && opHist[0] == null && netHist[0] == null) return null;
+    const grossTrend = rateTrend(grossHist[0], grossHist[1]);
+    const opTrend = rateTrend(opHist[0], opHist[1]);
+    const netTrend = rateTrend(netHist[0], netHist[1]);
+    let bias = "持平";
+    if (grossTrend.cls === "up" && opTrend.cls === "up") bias = "改善";
+    else if (grossTrend.cls === "down" || opTrend.cls === "down") bias = "惡化";
+    else if (opTrend.cls === "up" || netTrend.cls === "up") bias = "偏強";
+    else if (opTrend.cls === "down" || netTrend.cls === "down") bias = "偏弱";
+    return {
+      date: last.date || "",
+      gross: grossHist[0],
+      op: opHist[0],
+      net: netHist[0],
+      grossHist: grossHist,
+      opHist: opHist,
+      netHist: netHist,
+      grossTrend: grossTrend,
+      opTrend: opTrend,
+      netTrend: netTrend,
+      trend: bias,
+      bias: bias,
+      source: "FinMind"
+    };
+  }
+
+  /**
+   * 證交所只有最新一季時，用 FinMind 財報補上季／上上季（需 token 或免費額度）。
+   */
+  async function enrichMarginsFromFinMind(pack, stockId) {
+    if (!pack || !stockId) return pack;
+    const body = pack.body || pack;
+    const cur = (body.margins) || pack.margins || {};
+    if (!marginsHistMissing(cur) && (cur.gross != null || cur.op != null || cur.net != null)) {
+      return pack;
+    }
+    try {
+      const fins = await finMind("TaiwanStockFinancialStatements", stockId, isoDaysAgo(1200));
+      const fm = marginsFromFinStatements(fins);
+      if (!fm) return pack;
+      // 現值優先保留證交所最新；歷史季別用 FinMind
+      const merged = {
+        date: cur.date || fm.date,
+        gross: cur.gross != null ? cur.gross : fm.gross,
+        op: cur.op != null ? cur.op : fm.op,
+        net: cur.net != null ? cur.net : fm.net,
+        grossHist: [
+          cur.gross != null ? cur.gross : fm.grossHist[0],
+          fm.grossHist[1],
+          fm.grossHist[2]
+        ],
+        opHist: [
+          cur.op != null ? cur.op : fm.opHist[0],
+          fm.opHist[1],
+          fm.opHist[2]
+        ],
+        netHist: [
+          cur.net != null ? cur.net : fm.netHist[0],
+          fm.netHist[1],
+          fm.netHist[2]
+        ],
+        grossTrend: rateTrend(
+          cur.gross != null ? cur.gross : fm.grossHist[0],
+          fm.grossHist[1]),
+        opTrend: rateTrend(
+          cur.op != null ? cur.op : fm.opHist[0],
+          fm.opHist[1]),
+        netTrend: rateTrend(
+          cur.net != null ? cur.net : fm.netHist[0],
+          fm.netHist[1]),
+        trend: fm.trend,
+        bias: fm.bias,
+        source: (cur.gross != null || cur.op != null ? "TWSE+FinMind" : "FinMind")
+      };
+      if (!merged.bias || merged.bias === "持平") {
+        if (merged.opTrend && merged.opTrend.cls === "up" && merged.grossTrend && merged.grossTrend.cls === "up") {
+          merged.bias = "改善";
+          merged.trend = "改善";
+        } else if ((merged.opTrend && merged.opTrend.cls === "down") ||
+          (merged.grossTrend && merged.grossTrend.cls === "down")) {
+          merged.bias = "惡化";
+          merged.trend = "惡化";
+        }
+      }
+      if (pack.body) {
+        pack.body.margins = Object.assign({}, pack.body.margins || {}, merged);
+        if (pack.body.report) {
+          pack.body.report.margins = merged.bias || pack.body.report.margins;
+        }
+      } else {
+        pack.margins = Object.assign({}, pack.margins || {}, merged);
+      }
+      pack.dataSource = Array.isArray(pack.dataSource) ? pack.dataSource.slice() : [];
+      if (pack.dataSource.indexOf("FinMind 三率季歷史") < 0) {
+        pack.dataSource.push("FinMind 三率季歷史");
+      }
+      const note = "三率前二季來自 FinMind 財報；最新一期可與證交所對照。";
+      if (pack.fundNote) {
+        if (pack.fundNote.indexOf("FinMind 三率") < 0) pack.fundNote += " " + note;
+      } else {
+        pack.fundNote = note;
+      }
+    } catch (errFm) { /* token／402 時維持證交所單季 */ }
+    return pack;
+  }
+
   function yearEps(rows) {
     const byYear = {};
     rows.forEach(function (row) {
@@ -7040,19 +7176,21 @@
   async function stockInvestPlan(secid, code) {
     const stockId = twStockId(secid, code);
     if (!stockId) return { ok: false, reason: "目前僅支援台股。" };
-    // LiveBridge／Drive 已預算：網頁直接讀，不再現場打 FinMind
+    // LiveBridge／Drive 已預算：網頁直接讀；三率前二季若缺再補 FinMind
     try {
       const pre = await readResearchCloud(stockId);
       if (pre && pre.ok !== false && pre.body) {
-        return Object.assign({}, pre, {
+        let pack = Object.assign({}, pre, {
           ok: true,
           code: pre.code || stockId,
           name: preferTwName(pre.name, "", stockId),
           fundNote: pre.fundNote || "來源 LiveBridge 預抓研究報告（證交所＋本機日Ｋ／籌碼）。",
           dataSource: (pre.dataSource && pre.dataSource.length)
-            ? pre.dataSource
+            ? pre.dataSource.slice()
             : ["livebridge-research"]
         });
+        pack = await enrichMarginsFromFinMind(pack, stockId);
+        return pack;
       }
     } catch (errPre) { /* fall through */ }
     const advice = await stockAdvice(secid, code).catch(function () { return { ok: false }; });
@@ -7456,7 +7594,7 @@
         : "先自訂停損條件"
     };
 
-    return {
+    return await enrichMarginsFromFinMind({
       ok: true,
       name: preferTwName(advice.name, detail && detail.name, stockId),
       code: stockId,
@@ -7560,7 +7698,7 @@
         checklist: checklist,
         report: report
       }
-    };
+    }, stockId);
   }
 
   // K 線型態：酒田戰法 78 式（sakata.js）。回傳由新到舊。
@@ -8307,6 +8445,32 @@
             debtRatio: debtRatio,
             note: "FinMind 不可用；改用證交所公開三率／EPS（最新一期）。完整財報請開 MOPS。"
           };
+          // 即使損益表整包 402，仍可單獨再試一次補前二季
+          try {
+            const fins2 = await finMind("TaiwanStockFinancialStatements", stockId, startFin);
+            const fm = marginsFromFinStatements(fins2);
+            if (fm && !marginsHistMissing(fm)) {
+              finOut.grossHist = [
+                finOut.gross != null ? finOut.gross : fm.grossHist[0],
+                fm.grossHist[1],
+                fm.grossHist[2]
+              ];
+              finOut.opHist = [
+                finOut.op != null ? finOut.op : fm.opHist[0],
+                fm.opHist[1],
+                fm.opHist[2]
+              ];
+              finOut.netHist = [
+                finOut.net != null ? finOut.net : fm.netHist[0],
+                fm.netHist[1],
+                fm.netHist[2]
+              ];
+              finOut.grossTrend = rateTrend(finOut.grossHist[0], finOut.grossHist[1]);
+              finOut.opTrend = rateTrend(finOut.opHist[0], finOut.opHist[1]);
+              finOut.netTrend = rateTrend(finOut.netHist[0], finOut.netHist[1]);
+              finOut.note = "最新三率以證交所為主；前二季由 FinMind 財報補上。完整財報請開 MOPS。";
+            }
+          } catch (errFm2) { /* keep TWSE-only */ }
         } else if (!finOut.ready && tw && tw.eps != null) {
           finOut.eps = tw.eps;
           finOut.ready = true;
