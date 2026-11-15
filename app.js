@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 281;
+  const PAGE_BUILD = 282;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -34,11 +34,16 @@
   let watchLastLevels = [];
   let watchLastChips = null;
   const watchQuoteCache = Object.create(null);
+  /** 全群組突／支快取（切群組只換顯示） */
+  const watchLevelsCache = Object.create(null);
   /** @type {Record<string,{at:number,hint:{text:string,tone:string,title:string}|null,busy?:boolean}>} */
   const watchTapeCache = Object.create(null);
   let watchTapeHintGen = 0;
   let watchTapeJudgeTimer = 0;
   let lastTapeJudgeSlot = "";
+  let watchUniverseBusy = false;
+  let watchUniverseAt = 0;
+  let watchUniverseGen = 0;
   let stockActorsJudgeCache = null;
   let chipCostLines = null;
   let stockChipCostLines = null;
@@ -2318,7 +2323,8 @@
     loadWatchFromGroup();
     scheduleSave();
     paintWatchGroups();
-    renderWatch(true);
+    // 切群組只換顯示；全宇宙資料已在背景備好
+    renderWatch(true, { displayOnly: true });
   }
 
   function closeWatchMergeSheet() {
@@ -3257,8 +3263,9 @@
   let watchTapeHintPending = false;
 
   function watchTapeHintsMissing() {
-    if (!book.watch || !book.watch.length) return false;
-    return book.watch.some(function (item) {
+    const list = allWatchUniverseItems();
+    if (!list.length) return false;
+    return list.some(function (item) {
       const code = String(item && item.code || "").toUpperCase();
       if (!code) return false;
       const hit = watchTapeCache[code];
@@ -5202,8 +5209,12 @@
     return m ? String(m[1]).toUpperCase() : "";
   }
 
-  function rememberWatchQuote(idx, m) {
-    const item = book.watch[idx];
+  function allWatchUniverseItems() {
+    flushWatchToGroup();
+    return mergeAllWatchItems(book.watchGroups || []);
+  }
+
+  function rememberWatchQuoteForItem(item, m) {
     const code = watchCodeOf(item);
     const good = m && m.price != null && isFinite(m.price) && Number(m.price) > 0;
     if (good) {
@@ -5211,8 +5222,26 @@
       return m;
     }
     if (code && watchQuoteCache[code]) return watchQuoteCache[code];
-    if (watchLastQuotes[idx] && watchLastQuotes[idx].price > 0) return watchLastQuotes[idx];
     return m;
+  }
+
+  function rememberWatchQuote(idx, m) {
+    return rememberWatchQuoteForItem(book.watch[idx], m);
+  }
+
+  function rememberWatchLevelsForUniverse(universe, levels) {
+    (universe || []).forEach(function (item, i) {
+      const code = watchCodeOf(item);
+      if (!code || !levels || !levels[i]) return;
+      watchLevelsCache[code] = levels[i];
+    });
+  }
+
+  function levelsForCurrentWatch() {
+    return book.watch.map(function (item) {
+      const code = watchCodeOf(item);
+      return (code && watchLevelsCache[code]) || { breakout: null, support: null };
+    });
   }
 
   function watchQuotesFromCache() {
@@ -5220,6 +5249,14 @@
       const code = watchCodeOf(item);
       return (code && watchQuoteCache[code]) || watchLastQuotes[idx] || null;
     });
+  }
+
+  function paintCurrentWatchFromCache(box) {
+    if (!box) box = $("watch-list");
+    if (!box || !book.watch.length) return false;
+    watchLastQuotes = watchQuotesFromCache();
+    watchLastLevels = levelsForCurrentWatch();
+    return applyCachedWatchQuotes(box);
   }
 
   function applyCachedWatchQuotes(box) {
@@ -5233,18 +5270,75 @@
         any = true;
       }
     });
-    if (!isWatchMini() && watchLastLevels && watchLastLevels.length) {
-      paintWatchLevelRows(box, watchLastLevels);
-    }
+    const levels = levelsForCurrentWatch();
+    watchLastLevels = levels;
+    if (!isWatchMini()) paintWatchLevelRows(box, levels);
     if (watchLastChips) paintWatchChipRows(box, watchLastChips);
     if (any) {
-      paintWatchSessionTags(box, watchQuotesFromCache(), watchLastLevels);
+      paintWatchSessionTags(box, watchQuotesFromCache(), levels);
       paintWatchTotal();
     }
     return any;
   }
 
-  // 先畫報價，籌碼／突支背景補；避免被慢請求卡住只顯示「…」
+  /** 背景一次抓齊所有群組個股；切群組只吃快取 */
+  async function refreshWatchUniverse(opts) {
+    opts = opts || {};
+    const universe = allWatchUniverseItems();
+    if (!universe.length) return null;
+    if (watchUniverseBusy && !opts.force) return null;
+    watchUniverseBusy = true;
+    const gen = ++watchUniverseGen;
+    try {
+      prefetchCorePacks().catch(function () { /* ignore */ });
+      const rows = await withWatchTimeout(M.watchBoard(universe), 28000, null);
+      if (gen !== watchUniverseGen) return null;
+      if (rows && rows.length) {
+        universe.forEach(function (item, i) {
+          rememberWatchQuoteForItem(item, rows[i]);
+        });
+      }
+      withWatchTimeout(M.watchLevels ? M.watchLevels(universe) : Promise.resolve(null), 28000, null)
+        .then(function (levels) {
+          if (gen !== watchUniverseGen || !levels) return;
+          rememberWatchLevelsForUniverse(universe, levels);
+          if (opts.paint !== false && state.view === "watch") {
+            const box = $("watch-list");
+            if (box) paintCurrentWatchFromCache(box);
+          }
+        });
+      withWatchTimeout(M.watchChips ? M.watchChips(universe) : Promise.resolve(null), 20000, null)
+        .then(function (chips) {
+          if (gen !== watchUniverseGen || !chips) return;
+          watchLastChips = chips;
+          if (opts.paint !== false && state.view === "watch") {
+            const box = $("watch-list");
+            if (box) paintWatchChipRows(box, chips);
+          }
+        });
+      // 足跡：對全宇宙缺的補抓（顯示仍依目前群組）
+      if (opts.tape !== false) {
+        const box = $("watch-list");
+        if (box && !isWatchMini()) {
+          runTapeJudgeIfDue(true);
+        }
+      }
+      watchUniverseAt = Date.now();
+      if (opts.paint !== false && state.view === "watch") {
+        const box = $("watch-list");
+        if (box) {
+          paintCurrentWatchFromCache(box);
+          const quotes = watchQuotesFromCache();
+          checkWatchAlertsFromRows(book.watch, quotes);
+        }
+      }
+      return { universe: universe, rows: rows };
+    } finally {
+      if (gen === watchUniverseGen) watchUniverseBusy = false;
+    }
+  }
+
+  // 先畫快取，再背景刷新「全群組宇宙」
   async function paintWatchQuotes() {
     const box = $("watch-list");
     if (!box || !book.watch.length) return;
@@ -5252,39 +5346,8 @@
       renderWatch(true);
       return;
     }
-    const gen = (paintWatchQuotes.gen = (paintWatchQuotes.gen || 0) + 1);
-    const mini = isWatchMini();
-    try {
-      const rows = await withWatchTimeout(M.watchBoard(book.watch), 20000, null);
-      if (gen !== paintWatchQuotes.gen) return;
-      if (!rows) {
-        // 逾時／失敗：保留畫面上次報價，不要改成 —
-        applyCachedWatchQuotes(box);
-        return;
-      }
-      const merged = rows.map(function (m, idx) { return rememberWatchQuote(idx, m); });
-      watchLastQuotes = merged;
-      merged.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      paintWatchTotal();
-      checkWatchAlertsFromRows(book.watch, merged);
-      paintWatchSessionTags(box, merged, watchLastLevels);
-      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve(null), 20000, null)
-        .then(function (levels) {
-          if (gen !== paintWatchQuotes.gen || !levels) return;
-          watchLastLevels = levels;
-          if (!mini) paintWatchLevelRows(box, levels);
-          paintWatchSessionTags(box, watchLastQuotes, levels);
-        });
-      withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve(null), 15000, null)
-        .then(function (chips) {
-          if (gen !== paintWatchQuotes.gen || !chips) return;
-          watchLastChips = chips;
-          paintWatchChipRows(box, chips);
-        });
-    } catch (err) {
-      if (gen !== paintWatchQuotes.gen) return;
-      applyCachedWatchQuotes(box);
-    }
+    paintCurrentWatchFromCache(box);
+    await refreshWatchUniverse({ paint: true });
   }
 
   function renderWatchMini(box) {
@@ -5414,7 +5477,14 @@
 
     const FAIL_TTL = isTapeJudgeWindow() ? 60_000 : 12_000;
     const need = [];
+    // 背景補全「所有群組」足跡；畫面上只顯示目前群組
+    const universe = allWatchUniverseItems();
+    const currentCodes = Object.create(null);
     book.watch.forEach(function (item) {
+      const code = String(item && item.code || "").toUpperCase();
+      if (code) currentCodes[code] = true;
+    });
+    universe.forEach(function (item) {
       const code = String(item && item.code || "").toUpperCase();
       if (!code) return;
       const hit = watchTapeCache[code];
@@ -5423,13 +5493,15 @@
       if (hit && !hit.hint && hit.at && (now - hit.at) < FAIL_TTL) return;
       if (need.indexOf(code) < 0) need.push(code);
     });
-    // 焦點代號先抓；休市一次清完目前群組
+    // 目前群組／焦點先抓
     need.sort(function (a, b) {
       if (a === focusCode) return -1;
       if (b === focusCode) return 1;
-      return 0;
+      const ac = currentCodes[a] ? 0 : 1;
+      const bc = currentCodes[b] ? 0 : 1;
+      return ac - bc;
     });
-    const queue = need.slice(0, isTapeJudgeWindow() ? 12 : Math.max(40, book.watch.length));
+    const queue = need.slice(0, isTapeJudgeWindow() ? 12 : Math.max(60, universe.length));
     queue.forEach(function (code) {
       const prev = watchTapeCache[code] || { at: 0, hint: null };
       watchTapeCache[code] = { at: prev.at, hint: prev.hint, slot: prev.slot, busy: true };
@@ -5554,77 +5626,43 @@
       }).join("") + "</tbody></table></div>";
   }
 
-  function renderWatch(force) {
+  function renderWatch(force, opts) {
+    opts = opts || {};
+    const displayOnly = !!opts.displayOnly;
     const box = $("watch-list");
     paintWatchGroups();
     if (!book.watch.length) {
       box.innerHTML = '<p class="note">這個群組還是空的。按上方「加入」用代號新增股票。</p>';
       paintWatchTotal();
+      if (!displayOnly) refreshWatchUniverse({ paint: false }).catch(function () { /* ignore */ });
       return;
     }
     const mini = isWatchMini();
-    // 表格／極簡卡已在且非強制重建：只刷新報價
+    // 表格／極簡卡已在且非強制重建：只刷新（全宇宙）
     if (!force && box.querySelector("[data-watch-row]") &&
         !!box.querySelector(".watch-mini-grid") === mini) {
-      paintWatchQuotes();
-      if (!mini) {
-        applyWatchTapeCacheToBox(box);
-        // 盤中依 15 分槽；休市／缺足跡仍強制補抓 last-session
-        if (isTapeJudgeWindow()) {
-          const slot = tapeJudgeSlotKey();
-          const stale = !slot || slot !== lastTapeJudgeSlot || book.watch.some(function (item) {
-            const code = String(item && item.code || "").toUpperCase();
-            const hit = code && watchTapeCache[code];
-            return !hit || !hit.hint || !tapeJudgeFresh(hit.at);
-          });
-          if (stale) runTapeJudgeIfDue(true);
-        } else if (watchTapeHintsMissing()) {
-          runTapeJudgeIfDue(true);
-        }
+      paintCurrentWatchFromCache(box);
+      if (!mini) applyWatchTapeCacheToBox(box);
+      if (!displayOnly) paintWatchQuotes();
+      return;
+    }
+    renderWatch.gen = (renderWatch.gen || 0) + 1;
+    if (mini) renderWatchMini(box);
+    else renderWatchFull(box);
+    // 先套用全宇宙快取，切群組可瞬間顯示
+    paintCurrentWatchFromCache(box);
+    if (!mini) applyWatchTapeCacheToBox(box);
+    if (displayOnly) {
+      // 背景仍確保宇宙有資料（首次進頁尚未抓完時）
+      if (!watchUniverseAt) {
+        refreshWatchUniverse({ paint: true }).catch(function () { /* ignore */ });
       }
       return;
     }
-    const gen = (renderWatch.gen = (renderWatch.gen || 0) + 1);
-    if (mini) renderWatchMini(box);
-    else renderWatchFull(box);
-    // 切極簡／進出個股重建時先套用上次報價，避免整排變「…」
-    applyCachedWatchQuotes(box);
-    if (!mini) {
-      applyWatchTapeCacheToBox(box);
-      // 進表先顯示快取；缺足跡（含休市）立刻補抓
-      if (isTapeJudgeWindow() || watchTapeHintsMissing()) {
-        runTapeJudgeIfDue(true);
-      }
+    if (!mini && (isTapeJudgeWindow() || watchTapeHintsMissing())) {
+      runTapeJudgeIfDue(true);
     }
-    // 先暖機 packs，再 watchBoard（Bridge／Drive → 即時）
-    prefetchCorePacks().catch(function () { /* ignore */ });
-    withWatchTimeout(M.watchBoard(book.watch), 22000, null).then(function (rows) {
-      if (gen !== renderWatch.gen) return;
-      if (!rows) {
-        applyCachedWatchQuotes(box);
-        return;
-      }
-      const merged = rows.map(function (m, idx) { return rememberWatchQuote(idx, m); });
-      watchLastQuotes = merged;
-      merged.forEach(function (m, idx) { applyWatchQuoteRow(box, m, idx); });
-      paintWatchTotal();
-      checkWatchAlertsFromRows(book.watch, merged);
-      paintWatchSessionTags(box, merged, watchLastLevels);
-      withWatchTimeout(M.watchLevels ? M.watchLevels(book.watch) : Promise.resolve([]), 20000, [])
-        .then(function (levels) {
-          if (gen !== renderWatch.gen) return;
-          watchLastLevels = levels || [];
-          if (!mini) paintWatchLevelRows(box, levels || []);
-          paintWatchSessionTags(box, watchLastQuotes, watchLastLevels);
-        });
-      withWatchTimeout(M.watchChips ? M.watchChips(book.watch) : Promise.resolve({ date: "", byCode: {} }), 15000, { date: "", byCode: {} })
-        .then(function (chips) {
-          if (gen !== renderWatch.gen) return;
-          watchLastChips = chips || { date: "", byCode: {} };
-          paintWatchChipRows(box, watchLastChips);
-        });
-      // 足跡判斷改由 startTapeJudgeClock 每 15 分觸發，此處不重複狂刷
-    });
+    refreshWatchUniverse({ paint: true }).catch(function () { /* ignore */ });
   }
 
   function chipLotsCell(n) {
