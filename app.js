@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 298;
+  const PAGE_BUILD = 299;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -6090,6 +6090,9 @@
           '<span data-watch-name="' + idx + '">' + esc(nameOnly) + "</span>" +
           '<span class="watch-diag" data-watch-diag="' + idx + '" hidden></span></button>' +
           watchNetBarHtml(idx) +
+          (item.code
+            ? '<span class="watch-code" data-watch-code="' + idx + '">' + esc(String(item.code)) + "</span>"
+            : "") +
           "</td>" +
           '<td class="watch-col-price">' +
           '<div class="watch-px watch-num" data-watch-price="' + idx + '"><span class="note">…</span></div></td>' +

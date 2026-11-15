@@ -2060,6 +2060,16 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   max-width: 6.5em;
   margin-top: 5px;
 }
+.watch-table .watch-name .watch-code {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  color: #9aa8b8;
+  white-space: nowrap;
+}
 .watch-table .watch-name .watch-link {
   display: flex;
   flex-direction: column;
