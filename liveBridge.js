@@ -13,6 +13,10 @@
   let _onlineAt = 0;
   let _lastError = "";
   let _relayReady = false;
+  let _preferRelay = false;
+  let _preferRelayUntil = 0;
+  let _fubonLiveCache = null;
+  let _fubonLiveCacheAt = 0;
 
   function baseUrl() {
     let raw = "";
@@ -286,7 +290,7 @@
       headers.Authorization = "Bearer " + token;
     }
     const mobile = isMobileUa();
-    const ms = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : FETCH_MS);
+    const ms = timeoutMs > 0 ? timeoutMs : (mobile ? 8000 : FETCH_MS);
     const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     let timer = null;
     if (ctrl) {
@@ -313,33 +317,39 @@
       return res.json();
     }
 
+    function shouldPreferRelay() {
+      return !!(mobile && !needAuth && _preferRelay && Date.now() < _preferRelayUntil);
+    }
+
     try {
       let data;
-      if (mobile && !needAuth) {
+      if (shouldPreferRelay()) {
         try {
-          data = await fetchViaRelay(apiPath, Math.max(ms, 15000));
+          data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
           _relayReady = true;
         } catch (relayErr) {
-          try {
-            data = await doFetch("");
-          } catch (e1) {
-            try {
-              data = await doFetch("local");
-            } catch (e2) {
-              throw relayErr;
-            }
-          }
+          _preferRelay = false;
+          data = await doFetch("");
         }
       } else {
         try {
           data = await doFetch("");
+          // 直連成功：清掉 relay 偏好
+          if (mobile) {
+            _preferRelay = false;
+            _preferRelayUntil = 0;
+          }
         } catch (firstErr) {
           const msg = String((firstErr && firstErr.message) || firstErr || "");
-          const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local|abort/i.test(msg);
+          const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local|abort|逾時/i.test(msg + " " + ((firstErr && firstErr.name) || ""));
           if (useRelay) {
             try {
-              data = await fetchViaRelay(apiPath, Math.max(ms, 15000));
+              data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
               _relayReady = true;
+              if (mobile) {
+                _preferRelay = true;
+                _preferRelayUntil = Date.now() + 60_000;
+              }
             } catch (relayErr) {
               try {
                 data = await doFetch("local");
@@ -381,7 +391,7 @@
       if (known != null) return known;
     }
     const mobile = isMobileUa();
-    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : 4000);
+    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 6000 : 3000);
     const tries = mobile ? 2 : 2;
     for (let i = 0; i < tries; i++) {
       try {
@@ -400,10 +410,18 @@
 
   async function readFubonLive() {
     if (!canReach()) return null;
+    const now = Date.now();
+    if (_fubonLiveCache && now - _fubonLiveCacheAt < 3000) return _fubonLiveCache;
     try {
-      return await fetchJson("/api/fubon-live", false);
+      // 自選要快：手機直連短逾時，失敗才 relay
+      const data = await fetchJson("/api/fubon-live", false, isMobileUa() ? 5000 : FETCH_MS);
+      if (data) {
+        _fubonLiveCache = data;
+        _fubonLiveCacheAt = Date.now();
+      }
+      return data;
     } catch (err) {
-      return null;
+      return _fubonLiveCache;
     }
   }
 
@@ -518,7 +536,7 @@
   async function health() {
     if (!canReach()) return null;
     try {
-      const ms = isMobileUa() ? 15000 : 4000;
+      const ms = isMobileUa() ? 6000 : 3000;
       return await fetchJson("/api/health", false, ms);
     } catch (err) {
       return null;

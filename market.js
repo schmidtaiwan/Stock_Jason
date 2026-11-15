@@ -3158,17 +3158,26 @@
       }
     }
 
-    // 開盤：Bridge 在線 → 即時優先；失敗才雲端。Bridge 離線 → 只雲端。
+    // 開盤：Bridge 在線 → 即時優先；失敗／太慢才雲端。已知離線 → 只雲端。
+    async function bridgeWithBudget(ms) {
+      return await Promise.race([
+        fromBridge(),
+        new Promise(function (resolve) { setTimeout(function () { resolve(0); }, ms); })
+      ]);
+    }
+
     if (sessionOpen) {
-      if (bridgeKnown !== false) {
-        const n = await fromBridge();
-        if (n > 0) return n;
-      }
+      if (bridgeKnown === false) return fromDriveCloud();
+      // 手機未知／在線都給短預算，避免自選卡 >1 分鐘
+      const budget = bridgeKnown === true ? 4500 : 2500;
+      const n = await bridgeWithBudget(budget);
+      if (n > 0) return n;
       return fromDriveCloud();
     }
 
-    // 非開盤：Bridge → Drive
-    const n2 = await fromBridge();
+    // 非開盤：短等 Bridge，否則 Drive
+    if (bridgeKnown === false) return fromDriveCloud();
+    const n2 = await bridgeWithBudget(3000);
     if (n2 > 0) return n2;
     return fromDriveCloud();
   }

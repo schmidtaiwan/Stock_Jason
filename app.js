@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 270;
+  const PAGE_BUILD = 271;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -495,6 +495,7 @@
   };
   let connLampBound = false;
   let connRefreshBusy = false;
+  let _connLampLastAt = 0;
 
   function setConnItem(key, state, detail) {
     if (!connState[key]) return;
@@ -566,32 +567,48 @@
     }
   }
 
-  async function refreshConnLamps() {
+  async function refreshConnLamps(opts) {
+    opts = opts || {};
+    const now = Date.now();
+    if (!opts.force && now - _connLampLastAt < 15000) {
+      paintConnLamps();
+      return;
+    }
     if (connRefreshBusy) {
       paintConnLamps();
       return;
     }
     connRefreshBusy = true;
+    _connLampLastAt = now;
     try {
       const B = window.SJLiveBridge;
       const pref = getTwiiSourcePref();
       const open = typeof isTwMarketOpen === "function" && isTwMarketOpen();
 
-      // Bridge / Tailscale：強制重探（勿用短暫失敗快取卡住紅燈）
+      // Bridge / Tailscale：已在線用快取；紅／未知才強制重探（避免拖慢自選）
       if (!B || !B.canReach || !B.canReach()) {
         setConnItem("bridge", "bad",
           "尚未設定 LiveBridge 網址（google_config.js 的 liveBridgeBaseUrl）。\n網頁無法走 Tailscale 即時報價。");
       } else {
-        let online = null;
-        if (B.probe) {
-          try { online = !!(await B.probe(0, true)); } catch (err) { online = false; }
-        } else if (B.isOnline) {
-          online = B.isOnline();
+        let online = B.isOnline ? B.isOnline() : null;
+        const needForce = online !== true;
+        if (B.probe && (needForce || online == null)) {
+          try { online = !!(await B.probe(0, !!needForce)); } catch (err) { online = false; }
         }
         if (online === true) {
-          const health = B.health ? await B.health().catch(function () { return null; }) : null;
-          const build = health && health.build != null ? ("LB " + health.build) : "LiveBridge";
-          const who = health && health.webWho ? ("\n目前在線：" + health.webWho) : "";
+          let build = "LiveBridge";
+          let who = "";
+          // 僅在詳情需要時打 health；綠燈本身不阻塞自選
+          if (B.health && (connState.bridge.state !== "ok" || !connState.bridge._build)) {
+            const health = await B.health().catch(function () { return null; });
+            if (health && health.build != null) {
+              build = "LB " + health.build;
+              connState.bridge._build = build;
+            }
+            if (health && health.webWho) who = "\n目前在線：" + health.webWho;
+          } else if (connState.bridge._build) {
+            build = connState.bridge._build;
+          }
           setConnItem("bridge", "ok",
             "連線正常。\n已連上 Tailscale LiveBridge（" + build + "）。" + who +
             "\n開盤時自選會優先吃 Bridge 即時資料。");
@@ -3069,7 +3086,7 @@
       if (M.bustLiveCaches) M.bustLiveCaches(liveSecids());
       if (!document.hidden) paintTwii();
       if (!document.hidden && state.view === "watch") paintWatchQuotes();
-      refreshConnLamps().catch(function () { /* ignore */ });
+      // 燈號改由 20s heartbeat 更新，避免每次自選都卡 probe
       if (!open) return;
       if (!document.hidden && state.view === "chart") await loadChart();
       else if (!document.hidden && state.view === "stock" && state.stock) await loadStockLive(state.stock, true);
@@ -8439,7 +8456,7 @@
         } else if (B.health) {
           B.health().catch(function () { /* ignore */ });
         }
-        refreshConnLamps().catch(function () { /* ignore */ });
+        refreshConnLamps({ force: true }).catch(function () { /* ignore */ });
       }, 20000);
     }
     paintTwii(true);
