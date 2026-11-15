@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 271;
+  const PAGE_BUILD = 272;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -690,21 +690,22 @@
     const go = function () {
       const url = new URL(location.href);
       const target = String(remote || PAGE_BUILD);
-      // 已在目標版次且腳本也是新版：勿再 replace（防止閃頁迴圈）
-      if (String(url.searchParams.get("v") || "") === target && !(Number(remote) > PAGE_BUILD)) {
+      const curV = String(url.searchParams.get("v") || "");
+      // 真的已是新版（URL 與腳本版次都到齊）才略過
+      if (curV === target && !(Number(remote) > PAGE_BUILD) && Number(PAGE_BUILD) >= Number(target)) {
         return;
       }
       url.searchParams.set("v", target);
       url.searchParams.set("_", String(Date.now()));
+      url.searchParams.set("r", Math.random().toString(36).slice(2, 8));
       location.replace(url.toString());
     };
-    if (window.caches && caches.keys) {
-      caches.keys().then(function (keys) {
-        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-      }).then(go, go);
-      return;
-    }
-    go();
+    const clear = (window.caches && caches.keys)
+      ? caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+        })
+      : Promise.resolve();
+    clear.then(go, go);
   }
 
   function showUpdateBanner(remote) {
