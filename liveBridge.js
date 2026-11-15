@@ -144,9 +144,17 @@
       }, ms);
 
       window.addEventListener("message", onMsg);
-      const url = root + "/relay.html?id=" + encodeURIComponent(id) +
+      const ident = clientIdentityHeaders();
+      let relayUrl = root + "/relay.html?id=" + encodeURIComponent(id) +
         "&path=" + encodeURIComponent(apiPath) +
         "&parent=" + encodeURIComponent(PAGE_ORIGIN);
+      if (ident["X-SJ-Email"]) {
+        relayUrl += "&sjEmail=" + encodeURIComponent(ident["X-SJ-Email"]);
+      }
+      if (ident["X-SJ-Guest"]) {
+        relayUrl += "&sjGuest=" + encodeURIComponent(ident["X-SJ-Guest"]);
+      }
+      const url = relayUrl;
       try {
         document.body.appendChild(iframe);
         iframe.src = url;
@@ -156,10 +164,32 @@
     });
   }
 
+  function guestId() {
+    const key = "sj-bridge-guest-id";
+    try {
+      let id = String(localStorage.getItem(key) || "").trim();
+      if (!id) {
+        id = "g" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        localStorage.setItem(key, id);
+      }
+      return id;
+    } catch (e) {
+      return "g" + Date.now().toString(36);
+    }
+  }
+
+  function clientIdentityHeaders() {
+    const headers = {};
+    const email = accountEmail();
+    if (email) headers["X-SJ-Email"] = email;
+    else headers["X-SJ-Guest"] = guestId();
+    return headers;
+  }
+
   async function fetchJson(path, needAuth, timeoutMs) {
     const root = baseUrl();
     if (!root) return null;
-    const headers = {};
+    const headers = clientIdentityHeaders();
     const token = accessToken();
     // health／live／tape 不要帶 Authorization（避免多餘 CORS 預檢）
     if (needAuth) {

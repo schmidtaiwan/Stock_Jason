@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 261;
+  const PAGE_BUILD = 262;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
