@@ -2570,6 +2570,230 @@
     return Array.isArray(json.data) ? json.data : [];
   }
 
+  /** 證交所 openapi／報表 JSON（含 CORS 備援；FinMind 402／無 token 時用） */
+  const twseOpenCache = new Map();
+  async function fetchTwseAbsJson(absUrl) {
+    const urls = [
+      absUrl,
+      "https://corsproxy.io/?" + encodeURIComponent(absUrl),
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(absUrl),
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(absUrl)
+    ];
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 20000) : 0;
+        const res = await fetch(urls[i], ctrl ? { signal: ctrl.signal } : undefined);
+        if (timer) clearTimeout(timer);
+        if (!res.ok) continue;
+        const text = await res.text();
+        const startArr = text.indexOf("[");
+        const startObj = text.indexOf("{");
+        let start = -1;
+        let end = -1;
+        if (startArr >= 0 && (startObj < 0 || startArr <= startObj)) {
+          start = startArr;
+          end = text.lastIndexOf("]");
+        } else if (startObj >= 0) {
+          start = startObj;
+          end = text.lastIndexOf("}");
+        }
+        if (start < 0 || end <= start) continue;
+        return JSON.parse(text.slice(start, end + 1));
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error("證交所資料讀取失敗");
+  }
+
+  async function twseOpenList(dataset) {
+    const key = String(dataset || "");
+    const hit = twseOpenCache.get(key);
+    if (hit && Date.now() - hit.at < 30 * 60_000) return hit.rows;
+    const url = "https://openapi.twse.com.tw/v1/opendata/" + encodeURIComponent(key);
+    const json = await fetchTwseAbsJson(url);
+    const rows = Array.isArray(json) ? json : [];
+    twseOpenCache.set(key, { at: Date.now(), rows: rows });
+    return rows;
+  }
+
+  async function twseBwibbuMap() {
+    const key = "BWIBBU_ALL";
+    const hit = twseOpenCache.get(key);
+    if (hit && Date.now() - hit.at < 30 * 60_000) return hit.map;
+    const url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL";
+    const json = await fetchTwseAbsJson(url);
+    const map = {};
+    (Array.isArray(json) ? json : []).forEach(function (row) {
+      const code = String(row.Code || row["證券代號"] || "").trim().toUpperCase();
+      if (!code) return;
+      map[code] = {
+        code: code,
+        name: String(row.Name || row["證券名稱"] || "").trim(),
+        pe: num(row.PEratio || row["本益比"]),
+        pbr: num(row.PBratio || row["股價淨值比"]),
+        yield: num(row.DividendYield || row["殖利率(%)"]),
+        date: String(row.Date || "")
+      };
+    });
+    twseOpenCache.set(key, { at: Date.now(), map: map });
+    return map;
+  }
+
+  function rocYmToParts(ym) {
+    const s = String(ym || "").replace(/\D/g, "");
+    if (s.length < 5) return null;
+    const roc = Number(s.slice(0, s.length - 2));
+    const month = Number(s.slice(-2));
+    if (!(roc > 0) || !(month >= 1 && month <= 12)) return null;
+    return { year: roc + 1911, month: month };
+  }
+
+  /**
+   * FinMind 不可用時：證交所本益比／三率／月營收／EPS 備援。
+   */
+  async function twsePublicFundamentals(stockId) {
+    const id = String(stockId || "").toUpperCase();
+    if (!id) return null;
+    const out = {
+      ok: true,
+      source: "twse-open",
+      name: "",
+      pe: null,
+      pbr: null,
+      yield: null,
+      close: null,
+      eps: null,
+      margins: null,
+      revenue: null,
+      note: "FinMind 需 token；改用證交所公開資料（最新一期為主）。"
+    };
+    try {
+      const bw = await twseBwibbuMap();
+      const row = bw[id];
+      if (row) {
+        out.name = row.name || "";
+        out.pe = row.pe;
+        out.pbr = row.pbr;
+        out.yield = row.yield;
+        out.date = row.date;
+      }
+    } catch (errBw) { /* ignore */ }
+    try {
+      const rates = await twseOpenList("t187ap17_L");
+      const hit = rates.filter(function (r) {
+        return String(r["公司代號"] || "").trim().toUpperCase() === id;
+      }).pop();
+      if (hit) {
+        out.name = out.name || String(hit["公司名稱"] || "").replace(/股份有限公司/g, "").trim();
+        const gross = num(hit["毛利率(%)(營業毛利)/(營業收入)"]);
+        const op = num(hit["營業利益率(%)(營業利益)/(營業收入)"]);
+        const net = num(hit["稅後純益率(%)(稅後純益)/(營業收入)"]);
+        const rocY = Number(hit["年度"]);
+        const q = Number(hit["季別"]);
+        const year = rocY > 1911 ? rocY : rocY + 1911;
+        out.margins = {
+          date: year && q ? (year + "-Q" + q) : "",
+          gross: gross,
+          op: op,
+          net: net,
+          grossHist: [gross, null, null],
+          opHist: [op, null, null],
+          netHist: [net, null, null],
+          grossTrend: { text: "", cls: "" },
+          opTrend: { text: "", cls: "" },
+          netTrend: { text: "", cls: "" }
+        };
+      }
+    } catch (errRate) { /* ignore */ }
+    try {
+      const epsRows = await twseOpenList("t187ap14_L");
+      const hit = epsRows.filter(function (r) {
+        return String(r["公司代號"] || "").trim().toUpperCase() === id;
+      }).pop();
+      if (hit) {
+        out.name = out.name || String(hit["公司名稱"] || "").replace(/股份有限公司/g, "").trim();
+        out.eps = num(hit["基本每股盈餘(元)"]);
+        const rocY = Number(hit["年度"]);
+        const q = Number(hit["季別"]);
+        const year = rocY > 1911 ? rocY : rocY + 1911;
+        out.epsMeta = { year: year, quarter: q, eps: out.eps };
+      }
+    } catch (errEps) { /* ignore */ }
+    try {
+      const revRows = await twseOpenList("t187ap05_L");
+      const hit = revRows.filter(function (r) {
+        return String(r["公司代號"] || "").trim().toUpperCase() === id;
+      }).pop();
+      if (hit) {
+        out.name = out.name || String(hit["公司名稱"] || "").trim();
+        const parts = rocYmToParts(hit["資料年月"]);
+        out.revenue = {
+          year: parts && parts.year,
+          month: parts && parts.month,
+          revenue: num(hit["營業收入-當月營收"]),
+          mom: num(hit["營業收入-上月比較增減(%)"]),
+          yoy: num(hit["營業收入-去年同月增減(%)"]),
+          yoyAcc: num(hit["累計營業收入-前期比較增減(%)"])
+        };
+      }
+    } catch (errRev) { /* ignore */ }
+    return out;
+  }
+
+  /** 將證交所公開財報／本益比填入 FinMind 空缺欄位 */
+  function applyTwseFundamentals(pack, tw, closePx) {
+    if (!pack || !tw) return pack;
+    pack.dataSource = pack.dataSource || [];
+    if (tw.name) pack.name = preferTwName(pack.name, tw.name, pack.stockId);
+    const needPer = !(pack.per && pack.per.per != null);
+    if (needPer && (tw.pe != null || tw.pbr != null || tw.yield != null)) {
+      pack.per = {
+        date: tw.date || "",
+        per: tw.pe,
+        pbr: tw.pbr,
+        yield: tw.yield
+      };
+      pack.dataSource.push("TWSE BWIBBU");
+    }
+    const m = pack.margins || {};
+    const needMargins = m.gross == null && m.op == null && m.net == null;
+    if (needMargins && tw.margins) {
+      pack.margins = tw.margins;
+      pack.dataSource.push("TWSE t187ap17_L");
+    }
+    const needEps = !(pack.epsYears && pack.epsYears.some(function (r) { return r && r.eps != null; }));
+    if (needEps && tw.eps != null && isFinite(tw.eps)) {
+      const meta = tw.epsMeta || {};
+      const q = meta.quarter > 0 ? meta.quarter : 3;
+      const year = meta.year || new Date().getFullYear();
+      // 累計 EPS 年化
+      const annual = q >= 1 && q < 4 ? tw.eps * (4 / q) : tw.eps;
+      const nowY = new Date().getFullYear();
+      pack.epsYears = [
+        { year: nowY - 1, eps: null, kind: "實際（待補）" },
+        { year: nowY, eps: annual, kind: "年化粗估（證交所累計）" },
+        { year: nowY + 1, eps: null, kind: "粗估略" }
+      ];
+      pack.dataSource.push("TWSE t187ap14_L");
+    } else if (needEps && tw.pe > 0 && closePx > 0) {
+      const implied = closePx / tw.pe;
+      const nowY = new Date().getFullYear();
+      pack.epsYears = [
+        { year: nowY, eps: implied, kind: "由現價／本益比反推" }
+      ];
+      pack.dataSource.push("TWSE PE→EPS");
+    }
+    if (tw.revenue) {
+      pack.twseRevenue = tw.revenue;
+      pack.dataSource.push("TWSE t187ap05_L");
+    }
+    if (tw.note) pack.fundNote = tw.note;
+    return pack;
+  }
+
   function chipTone(net, vol) {
     const r = vol > 0 ? net / vol : 0;
     if (r >= 0.08) return { label: "大買", cls: "up" };
@@ -4894,9 +5118,10 @@
       };
     });
 
-    return {
+    let out = {
       ok: true,
       stockId: stockId,
+      name: preferTwName("", "", stockId),
       quote: latestPrice ? {
         date: latestPrice.date,
         open: num(latestPrice.open),
@@ -4916,8 +5141,50 @@
       margins: margins,
       epsYears: epsYears,
       per: per ? { date: per.date, per: num(per.PER), pbr: num(per.PBR), yield: num(per.dividend_yield) } : null,
-      volumes: volRows
+      volumes: volRows,
+      dataSource: fins.length || pers.length ? ["FinMind"] : []
     };
+
+    const needFund = !(out.per && out.per.per != null)
+      || (out.margins.gross == null && out.margins.op == null && out.margins.net == null)
+      || !out.epsYears.some(function (r) { return r && r.eps != null; });
+    if (needFund) {
+      try {
+        const tw = await twsePublicFundamentals(stockId);
+        const closePx = out.quote && out.quote.close != null ? out.quote.close : null;
+        applyTwseFundamentals(out, tw, closePx);
+      } catch (errTw) { /* keep FinMind blanks */ }
+    }
+
+    if (!out.chipCards.length) {
+      try {
+        const t86 = await latestTwseT86(12);
+        const row = (t86 && t86.rows || []).find(function (r) {
+          return String(r.code || "").toUpperCase() === stockId;
+        });
+        if (row) {
+          out.name = preferTwName(out.name, row.name, stockId);
+          const volGuess = out.quote && out.quote.volume > 0 ? out.quote.volume : 0;
+          out.chipDate = (t86.date || "").replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3") || t86.date || "";
+          out.chipCards = [
+            { name: "外資", net: row.foreignNet, tone: chipTone(row.foreignNet, volGuess) },
+            { name: "投信", net: row.trustNet, tone: chipTone(row.trustNet, volGuess) },
+            { name: "自營", net: row.dealerNet, tone: chipTone(row.dealerNet, volGuess) },
+            { name: "法人", net: row.instNet, tone: chipTone(row.instNet, volGuess) }
+          ];
+          out.ownership = out.ownership || {};
+          out.ownership.flow5 = out.ownership.flow5 || {
+            foreign: row.foreignNet || 0,
+            trust: row.trustNet || 0,
+            dealer: row.dealerNet || 0,
+            total: row.instNet || 0
+          };
+          out.dataSource = (out.dataSource || []).concat(["TWSE T86"]);
+        }
+      } catch (errChip) { /* ignore */ }
+    }
+
+    return out;
   }
 
   function retMap(bars) {
@@ -6611,7 +6878,11 @@
 
     return {
       ok: true,
-      name: (tech && tech.name) || (detail && detail.stockId) || stockId,
+      name: preferTwName(
+        tech && tech.name,
+        detail && detail.name,
+        stockId
+      ),
       code: stockId,
       close: close != null ? roundPx(close) : null,
       advice: advice,
@@ -6620,7 +6891,8 @@
         score: fundScore,
         notes: fundNotes,
         margins: m,
-        per: per
+        per: per,
+        note: detail && detail.fundNote
       },
       chip: {
         score: chipScore,
@@ -6637,7 +6909,8 @@
         buy: buyLevel,
         sell: sellLevel,
         stop: stopLevel
-      }
+      },
+      dataSource: (detail && detail.dataSource) || []
     };
   }
 
@@ -6879,8 +7152,18 @@
         if (!isFinite(roe) || Math.abs(roe) > 200) roe = null;
       }
     } catch (errRoe) { /* keep null */ }
+    // FinMind 無權益時：ROE ≈ PB／PE（粗估）
+    if (roe == null && per && per.per > 0 && per.pbr > 0) {
+      roe = (per.pbr / per.per) * 100;
+      if (!isFinite(roe) || Math.abs(roe) > 200) roe = null;
+      else roeNote = "粗估 ROE " + roe.toFixed(1) + "%（由股價淨值比／本益比反推，非財報直接計算）";
+    }
     const roeG = roeGrade(roe);
-    if (roe != null) roeNote = "近四季粗估 ROE " + roe.toFixed(1) + "%（" + roeG.label + "）";
+    if (roe != null && roeNote.indexOf("粗估 ROE") < 0) {
+      roeNote = "近四季粗估 ROE " + roe.toFixed(1) + "%（" + roeG.label + "）";
+    } else if (roe != null && roeNote.indexOf("（") < 0) {
+      roeNote += "（" + roeG.label + "）";
+    }
 
     // 合理價：歷史 PE 低／中／高 × 前瞻／年化 EPS（三層情境）
     let peHistMed = null;
@@ -6889,7 +7172,7 @@
     try {
       const peRows = await finMind("TaiwanStockPER", stockId, isoDaysAgo(1800)).catch(function () { return []; });
       const peVals = (peRows || []).map(function (r) { return num(r.PER); })
-        .filter(function (p) { return p != null && p > 3 && p < 60; })
+        .filter(function (p) { return p != null && p > 3 && p < 80; })
         .sort(function (a, b) { return a - b; });
       peHistMed = medianNums(peVals);
       if (peVals.length >= 5) {
@@ -6900,13 +7183,20 @@
     const epsNowRow = epsYears.find(function (r) { return r.year === new Date().getFullYear(); })
       || epsYears.filter(function (r) { return r.eps != null; }).slice(-1)[0];
     const epsFwdRow = epsYears.find(function (r) { return r.year === new Date().getFullYear() + 1; });
-    const epsUse = (epsFwdRow && epsFwdRow.eps > 0)
+    let epsUse = (epsFwdRow && epsFwdRow.eps > 0)
       ? epsFwdRow.eps
       : (epsNowRow && epsNowRow.eps > 0 ? epsNowRow.eps : null);
+    if (epsUse == null && close != null && per && per.per > 0) {
+      epsUse = close / per.per;
+      if (!(epsUse > 0)) epsUse = null;
+      else if (!epsNote || epsNote.indexOf("不足") >= 0) {
+        epsNote = "由現價／本益比反推 EPS 約 " + epsUse.toFixed(2);
+      }
+    }
     const peBear = peHistLow != null ? peHistLow : (peHistMed != null ? peHistMed * 0.75 : null);
     const peBase = peHistMed != null
       ? peHistMed
-      : (per && per.per > 0 && per.per < 60 ? per.per : null);
+      : (per && per.per > 0 && per.per < 80 ? per.per : null);
     const peBull = peHistHigh != null ? peHistHigh : (peHistMed != null ? peHistMed * 1.25 : null);
     let fair = null;
     let fairLow = null;
@@ -7115,7 +7405,7 @@
 
     return {
       ok: true,
-      name: advice.name,
+      name: preferTwName(advice.name, detail && detail.name, stockId),
       code: stockId,
       close: close,
       advice: advice.advice,
@@ -7126,6 +7416,8 @@
       fund: advice.fund,
       chip: advice.chip,
       tech: tech,
+      dataSource: (detail && detail.dataSource) || advice.dataSource || [],
+      fundNote: (detail && detail.fundNote) || (advice.fund && advice.fund.note) || "",
       patterns: advice.patterns,
       buyPoints: advice.buyPoints,
       sellPoints: advice.sellPoints,
@@ -7918,6 +8210,73 @@
     });
     const lastOwn = own.length ? own[own.length - 1] : null;
 
+    let revOut = {
+      ready: !!revRows.length,
+      rows: revRows,
+      note: revRows.length
+        ? "來源 FinMind 月營收；觀察 YoY／MoM 是否連創高。"
+        : "月營收暫無資料（可能需 FinMind token 或代號無申報）。"
+    };
+    let finOut = {
+      ready: !!margins,
+      date: margins && margins.date,
+      gross: margins && margins.gross,
+      op: margins && margins.op,
+      net: margins && margins.net,
+      grossHist: margins && margins.grossHist,
+      opHist: margins && margins.opHist,
+      netHist: margins && margins.netHist,
+      eps: margins && margins.eps,
+      grossTrend: margins ? rateTrend(margins.gross, margins.grossHist[1]) : null,
+      opTrend: margins ? rateTrend(margins.op, margins.opHist[1]) : null,
+      netTrend: margins ? rateTrend(margins.net, margins.netHist[1]) : null,
+      debtRatio: debtRatio,
+      note: "損益／資產負債來自 FinMind；完整四大表與會計師意見請開 MOPS／XBRL。"
+    };
+
+    if (!revOut.ready || !finOut.ready) {
+      try {
+        const tw = await twsePublicFundamentals(stockId);
+        if (!finOut.ready && tw && tw.margins) {
+          finOut = {
+            ready: true,
+            date: tw.margins.date,
+            gross: tw.margins.gross,
+            op: tw.margins.op,
+            net: tw.margins.net,
+            grossHist: tw.margins.grossHist,
+            opHist: tw.margins.opHist,
+            netHist: tw.margins.netHist,
+            eps: tw.eps,
+            grossTrend: tw.margins.grossTrend,
+            opTrend: tw.margins.opTrend,
+            netTrend: tw.margins.netTrend,
+            debtRatio: debtRatio,
+            note: "FinMind 不可用；改用證交所公開三率／EPS（最新一期）。完整財報請開 MOPS。"
+          };
+        } else if (!finOut.ready && tw && tw.eps != null) {
+          finOut.eps = tw.eps;
+          finOut.ready = true;
+          finOut.note = "FinMind 不可用；僅有證交所累計 EPS。完整財報請開 MOPS。";
+        }
+        if (!revOut.ready && tw && tw.revenue) {
+          const r = tw.revenue;
+          revOut = {
+            ready: true,
+            rows: [{
+              year: r.year,
+              month: r.month,
+              revenue: r.revenue,
+              mom: r.mom,
+              yoy: r.yoy,
+              yoyAcc: r.yoyAcc
+            }],
+            note: "FinMind 不可用；改用證交所最新月營收（單月）。"
+          };
+        }
+      } catch (errTwDisc) { /* keep empty */ }
+    }
+
     return {
       ok: true,
       stockId: stockId,
@@ -7927,29 +8286,8 @@
         note: "重訊全文改版後以 MOPS 為準；此區先提供深連結，後續接 CSV／摘要 API。",
         items: []
       },
-      revenue: {
-        ready: !!revRows.length,
-        rows: revRows,
-        note: revRows.length
-          ? "來源 FinMind 月營收；觀察 YoY／MoM 是否連創高。"
-          : "月營收暫無資料（可能需 FinMind token 或代號無申報）。"
-      },
-      financial: {
-        ready: !!margins,
-        date: margins && margins.date,
-        gross: margins && margins.gross,
-        op: margins && margins.op,
-        net: margins && margins.net,
-        grossHist: margins && margins.grossHist,
-        opHist: margins && margins.opHist,
-        netHist: margins && margins.netHist,
-        eps: margins && margins.eps,
-        grossTrend: margins ? rateTrend(margins.gross, margins.grossHist[1]) : null,
-        opTrend: margins ? rateTrend(margins.op, margins.opHist[1]) : null,
-        netTrend: margins ? rateTrend(margins.net, margins.netHist[1]) : null,
-        debtRatio: debtRatio,
-        note: "損益／資產負債來自 FinMind；完整四大表與會計師意見請開 MOPS／XBRL。"
-      },
+      revenue: revOut,
+      financial: finOut,
       ir: {
         ready: false,
         note: "法說會日期／直播／簡報 PDF 規劃接 MOPS 與公司 IR；目前提供觀測站入口。",

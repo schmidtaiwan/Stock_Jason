@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 306;
+  const PAGE_BUILD = 307;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7440,7 +7440,12 @@
       '<option value="entry">進場判斷</option>' +
       "</select></label></div>" +
       '<p class="fine">固定流程：行情 → 三率 → EPS → 籌碼 → 量能 → 健檢 → 公開資訊 → 合理估值 → 買賣決策。' +
-      "基本面決定值不值得投資，估值決定付多少錢，籌碼／技術協助何時進場。規則試算，非投資建議。</p>" +
+      "基本面決定值不值得投資，估值決定付多少錢，籌碼／技術協助何時進場。規則試算，非投資建議。" +
+      (pack.fundNote ? " " + esc(pack.fundNote) : "") +
+      (pack.dataSource && pack.dataSource.length
+        ? " 資料：" + esc(pack.dataSource.join("、")) + "。"
+        : "") +
+      "</p>" +
 
       "<h4>01 行情分析</h4>" +
       '<ul class="stat-list">' +
@@ -7664,7 +7669,11 @@
         "<li><span>集中度近似 5 日</span><strong>" + (chipx.conc && chipx.conc.d5 != null ? (chipx.conc.d5 * 100).toFixed(1) + "%" : "—") + "</strong></li>" +
         "</ul>" + brokerHtml + "</article>";
     }
-    box.innerHTML = quoteHtml + finHtml + epsHtml + chipsHtml + ownHtml + healthHtml + volHtml;
+    const srcNote = (detail.dataSource && detail.dataSource.length)
+      ? '<p class="fine">資料來源：' + esc(detail.dataSource.join("、")) +
+        (detail.fundNote ? "。" + esc(detail.fundNote) : "") + "</p>"
+      : (detail.fundNote ? '<p class="fine">' + esc(detail.fundNote) + "</p>" : "");
+    box.innerHTML = quoteHtml + finHtml + epsHtml + chipsHtml + ownHtml + healthHtml + volHtml + srcNote;
   }
 
   async function loadStockDetail(row) {
