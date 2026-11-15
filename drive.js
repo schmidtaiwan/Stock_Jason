@@ -765,11 +765,11 @@
 
   const KGI_HOLDINGS_NAME = "kgi-holdings.json";
 
-  /** Live Bridge 上傳的凱基庫存（Jason 雲端）；僅 Backy 讀取寫入自選群組。 */
+  /** Live Bridge 上傳的凱基庫存（Jason 雲端）；Backy／Jason 可讀並寫入「凱基庫存」群組。 */
   async function readKgiHoldings() {
     if (!account || !isAllowed(accountEmail())) return null;
     const me = accountEmail();
-    if (me !== "backy2777@gmail.com") return null;
+    if (me !== "backy2777@gmail.com" && me !== "jason660803@gmail.com") return null;
     const id = await findBookFile(KGI_HOLDINGS_NAME);
     if (!id) return null;
     return readJsonByFileId(id);

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 293;
+  const PAGE_BUILD = 294;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -312,8 +312,12 @@
     return g;
   }
 
+  function canUseKgiHoldings() {
+    return isBackyAccount() || isJasonAccount();
+  }
+
   function ensureKgiHoldingsGroup() {
-    if (!isBackyAccount()) return null;
+    if (!canUseKgiHoldings()) return null;
     if (!Array.isArray(book.watchGroups)) book.watchGroups = [];
     let g = book.watchGroups.find(function (row) { return row.id === KGI_GROUP_ID; });
     if (!g) {
@@ -2475,7 +2479,7 @@
   function paintWatchGroups() {
     flushWatchToGroup();
     if (isJasonAccount()) ensureFubonHoldingsGroup();
-    if (isBackyAccount()) ensureKgiHoldingsGroup();
+    if (canUseKgiHoldings()) ensureKgiHoldingsGroup();
     const groups = book.watchGroups || [];
     const allOn = isWatchAllGroups();
     const curGroup = activeWatchGroup();
@@ -2949,7 +2953,7 @@
       flashStatus("讀取雲端失敗：" + (err.message || err));
     }
     if (isJasonAccount()) ensureFubonHoldingsGroup();
-    if (isBackyAccount()) ensureKgiHoldingsGroup();
+    if (canUseKgiHoldings()) ensureKgiHoldingsGroup();
     syncMoney();
     renderWatch();
     paintToolMenu();
@@ -3040,11 +3044,12 @@
   }
 
   async function syncKgiHoldingsFromCloud() {
-    if (!D.account() || !isBackyAccount()) return;
+    if (!D.account() || !canUseKgiHoldings()) return;
     let data = null;
     let via = "";
     const LB = window.SJLiveBridge;
-    const bridgeWanted = !!(LB && LB.canReach && LB.canReach() && LB.isBacky && LB.isBacky());
+    const bridgeWanted = !!(LB && LB.canReach && LB.canReach() &&
+      ((LB.isBacky && LB.isBacky()) || (LB.isJason && LB.isJason())));
     let bridgeOnline = false;
     if (bridgeWanted) {
       try {
