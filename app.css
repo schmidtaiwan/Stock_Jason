@@ -203,10 +203,10 @@ a.gate-ext[hidden] { display: none !important; }
 }
 .brand-row, .row, .tools { display: flex; align-items: center; gap: 8px; }
 .brand-row {
-  justify-content: space-between;
+  justify-content: flex-start;
   min-width: 0;
   max-width: 100%;
-  gap: 6px;
+  gap: 4px;
 }
 .conn-lamps {
   flex: 0 0 auto;
@@ -219,7 +219,7 @@ a.gate-ext[hidden] { display: none !important; }
   row-gap: 0;
   min-width: 0;
   max-width: none;
-  margin: 0 2px;
+  margin: 0;
 }
 .conn-lamp {
   appearance: none;
@@ -362,7 +362,9 @@ a.gate-ext[hidden] { display: none !important; }
   align-items: flex-end;
   justify-content: center;
   gap: 1px;
-  margin: 0 4px;
+  /* 品牌靠左；加權＋燈號＋登入整組靠右 */
+  margin-left: auto;
+  margin-right: 0;
   text-align: right;
   line-height: 1.15;
 }
