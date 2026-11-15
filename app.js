@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 304;
+  const PAGE_BUILD = 305;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -4288,9 +4288,9 @@
       if (!series || !series.length) throw new Error("個股行情暫時讀不到");
       const candle = state.stockStyle === "candle";
       let statusNote = "";
-      if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 下方明日／5 日操作。";
-      else if (candle) statusNote = "K 線 · 下方明日／5 日操作。";
-      else statusNote = "線圖 · 右側持股占比 · 下方明日／5 日操作。";
+      if (candle && isStockOneDayRange()) statusNote = "單日五分 K · 上方有明日／5 日操作。";
+      else if (candle) statusNote = "K 線 · 上方有明日／5 日操作。";
+      else statusNote = "線圖 · 右側持股占比 · 上方有明日／5 日操作。";
       const items = [{ name: row.name, color: "#e0a100", bars: series }];
       state.stockPlot = buildPlot(items, "price", align);
       state.stockPlot.style = candle ? "candle" : "line";

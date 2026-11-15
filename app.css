@@ -1230,6 +1230,13 @@ canvas {
   margin: 6px 0 8px;
   order: 0;
 }
+.stock-horizon-top {
+  margin: 0 0 8px;
+  width: 100%;
+}
+.stock-horizon-top .horizon-fold > summary {
+  font-size: 14px;
+}
 .stock-live-top,
 .stock-actors-top {
   margin: 0 0 8px;
