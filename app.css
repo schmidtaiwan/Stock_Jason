@@ -212,7 +212,7 @@ a.gate-ext[hidden] { display: none !important; }
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: max-content max-content;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   align-items: center;
   justify-items: start;
   column-gap: 4px;
@@ -221,6 +221,12 @@ a.gate-ext[hidden] { display: none !important; }
   max-width: none;
   margin: 0;
 }
+/* 左欄：富邦／凱基／家裡；右欄：MIS／（空）／谷歌 */
+.conn-lamp[data-conn="fubon"] { grid-column: 1; grid-row: 1; }
+.conn-lamp[data-conn="mis"] { grid-column: 2; grid-row: 1; }
+.conn-lamp[data-conn="kgi"] { grid-column: 1; grid-row: 2; }
+.conn-lamp[data-conn="bridge"] { grid-column: 1; grid-row: 3; }
+.conn-lamp[data-conn="drive"] { grid-column: 2; grid-row: 3; }
 .conn-lamp {
   appearance: none;
   display: inline-flex;

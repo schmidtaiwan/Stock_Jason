@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 294;
+  const PAGE_BUILD = 295;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -606,9 +606,10 @@
     }
   }
 
-  /** 頂部連線燈號：富邦／MIS／家裡／谷歌 */
+  /** 頂部連線燈號：富邦／凱基／MIS／家裡／谷歌 */
   const connState = {
     fubon: { state: "unknown", title: "富邦", detail: "尚未檢查" },
+    kgi: { state: "unknown", title: "凱基", detail: "尚未檢查" },
     mis: { state: "unknown", title: "MIS（證交所）", detail: "尚未檢查" },
     bridge: { state: "unknown", title: "家裡", detail: "尚未檢查" },
     drive: { state: "unknown", title: "谷歌", detail: "尚未檢查" }
@@ -884,14 +885,19 @@
         if (online === true) {
           let build = "LiveBridge";
           let who = "";
+          let health = null;
           // 僅在詳情需要時打 health；綠燈本身不阻塞自選
-          if (B.health && (connState.bridge.state !== "ok" || !connState.bridge._build)) {
-            const health = await B.health().catch(function () { return null; });
+          if (B.health && (connState.bridge.state !== "ok" || !connState.bridge._build || !connState.kgi._probed)) {
+            health = await B.health().catch(function () { return null; });
             if (health && health.build != null) {
               build = "LB " + health.build;
               connState.bridge._build = build;
             }
             if (health && health.webWho) who = "\n目前在線：" + health.webWho;
+            if (health) {
+              connState.kgi._probed = true;
+              connState.kgi._health = health;
+            }
           } else if (connState.bridge._build) {
             build = connState.bridge._build;
           }
@@ -942,6 +948,31 @@
       } else {
         setConnItem("fubon", "warn",
           "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
+      }
+
+      // 凱基：依 LiveBridge health.kgi／kgiHoldings（InventorySum）
+      if (bridgeOk) {
+        let health = connState.kgi._health;
+        if (!health && B.health) {
+          health = await B.health().catch(function () { return null; });
+          if (health) connState.kgi._health = health;
+        }
+        const kgiOn = !!(health && (health.kgi === true || health.kgi === "true"));
+        const kgiN = health && health.kgiHoldings != null ? Number(health.kgiHoldings) : NaN;
+        if (kgiOn && isFinite(kgiN) && kgiN > 0) {
+          setConnItem("kgi", "ok",
+            "連線正常。\nLiveBridge 已登入凱基，庫存 " + kgiN + " 檔（InventorySum）。\n" +
+            "會同步到 Jason／Backy「凱基庫存」群組。");
+        } else if (kgiOn) {
+          setConnItem("kgi", "warn",
+            "凱基已登入，但庫存 0 檔。\n請確認證券帳號有持股，或稍後再刷新。");
+        } else {
+          setConnItem("kgi", "bad",
+            "連線異常。\nBridge 已通，但尚未登入凱基。\n請在 LiveBridge 填凱基帳密並確認本機憑證已匯入。");
+        }
+      } else {
+        setConnItem("kgi", "warn",
+          "家裡 Bridge 未連線。\n凱基庫存需透過 LiveBridge 抓 InventorySum 後上傳雲端。");
       }
 
       // MIS：不論目前加權是富邦或證交所，都實際探測是否正常
