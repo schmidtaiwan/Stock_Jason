@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 311;
+  const PAGE_BUILD = 312;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -1147,25 +1147,37 @@
   }
 
   function hardReloadToBuild(remote) {
+    const target = String(remote || PAGE_BUILD);
     const go = function () {
-      const url = new URL(location.href);
-      const target = String(remote || PAGE_BUILD);
-      const curV = String(url.searchParams.get("v") || "");
-      // 真的已是新版（URL 與腳本版次都到齊）才略過
-      if (curV === target && !(Number(remote) > PAGE_BUILD) && Number(PAGE_BUILD) >= Number(target)) {
-        return;
+      try {
+        sessionStorage.removeItem("sj-idx-bust-" + target);
+        sessionStorage.removeItem("sj-build-alert");
+      } catch (e) { /* ignore */ }
+      // 已跑新腳本且 URL 已對齊 → 不必再轉
+      if (!(Number(remote) > PAGE_BUILD) && Number(PAGE_BUILD) >= Number(target)) {
+        const curV = String((new URL(location.href)).searchParams.get("v") || "");
+        if (curV === target && Number(PAGE_BUILD) >= Number(target)) return;
       }
+      const url = new URL(location.href);
       url.searchParams.set("v", target);
+      url.searchParams.set("i", target);
       url.searchParams.set("_", String(Date.now()));
       url.searchParams.set("r", Math.random().toString(36).slice(2, 8));
-      location.replace(url.toString());
+      url.searchParams.set("bust", String(Date.now()));
+      // assign 打穿部分手機 BFCache；只換 query
+      location.href = url.pathname + "?" + url.searchParams.toString();
     };
-    const clear = (window.caches && caches.keys)
+    const clearCaches = (window.caches && caches.keys)
       ? caches.keys().then(function (keys) {
           return Promise.all(keys.map(function (k) { return caches.delete(k); }));
         })
       : Promise.resolve();
-    clear.then(go, go);
+    const unreg = (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      ? navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        })
+      : Promise.resolve();
+    Promise.all([clearCaches, unreg]).then(go, go);
   }
 
   function showUpdateBanner(remote) {
@@ -1212,14 +1224,16 @@
 
   function fetchBuildJson() {
     const bust = "?_=" + Date.now() + "&r=" + Math.random();
-    const urls = [
+    // jsDelivr @main 常落後，不納入「最大版次」以免誤導；仍可當備援讀不到時用
+    const primary = [
       "build.json" + bust,
-      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json" + bust,
-      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust,
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust
+      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust,
+      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust
     ];
-    // 取各來源最大 build，避免 GitHub Pages／raw CDN 舊快取擋住更新條
-    return Promise.all(urls.map(function (url) {
+    const fallback = [
+      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json" + bust
+    ];
+    function readOne(url) {
       return fetch(url, { cache: "no-store", mode: "cors", credentials: "omit" })
         .then(function (res) { return res && res.ok ? res.json() : null; })
         .then(function (j) {
@@ -1227,8 +1241,13 @@
           return remote > 0 ? remote : 0;
         })
         .catch(function () { return 0; });
-    })).then(function (nums) {
-      return nums.reduce(function (a, b) { return a > b ? a : b; }, 0) || null;
+    }
+    return Promise.all(primary.map(readOne)).then(function (nums) {
+      const best = nums.reduce(function (a, b) { return a > b ? a : b; }, 0);
+      if (best > 0) return best;
+      return Promise.all(fallback.map(readOne)).then(function (fb) {
+        return fb.reduce(function (a, b) { return a > b ? a : b; }, 0) || null;
+      });
     });
   }
 

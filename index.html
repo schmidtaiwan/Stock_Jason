@@ -16,34 +16,37 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=311">
+  <link rel="stylesheet" href="app.css?v=312&i=312">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 311;
+    var PAGE = 312;
     var urls = [
+      // 優先同源／raw；jsDelivr @main 常慢半拍，放最後且僅作參考
       "build.json?_=" + Date.now() + "&r=" + Math.random(),
-      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now(),
+      "https://schmidtaiwan.github.io/Stock_Jason/build.json?_=" + Date.now(),
       "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json?_=" + Date.now(),
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json?_=" + Date.now()
+      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now()
     ];
     function go(remote) {
       try {
         var u = new URL(location.href);
         var curV = String(u.searchParams.get("v") || "");
-        // URL 已是目標但仍載入舊 index（腳本寫死 v=268）時：強制再換頁一次
+        // URL 已是目標但仍載入舊 index 時：強制再換頁一次（多加 bust 打穿 Fastly）
         if (curV === String(remote)) {
           try {
             var key = "sj-idx-bust-" + remote;
             if (sessionStorage.getItem(key) === "1") return;
             sessionStorage.setItem(key, "1");
-          } catch (e) { return; }
+          } catch (e) { /* continue replace */ }
         }
         u.searchParams.set("v", String(remote));
+        u.searchParams.set("i", String(remote));
         u.searchParams.set("_", String(Date.now()));
         u.searchParams.set("r", Math.random().toString(36).slice(2, 8));
-        location.replace(u.toString());
+        u.searchParams.set("bust", String(Date.now()));
+        location.replace(u.pathname + u.search + u.hash);
       } catch (e) {
         location.reload();
       }
@@ -699,13 +702,18 @@
   <script src="https://accounts.google.com/gsi/client"></script>
   <script>
   (function () {
-    // 用網址 ?v= 載入腳本，按「立即更新」才會真的換到新 JS（勿再寫死 v=268）
-    var PAGE = 311;
+    // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
+    var PAGE = 312;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");
-      if (q && /^\d+$/.test(q)) v = q;
+      if (q && /^\d+$/.test(q) && Number(q) >= PAGE) v = q;
+      else if (q && /^\d+$/.test(q) && Number(q) < PAGE) v = String(PAGE);
     } catch (e) { /* ignore */ }
+    var bust = "";
+    try { bust = String(new URLSearchParams(location.search).get("bust") || Date.now()); } catch (e2) {
+      bust = String(Date.now());
+    }
     var files = [
       "google_config.js",
       "drive.js",
@@ -716,7 +724,11 @@
       "app.js"
     ];
     for (var i = 0; i < files.length; i++) {
-      document.write('<script src="' + files[i] + "?v=" + encodeURIComponent(v) + '"><\/script>');
+      document.write('<script src="' + files[i] +
+        "?v=" + encodeURIComponent(v) +
+        "&i=" + encodeURIComponent(String(PAGE)) +
+        "&b=" + encodeURIComponent(bust) +
+        '"><\/script>');
     }
   })();
   </script>
