@@ -293,7 +293,40 @@
     }
   }
 
-  /** 日Ｋ預抓包（免 Google 登入）；開盤時網頁優先用此取代遠端歷史 API。 */
+  function histFromPack(pack, id, fallbackSource) {
+    if (!pack) return null;
+    if (id && pack.byCode && pack.byCode[id]) {
+      const row = pack.byCode[id];
+      return {
+        ok: true,
+        source: pack.source || fallbackSource,
+        code: id,
+        bars: Array.isArray(row) ? row : (row.bars || []),
+        asOf: pack.asOf,
+        at: pack.at
+      };
+    }
+    if (Array.isArray(pack.bars) && pack.bars.length >= 3) return pack;
+    return pack;
+  }
+
+  /** MIS 上市 180 日歷史（免登入）；網頁 historyBars 最優先。 */
+  async function readHistMis(code) {
+    if (!canReach()) return null;
+    try {
+      const id = String(code || "").trim().toUpperCase();
+      if (id) {
+        const one = await fetchJson("/api/hist-mis/" + encodeURIComponent(id), false);
+        if (one && Array.isArray(one.bars) && one.bars.length >= 3) return one;
+      }
+      const pack = await fetchJson("/api/hist-mis", false);
+      return histFromPack(pack, id, "mis-hist");
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /** 富邦自選備援日Ｋ（免登入）。 */
   async function readHistDaily(code) {
     if (!canReach()) return null;
     try {
@@ -303,19 +336,7 @@
         if (one && Array.isArray(one.bars) && one.bars.length >= 3) return one;
       }
       const pack = await fetchJson("/api/hist-daily", false);
-      if (!pack || !pack.byCode) return pack;
-      if (id && pack.byCode[id]) {
-        const row = pack.byCode[id];
-        return {
-          ok: true,
-          source: pack.source || "fubon-hist",
-          code: id,
-          bars: Array.isArray(row) ? row : (row.bars || []),
-          asOf: pack.asOf,
-          at: pack.at
-        };
-      }
-      return pack;
+      return histFromPack(pack, id, "fubon-hist");
     } catch (err) {
       return null;
     }
@@ -342,6 +363,7 @@
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,
     readFubonHoldings: readFubonHoldings,
+    readHistMis: readHistMis,
     readHistDaily: readHistDaily,
     health: health,
   };

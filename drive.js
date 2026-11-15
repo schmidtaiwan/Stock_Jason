@@ -625,7 +625,41 @@
     return readJsonByFileId(id);
   }
 
-  /** Live Bridge 上傳的日Ｋ預抓（hist-daily.json／hist-daily-{code}.json）。 */
+  async function readHistPackFile(fileName, code, fallbackSource) {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const idCode = String(code || "").trim().toUpperCase();
+
+    async function tryId(id) {
+      if (!id) return null;
+      try {
+        return await readJsonByFileId(id);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    const pack = await tryId(await findBookFile(fileName));
+    if (!pack) return null;
+    if (idCode && pack.byCode && pack.byCode[idCode]) {
+      const row = pack.byCode[idCode];
+      return {
+        ok: true,
+        source: pack.source || fallbackSource,
+        code: idCode,
+        bars: Array.isArray(row) ? row : (row.bars || []),
+        asOf: pack.asOf,
+        at: pack.at
+      };
+    }
+    return pack;
+  }
+
+  /** Live Bridge 上傳：上市 MIS 180 日歷史包 hist-mis.json。 */
+  async function readHistMis(code) {
+    return readHistPackFile("hist-mis.json", code, "mis-hist");
+  }
+
+  /** Live Bridge 上傳的富邦自選備援日Ｋ hist-daily.json。 */
   async function readHistDaily(code) {
     if (!account || !isAllowed(accountEmail())) return null;
     const idCode = String(code || "").trim().toUpperCase();
@@ -643,21 +677,7 @@
       const flat = await tryId(await findBookFile("hist-daily-" + idCode + ".json"));
       if (flat && Array.isArray(flat.bars) && flat.bars.length >= 3) return flat;
     }
-
-    const pack = await tryId(await findBookFile("hist-daily.json"));
-    if (!pack) return null;
-    if (idCode && pack.byCode && pack.byCode[idCode]) {
-      const row = pack.byCode[idCode];
-      return {
-        ok: true,
-        source: pack.source || "fubon-hist",
-        code: idCode,
-        bars: Array.isArray(row) ? row : (row.bars || []),
-        asOf: pack.asOf,
-        at: pack.at
-      };
-    }
-    return pack;
+    return readHistPackFile("hist-daily.json", code, "fubon-hist");
   }
 
   async function readFubonTape(code, dateYmd) {
@@ -933,6 +953,7 @@
     readFubonLive: readFubonLive,
     readFubonHoldings: readFubonHoldings,
     readFubonTape: readFubonTape,
+    readHistMis: readHistMis,
     readHistDaily: readHistDaily,
     friendly: friendly,
     restoreSession: restoreSession,

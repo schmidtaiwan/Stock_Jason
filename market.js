@@ -1638,64 +1638,71 @@
     const now = Date.now();
     const hit = histDailyCodeCache[id];
     if (hit && now - hit.at < 5 * 60_000 && hit.bars && hit.bars.length >= 3) {
-      return hit.bars;
+      return { bars: hit.bars, source: hit.source || "cloud-hist" };
     }
 
-    async function fromBridge() {
+    async function take(pack, source) {
+      const bars = normalizeHistBars(pack);
+      if (bars && bars.length >= 3) {
+        histDailyCodeCache[id] = { at: now, bars: bars, source: source };
+        return { bars: bars, source: source };
+      }
+      return null;
+    }
+
+    async function fromBridgeMis() {
+      const B = global.SJLiveBridge;
+      if (!B || !B.readHistMis) return null;
+      if (B.isOnline && B.isOnline() === false) return null;
+      try { return take(await B.readHistMis(id), "mis-hist"); } catch (err) { return null; }
+    }
+
+    async function fromDriveMis() {
+      const D = global.SJDrive;
+      if (!D || !D.readHistMis || !D.account || !D.account()) return null;
+      try { return take(await D.readHistMis(id), "mis-hist"); } catch (err) { return null; }
+    }
+
+    async function fromBridgeDaily() {
       const B = global.SJLiveBridge;
       if (!B || !B.readHistDaily) return null;
       if (B.isOnline && B.isOnline() === false) return null;
-      try {
-        const pack = await B.readHistDaily(id);
-        return normalizeHistBars(pack);
-      } catch (err) {
-        return null;
-      }
+      try { return take(await B.readHistDaily(id), "fubon-hist"); } catch (err) { return null; }
     }
 
-    async function fromDrive() {
+    async function fromDriveDaily() {
       const D = global.SJDrive;
       if (!D || !D.readHistDaily || !D.account || !D.account()) return null;
-      try {
-        const pack = await D.readHistDaily(id);
-        return normalizeHistBars(pack);
-      } catch (err) {
-        return null;
-      }
+      try { return take(await D.readHistDaily(id), "fubon-hist"); } catch (err) { return null; }
     }
 
-    // 先試已快取的整包
+    // 先試已快取的整包（MIS 優先）
     if (histDailyPack && now - histDailyPackAt < 5 * 60_000 && histDailyPack.byCode && histDailyPack.byCode[id]) {
-      const bars = normalizeHistBars(histDailyPack.byCode[id]);
-      if (bars.length >= 3) {
-        histDailyCodeCache[id] = { at: now, bars: bars };
-        return bars;
-      }
+      const got = await take(histDailyPack.byCode[id], histDailyPack.source || "cloud-hist");
+      if (got) return got;
     }
 
-    let bars = await fromBridge();
-    if (!(bars && bars.length >= 3)) bars = await fromDrive();
-    if (bars && bars.length >= 3) {
-      histDailyCodeCache[id] = { at: now, bars: bars };
-      return bars;
-    }
-    return null;
+    // 1) MIS 上市 180 日  2) 富邦自選備援
+    let got = await fromBridgeMis();
+    if (!got) got = await fromDriveMis();
+    if (!got) got = await fromBridgeDaily();
+    if (!got) got = await fromDriveDaily();
+    return got;
   }
 
   async function historyBars(secid, code, days) {
     const want = Math.max(40, Number(days) || 180);
     const stockId = twStockId(secid, code);
 
-    // 1) Bridge／Drive 預抓日Ｋ（網頁未登入也可走 Bridge）
+    // 1) Bridge／Drive 預抓日Ｋ（MIS 180 日優先；網頁未登入也可走 Bridge）
     if (stockId) {
       try {
         const cloud = await fetchHistDailyCloud(stockId);
-        if (cloud && cloud.length >= 5) {
-          // 雲端通常備 60 根；要更長才回落 FinMind／東財
-          if (want <= cloud.length + 10 || cloud.length >= 40) {
-            const cut = cloud.slice(-Math.min(want, cloud.length));
+        if (cloud && cloud.bars && cloud.bars.length >= 5) {
+          if (want <= cloud.bars.length + 10 || cloud.bars.length >= 40) {
+            const cut = cloud.bars.slice(-Math.min(want, cloud.bars.length));
             cut.symbolName = toTW(code || stockId);
-            cut.source = "fubon-hist";
+            cut.source = cloud.source || "cloud-hist";
             return cut;
           }
         }
