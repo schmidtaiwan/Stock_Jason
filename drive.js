@@ -688,6 +688,10 @@
     return readNamedPack("flow-series.json");
   }
 
+  async function readWatchUniverse() {
+    return readNamedPack("watch-universe.json");
+  }
+
   /** Live Bridge 上傳的富邦自選備援日Ｋ hist-daily.json。 */
   async function readHistDaily(code) {
     if (!account || !isAllowed(accountEmail())) return null;
@@ -988,6 +992,7 @@
     readLevelsDaily: readLevelsDaily,
     readPulseBoard: readPulseBoard,
     readFlowSeries: readFlowSeries,
+    readWatchUniverse: readWatchUniverse,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

@@ -570,6 +570,10 @@
     return readCloudPack("/api/flow-series");
   }
 
+  async function readWatchUniverse() {
+    return readCloudPack("/api/watch-universe");
+  }
+
   async function health() {
     if (!canReach()) return null;
     try {
@@ -599,6 +603,7 @@
     readLevelsDaily: readLevelsDaily,
     readPulseBoard: readPulseBoard,
     readFlowSeries: readFlowSeries,
+    readWatchUniverse: readWatchUniverse,
     health: health,
   };
 })(window);

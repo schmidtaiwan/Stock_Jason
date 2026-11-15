@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 275;
+  const PAGE_BUILD = 276;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -5358,7 +5358,8 @@
         runTapeJudgeIfDue(true);
       }
     }
-    // 盤後／剛登入：watchBoard 會先灌雲端 mis-live 快照再補 MIS
+    // 先暖機 packs，再 watchBoard（Bridge／Drive → 即時）
+    prefetchCorePacks().catch(function () { /* ignore */ });
     withWatchTimeout(M.watchBoard(book.watch), 22000, null).then(function (rows) {
       if (gen !== renderWatch.gen) return;
       if (!rows) {
@@ -7955,6 +7956,37 @@
         '<p class="fine">' + esc(pack.note || "") + "</p>");
   }
 
+  /** 核心頁：先暖機 Bridge／Drive packs，畫面可立刻吃到預處理。 */
+  async function prefetchCorePacks() {
+    const tasks = [];
+    function add(fn) {
+      if (typeof fn === "function") tasks.push(Promise.resolve().then(fn).catch(function () { return null; }));
+    }
+    const B = window.SJLiveBridge;
+    if (B && B.canReach && B.canReach()) {
+      add(function () { return B.readFubonLive && B.readFubonLive(); });
+      add(function () { return B.readChipsDaily && B.readChipsDaily(); });
+      add(function () { return B.readLevelsDaily && B.readLevelsDaily(); });
+      add(function () { return B.readPulseBoard && B.readPulseBoard(); });
+      add(function () { return B.readFlowSeries && B.readFlowSeries(); });
+      add(function () { return B.readHistMis && B.readHistMis(); });
+      add(function () { return B.readHistDaily && B.readHistDaily(); });
+      add(function () { return B.readWatchUniverse && B.readWatchUniverse(); });
+    }
+    if (D && D.account && D.account()) {
+      add(function () { return D.readFubonLive && D.readFubonLive(); });
+      add(function () { return D.readChipsDaily && D.readChipsDaily(); });
+      add(function () { return D.readLevelsDaily && D.readLevelsDaily(); });
+      add(function () { return D.readPulseBoard && D.readPulseBoard(); });
+      add(function () { return D.readFlowSeries && D.readFlowSeries(); });
+      add(function () { return D.readHistMis && D.readHistMis(); });
+      add(function () { return D.readWatchUniverse && D.readWatchUniverse(); });
+    }
+    if (!tasks.length) return null;
+    await Promise.all(tasks);
+    return true;
+  }
+
   async function loadPulse() {
     const status = $("pulse-status");
     const box = $("pulse-out");
@@ -7962,6 +7994,10 @@
       if (status) status.textContent = "動向模組未載入。";
       return;
     }
+    if (status) status.textContent = "先載雲端動向包…";
+    // 美股觀察先吃 pulse-board；完整動向再打外部
+    try { loadUsBoard(); } catch (e) { /* ignore */ }
+    prefetchCorePacks().catch(function () { /* ignore */ });
     if (status) status.textContent = "正在讀美股、夜盤、大盤與籌碼…";
     try {
       const pack = await M.twPulse();
@@ -8483,6 +8519,7 @@
     bindConnLamps();
     paintConnLamps();
     refreshConnLamps().catch(function () { /* ignore */ });
+    prefetchCorePacks().catch(function () { /* ignore */ });
     // 固定心跳：讓家裡電腦 LB 燈號能顯示「網頁在線／誰」
     if (!window.__sjBridgeHeartbeat) {
       window.__sjBridgeHeartbeat = setInterval(function () {
