@@ -659,6 +659,35 @@
     return readHistPackFile("hist-mis.json", code, "mis-hist");
   }
 
+  async function readNamedPack(fileName) {
+    if (!account || !isAllowed(accountEmail())) return null;
+    async function tryId(id) {
+      if (!id) return null;
+      try {
+        return await readJsonByFileId(id);
+      } catch (err) {
+        return null;
+      }
+    }
+    return tryId(await findBookFile(fileName));
+  }
+
+  async function readChipsDaily() {
+    return readNamedPack("chips-daily.json");
+  }
+
+  async function readLevelsDaily() {
+    return readNamedPack("levels-daily.json");
+  }
+
+  async function readPulseBoard() {
+    return readNamedPack("pulse-board.json");
+  }
+
+  async function readFlowSeries() {
+    return readNamedPack("flow-series.json");
+  }
+
   /** Live Bridge 上傳的富邦自選備援日Ｋ hist-daily.json。 */
   async function readHistDaily(code) {
     if (!account || !isAllowed(accountEmail())) return null;
@@ -955,6 +984,10 @@
     readFubonTape: readFubonTape,
     readHistMis: readHistMis,
     readHistDaily: readHistDaily,
+    readChipsDaily: readChipsDaily,
+    readLevelsDaily: readLevelsDaily,
+    readPulseBoard: readPulseBoard,
+    readFlowSeries: readFlowSeries,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

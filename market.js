@@ -1693,12 +1693,14 @@
   async function historyBars(secid, code, days) {
     const want = Math.max(40, Number(days) || 180);
     const stockId = twStockId(secid, code);
+    let cloudHit = null;
 
     // 1) Bridge／Drive 預抓日Ｋ（MIS 180 日優先；網頁未登入也可走 Bridge）
     if (stockId) {
       try {
         const cloud = await fetchHistDailyCloud(stockId);
         if (cloud && cloud.bars && cloud.bars.length >= 5) {
+          cloudHit = cloud;
           if (want <= cloud.bars.length + 10 || cloud.bars.length >= 40) {
             const cut = cloud.bars.slice(-Math.min(want, cloud.bars.length));
             cut.symbolName = toTW(code || stockId);
@@ -1707,6 +1709,14 @@
           }
         }
       } catch (err) { /* fall through */ }
+    }
+
+    // 非開盤：歷史只走雲端；過舊／不足才備援遠端
+    if (!isTwSessionOpen() && cloudHit && cloudHit.bars && cloudHit.bars.length >= 5) {
+      const cut = cloudHit.bars.slice(-Math.min(want, cloudHit.bars.length));
+      cut.symbolName = toTW(code || stockId);
+      cut.source = (cloudHit.source || "cloud-hist") + "-stale";
+      return cut;
     }
 
     if (stockId) {
@@ -2874,12 +2884,30 @@
   async function watchLevels(items) {
     const list = items || [];
     if (!list.length) return [];
+    const cloud = await readCloudNamed("readLevelsDaily", "readLevelsDaily");
+    const cloudBy = cloud && cloud.byCode ? cloud.byCode : null;
+    const cloudOk = !!(cloudBy && cloudPackFresh(cloud, 18 * 60 * 60 * 1000));
     return mapPool(list, 3, async function (item) {
       const key = String((item && (item.code || item.secid)) || "").toUpperCase();
       if (!key) return { breakout: null, support: null };
+      if (cloudOk && cloudBy[key]) {
+        const row = cloudBy[key];
+        const levels = {
+          breakout: row.breakout || null,
+          support: row.support || null,
+          source: "levels-daily"
+        };
+        watchLevelCache[key] = { at: Date.now(), breakout: levels.breakout, support: levels.support };
+        return levels;
+      }
       const hit = watchLevelCache[key];
       if (hit && Date.now() - hit.at < WATCH_LEVEL_TTL) {
         return { breakout: hit.breakout, support: hit.support };
+      }
+      // 非開盤且雲端有舊包：不重算遠端日Ｋ
+      if (!isTwSessionOpen() && cloudBy && cloudBy[key]) {
+        const row = cloudBy[key];
+        return { breakout: row.breakout || null, support: row.support || null, source: "levels-daily-stale" };
       }
       try {
         const bars = await dayBarsForLevels(item && item.secid, item && item.code);
@@ -2891,6 +2919,10 @@
         };
         return levels;
       } catch (err) {
+        if (cloudBy && cloudBy[key]) {
+          const row = cloudBy[key];
+          return { breakout: row.breakout || null, support: row.support || null, source: "levels-daily" };
+        }
         return { breakout: null, support: null };
       }
     });
@@ -4315,8 +4347,10 @@
     });
     if (!need.length) return out;
 
-    // 登入者先吃雲端最新快照：優先富邦橋接（近 60 秒），再 MIS
-    await hydrateFubonFromDrive(need, { maxAgeMs: FUBON_DRIVE_MAX_AGE_MS });
+    // 先吃雲端／Bridge 快照：優先富邦橋接，再 MIS 快照
+    await hydrateFubonFromDrive(need, {
+      maxAgeMs: isTwSessionOpen() ? FUBON_DRIVE_MAX_AGE_MS : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000)
+    });
     await hydrateMisFromDrive(need);
     need = need.filter(function (id) {
       if (out[id]) return false;
@@ -4328,6 +4362,16 @@
       return true;
     });
     if (!need.length) return out;
+
+    // 開盤才直連 MIS；非開盤只吃雲端／Bridge／快取
+    if (!isTwSessionOpen()) {
+      ids.forEach(function (id) {
+        if (out[id]) return;
+        const hit = misCacheGet(id) || (misQuoteCache.get(id) && misQuoteCache.get(id).quote) || null;
+        if (hit && hit.price > 0) out[id] = hit;
+      });
+      return out;
+    }
 
     let fetched = false;
     const run = misQueue.then(async function () {
@@ -4961,16 +5005,39 @@
     const from = window && window.from;
     const to = window && window.to;
     let rows = [];
+
+    async function fromCloud() {
+      const pack = await readCloudNamed("readFlowSeries", "readFlowSeries");
+      if (!pack || !cloudPackFresh(pack, 18 * 60 * 60 * 1000)) {
+        if (!isTwSessionOpen() && pack) return pack;
+        return null;
+      }
+      return pack;
+    }
+
+    const cloud = await fromCloud();
     if (id === "short") {
-      const series = await txForeignFutSeries(Math.max(keep + 40, 80));
-      rows = levelBars(series.map(function (r) {
-        return { t: r.date, v: r.shortOi };
-      }));
+      if (cloud && Array.isArray(cloud.shortOi) && cloud.shortOi.length) {
+        rows = levelBars(cloud.shortOi.map(function (r) {
+          return { t: r.date, v: r.shortOi };
+        }));
+      } else {
+        const series = await txForeignFutSeries(Math.max(keep + 40, 80));
+        rows = levelBars(series.map(function (r) {
+          return { t: r.date, v: r.shortOi };
+        }));
+      }
     } else if (id === "buy" || id === "sell") {
-      const all = await foreignInvestorRows();
-      rows = levelBars(all.map(function (r) {
-        return { t: r.date, v: id === "buy" ? r.buyYi : r.sellYi };
-      }));
+      if (cloud && Array.isArray(cloud.foreign) && cloud.foreign.length) {
+        rows = levelBars(cloud.foreign.map(function (r) {
+          return { t: r.date, v: id === "buy" ? r.buyYi : r.sellYi };
+        }));
+      } else {
+        const all = await foreignInvestorRows();
+        rows = levelBars(all.map(function (r) {
+          return { t: r.date, v: id === "buy" ? r.buyYi : r.sellYi };
+        }));
+      }
     } else {
       throw new Error("未知籌碼曲線");
     }
@@ -5585,12 +5652,73 @@
   }
 
   // 自選用：最近一個有公告的交易日，各代號外資／投信／自營買賣超（股）
+  async function readCloudNamed(readerBridge, readerDrive) {
+    const B = global.SJLiveBridge;
+    if (B && typeof B[readerBridge] === "function") {
+      if (!(B.isOnline && B.isOnline() === false)) {
+        try {
+          const pack = await B[readerBridge]();
+          if (pack && pack.ok !== false) return pack;
+        } catch (err) { /* next */ }
+      }
+    }
+    const D = global.SJDrive;
+    if (D && typeof D[readerDrive] === "function" && D.account && D.account()) {
+      try {
+        const pack = await D[readerDrive]();
+        if (pack && pack.ok !== false) return pack;
+      } catch (err) { /* next */ }
+    }
+    return null;
+  }
+
+  function cloudPackFresh(pack, maxAgeMs) {
+    if (!pack) return false;
+    const at = Number(pack.at || pack.updatedAt || 0);
+    if (!(at > 0)) return !!(pack.byCode || pack.rows || pack.foreign);
+    return (Date.now() - at) < (maxAgeMs || 12 * 60 * 60 * 1000);
+  }
+
+  /** 台北開盤時段（09:00–13:30 平日）才允許直連 MIS／富邦即時。 */
+  function isTwSessionOpen(now) {
+    const d = now ? new Date(now) : new Date();
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Taipei",
+        weekday: "short",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: false
+      }).formatToParts(d);
+    } catch (err) {
+      return false;
+    }
+    const map = {};
+    parts.forEach(function (p) { if (p.type !== "literal") map[p.type] = p.value; });
+    const wd = String(map.weekday || "");
+    if (wd === "Sat" || wd === "Sun") return false;
+    const mins = Number(map.hour) * 60 + Number(map.minute);
+    return mins >= 9 * 60 && mins <= 13 * 60 + 30;
+  }
+
   async function watchChips(items) {
     const list = items || [];
     const empty = { date: "", byCode: {} };
     if (!list.length) return empty;
+    const cloud = await readCloudNamed("readChipsDaily", "readChipsDaily");
+    if (cloud && cloud.byCode && cloudPackFresh(cloud, 18 * 60 * 60 * 1000)) {
+      return { date: cloud.date || "", byCode: cloud.byCode, source: "chips-daily" };
+    }
+    // 非開盤：雲端沒有／過舊才備援遠端 T86
+    if (!isTwSessionOpen() && cloud && cloud.byCode && Object.keys(cloud.byCode).length) {
+      return { date: cloud.date || "", byCode: cloud.byCode, source: "chips-daily-stale" };
+    }
     const pack = await latestTwseT86(12);
-    if (!pack || !pack.ok) return empty;
+    if (!pack || !pack.ok) {
+      if (cloud && cloud.byCode) return { date: cloud.date || "", byCode: cloud.byCode, source: "chips-daily" };
+      return empty;
+    }
     const byCode = {};
     (pack.rows || []).forEach(function (row) {
       if (row && row.code) byCode[String(row.code).toUpperCase()] = row;
@@ -7446,6 +7574,7 @@
     twPulse: twPulse,
     txNightLatest: txNightLatest,
     isMisForceWindow: isMisForceWindow,
+    isTwSessionOpen: isTwSessionOpen,
     yahooSymbolQuote: yahooSymbolQuote,
     latestTwseT86: latestTwseT86,
     twseT86Days: async function (days) {

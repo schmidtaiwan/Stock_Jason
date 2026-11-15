@@ -342,6 +342,33 @@
     }
   }
 
+  async function readCloudPack(path) {
+    if (!canReach()) return null;
+    try {
+      const pack = await fetchJson(path, false);
+      if (pack && pack.ok !== false) return pack;
+      return pack || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function readChipsDaily() {
+    return readCloudPack("/api/chips-daily");
+  }
+
+  async function readLevelsDaily() {
+    return readCloudPack("/api/levels-daily");
+  }
+
+  async function readPulseBoard() {
+    return readCloudPack("/api/pulse-board");
+  }
+
+  async function readFlowSeries() {
+    return readCloudPack("/api/flow-series");
+  }
+
   async function health() {
     if (!canReach()) return null;
     try {
@@ -365,6 +392,10 @@
     readFubonHoldings: readFubonHoldings,
     readHistMis: readHistMis,
     readHistDaily: readHistDaily,
+    readChipsDaily: readChipsDaily,
+    readLevelsDaily: readLevelsDaily,
+    readPulseBoard: readPulseBoard,
+    readFlowSeries: readFlowSeries,
     health: health,
   };
 })(window);
