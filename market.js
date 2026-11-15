@@ -7590,6 +7590,256 @@
     };
   }
 
+  function mdYmd(t) {
+    const d = new Date(t);
+    if (!isFinite(d.getTime())) return "";
+    return (d.getMonth() + 1) + "/" + d.getDate();
+  }
+
+  function pctChg(a, b) {
+    if (!(a > 0) || !(b > 0)) return null;
+    return ((b - a) / a) * 100;
+  }
+
+  function sparkCloses(bars, n) {
+    const rows = (bars || []).filter(function (b) { return b && b.c > 0; });
+    const slice = rows.slice(-(n || 60));
+    return slice.map(function (b) { return b.c; });
+  }
+
+  function tagFromBars(bars, unit) {
+    const closes = sparkCloses(bars, 40);
+    if (closes.length < 8) return { tag: "資料不足", tone: "flat", chg: null };
+    const first = closes[0];
+    const last = closes[closes.length - 1];
+    const mid = closes[Math.floor(closes.length / 2)];
+    const chg = pctChg(first, last);
+    const late = pctChg(mid, last);
+    const vol = (function () {
+      let mx = -Infinity, mn = Infinity;
+      closes.forEach(function (c) { if (c > mx) mx = c; if (c < mn) mn = c; });
+      return first > 0 ? ((mx - mn) / first) * 100 : 0;
+    })();
+    let tag = "震盪整理";
+    let tone = "flat";
+    if (chg != null && chg <= -4) { tag = "弱勢波動"; tone = "down"; }
+    else if (chg != null && chg >= 4) { tag = "強勢推進"; tone = "up"; }
+    else if (late != null && late >= 1.2 && chg != null && chg < 2) { tag = "反彈遇壓"; tone = "up"; }
+    else if (late != null && late <= -1.2 && chg != null && chg > -2) { tag = "拉回試底"; tone = "down"; }
+    else if (vol >= 6) { tag = unit === "bp" ? "殖利率衝高" : "波動放大"; tone = chg >= 0 ? "up" : "down"; }
+    else if (chg != null && Math.abs(chg) < 1.2) { tag = "窄幅震盪"; tone = "flat"; }
+    return { tag: tag, tone: tone, chg: chg };
+  }
+
+  function zigPoints(bars, span) {
+    const sp = Math.max(2, span | 0);
+    const pts = [];
+    for (let i = sp; i < bars.length - sp; i++) {
+      let isH = true, isL = true;
+      for (let j = i - sp; j <= i + sp; j++) {
+        if (bars[j].h > bars[i].h) isH = false;
+        if (bars[j].l < bars[i].l) isL = false;
+      }
+      if (isH) pts.push({ i: i, t: bars[i].t, px: bars[i].h, kind: "H" });
+      if (isL) pts.push({ i: i, t: bars[i].t, px: bars[i].l, kind: "L" });
+    }
+    pts.sort(function (a, b) { return a.i - b.i; });
+    const alt = [];
+    pts.forEach(function (p) {
+      if (!alt.length) { alt.push(p); return; }
+      const last = alt[alt.length - 1];
+      if (last.kind === p.kind) {
+        if (p.kind === "H" && p.px >= last.px) alt[alt.length - 1] = p;
+        if (p.kind === "L" && p.px <= last.px) alt[alt.length - 1] = p;
+      } else {
+        alt.push(p);
+      }
+    });
+    return alt;
+  }
+
+  function buildPhases(bars) {
+    const zz = zigPoints(bars, 4);
+    const phases = [];
+    if (zz.length >= 2) {
+      for (let i = 1; i < zz.length; i++) {
+        const a = zz[i - 1];
+        const b = zz[i];
+        const dir = b.px >= a.px ? "up" : "down";
+        phases.push({
+          from: a.t,
+          to: b.t,
+          fromLabel: mdYmd(a.t),
+          toLabel: mdYmd(b.t),
+          fromPx: a.px,
+          toPx: b.px,
+          dir: dir,
+          label: dir === "up" ? "波段上攻" : "波段下殺"
+        });
+      }
+    }
+    const recent = phases.slice(-3);
+    if (recent.length) {
+      const last = recent[recent.length - 1];
+      const lastBars = bars.slice(Math.max(0, bars.length - 5));
+      if (lastBars.length >= 3) {
+        const hi = Math.max.apply(null, lastBars.map(function (b) { return b.h; }));
+        const lo = Math.min.apply(null, lastBars.map(function (b) { return b.l; }));
+        const mid = (hi + lo) / 2;
+        const band = mid > 0 ? ((hi - lo) / mid) * 100 : 0;
+        if (band < 2.2) {
+          recent[recent.length - 1] = {
+            from: last.to,
+            to: bars[bars.length - 1].t,
+            fromLabel: last.toLabel,
+            toLabel: mdYmd(bars[bars.length - 1].t),
+            fromPx: last.toPx,
+            toPx: bars[bars.length - 1].c,
+            dir: "flat",
+            label: "震盪盤整"
+          };
+        }
+      }
+    }
+    return { zig: zz, phases: recent };
+  }
+
+  function levelHints(bars, waveHi, waveLo, last) {
+    const closes = sparkCloses(bars, 20);
+    const avg = closes.length
+      ? closes.reduce(function (s, v) { return s + v; }, 0) / closes.length
+      : last;
+    const band = Math.max(80, Math.round((waveHi - waveLo) * 0.04));
+    const support = Math.round(Math.max(waveLo, Math.min(last, avg) - band / 2) / 50) * 50;
+    const resist = Math.round(Math.min(waveHi, Math.max(last, avg) + band / 2) / 50) * 50;
+    const warn = Math.round((support - band) / 50) * 50;
+    return [
+      {
+        id: "hold",
+        title: "守穩支撐",
+        range: support + "～" + (support + 200),
+        note: "收在此區上方，偏多續抱；回測可觀察量能。"
+      },
+      {
+        id: "range",
+        title: "盤整方向",
+        range: warn + "～" + resist,
+        note: "區間震盪時以高低點作進出參考，避免追價。"
+      },
+      {
+        id: "warn",
+        title: "跌破警戒",
+        range: warn + "～" + (warn + 200),
+        note: "若帶量跌破，波段多單宜減碼觀望。"
+      }
+    ];
+  }
+
+  async function yahooBarsSafe(symbol, query) {
+    try {
+      return barsFromYahoo(await yahooChart(symbol, query || "interval=1d&range=3mo"));
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function globalSixAnalysis() {
+    const q3m = "interval=1d&range=3mo";
+    const q6m = "interval=1d&range=6mo";
+    const pack = await Promise.all([
+      txfBars("180d").catch(function () { return null; }),
+      yahooBarsSafe("BTC-USD", q3m),
+      yahooBarsSafe("GC=F", q3m),
+      yahooBarsSafe("^NDX", q3m),
+      yahooBarsSafe("CL=F", q3m),
+      yahooBarsSafe("BZ=F", q3m),
+      yahooBarsSafe("^TNX", q6m),
+      yahooBarsSafe("DX-Y.NYB", q3m)
+    ]);
+    const txf = pack[0];
+    const btc = pack[1];
+    const gold = pack[2];
+    const ndx = pack[3];
+    const wti = pack[4];
+    const brent = pack[5];
+    const tnx = pack[6];
+    const dxy = pack[7];
+
+    if (!txf || txf.length < 10) {
+      throw new Error("台指期日線不足，無法做波段分析");
+    }
+
+    let waveHi = -Infinity, waveLo = Infinity, waveHiT = 0, waveLoT = 0;
+    txf.forEach(function (b) {
+      if (b.h > waveHi) { waveHi = b.h; waveHiT = b.t; }
+      if (b.l < waveLo) { waveLo = b.l; waveLoT = b.t; }
+    });
+    const last = txf[txf.length - 1];
+    const lastClose = last.c;
+    const chgFromLo = pctChg(waveLo, lastClose);
+    const chgFromHi = pctChg(waveHi, lastClose);
+    const phasePack = buildPhases(txf);
+    const levels = levelHints(txf, waveHi, waveLo, lastClose);
+
+    function card(id, name, bars, opts) {
+      opts = opts || {};
+      const lastBar = bars && bars.length ? bars[bars.length - 1] : null;
+      const px = lastBar ? lastBar.c : null;
+      const prev = bars && bars.length > 1 ? bars[bars.length - 2].c : null;
+      const dayChg = px != null && prev != null ? pctChg(prev, px) : null;
+      const tag = tagFromBars(bars, opts.unit);
+      const closes = sparkCloses(bars, 48);
+      let extra = null;
+      if (opts.pairBars && opts.pairBars.length) {
+        const pLast = opts.pairBars[opts.pairBars.length - 1];
+        extra = { name: opts.pairName || "對照", px: pLast ? pLast.c : null, closes: sparkCloses(opts.pairBars, 48) };
+      }
+      return {
+        id: id,
+        name: name,
+        px: px,
+        dayChg: dayChg,
+        tag: tag.tag,
+        tone: tag.tone,
+        rangeChg: tag.chg,
+        closes: closes,
+        unit: opts.unit || "px",
+        digits: opts.digits != null ? opts.digits : 2,
+        extra: extra
+      };
+    }
+
+    const markets = [
+      card("btc", "比特幣 BTC/USDT", btc, { digits: 0 }),
+      card("gold", "黃金 XAU/USD", gold, { digits: 1 }),
+      card("ndx", "那斯達克100", ndx, { digits: 0 }),
+      card("oil", "原油 WTI／布蘭特", wti, { digits: 2, pairBars: brent, pairName: "Brent" }),
+      card("tnx", "美債10年殖利率", tnx, { unit: "bp", digits: 3 }),
+      card("dxy", "美元指數 DXY", dxy, { digits: 3 })
+    ].filter(function (c) { return c.closes && c.closes.length >= 5; });
+
+    return {
+      ok: true,
+      asOf: last.t,
+      txf: {
+        closes: sparkCloses(txf, 80),
+        bars: txf.slice(-80).map(function (b) {
+          return { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c };
+        }),
+        waveHi: waveHi,
+        waveLo: waveLo,
+        waveHiLabel: mdYmd(waveHiT),
+        waveLoLabel: mdYmd(waveLoT),
+        lastClose: lastClose,
+        chgFromLo: chgFromLo,
+        chgFromHi: chgFromHi,
+        phases: phasePack.phases,
+        levels: levels
+      },
+      markets: markets
+    };
+  }
+
   global.SJMarket = {
     RANGES: RANGES,
     MARKETS: MARKETS,
@@ -7665,6 +7915,7 @@
       return hits.filter(function (h) { return h && h.ok && h.rows && h.rows.length; })
         .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; })
         .slice(-n);
-    }
+    },
+    globalSixAnalysis: globalSixAnalysis
   };
 })(window);

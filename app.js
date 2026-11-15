@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 291;
+  const PAGE_BUILD = 292;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -1667,6 +1667,7 @@
     if (name === "chart") {
       loadChart();
       loadChartSession();
+      loadGlobalSix();
       startChartSessionClock();
     } else {
       stopChartSessionClock();
@@ -4743,6 +4744,157 @@
     }
     box.hidden = false;
     box.innerHTML = renderHorizonCard(diag, { title: "加權明日／5 日操作" });
+  }
+
+  let gxBusy = false;
+  let gxGen = 0;
+
+  function gxFmtPx(n, digits) {
+    if (n == null || !isFinite(n)) return "—";
+    const d = digits != null ? digits : (Math.abs(n) >= 1000 ? 0 : 2);
+    return n.toLocaleString("zh-Hant", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+  }
+
+  function gxFmtChg(pctVal) {
+    if (pctVal == null || !isFinite(pctVal)) return "";
+    const sign = pctVal > 0 ? "+" : "";
+    return sign + pctVal.toFixed(2) + "%";
+  }
+
+  function gxToneClass(tone) {
+    if (tone === "up") return "up";
+    if (tone === "down") return "down";
+    return "flat";
+  }
+
+  function drawGxSpark(canvas, closes, color, pairCloses) {
+    if (!canvas || !closes || closes.length < 2) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = canvas.clientWidth || 160;
+    const h = canvas.clientHeight || 56;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const pad = 4;
+    let mn = Infinity, mx = -Infinity;
+    closes.forEach(function (v) { if (v < mn) mn = v; if (v > mx) mx = v; });
+    if (pairCloses) {
+      pairCloses.forEach(function (v) { if (v < mn) mn = v; if (v > mx) mx = v; });
+    }
+    if (!(mx > mn)) { mx = mn + 1; mn = mn - 1; }
+    function stroke(vals, col, width) {
+      if (!vals || vals.length < 2) return;
+      ctx.beginPath();
+      vals.forEach(function (v, i) {
+        const x = pad + (i / (vals.length - 1)) * (w - pad * 2);
+        const y = pad + (1 - (v - mn) / (mx - mn)) * (h - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = col;
+      ctx.lineWidth = width || 1.6;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+    stroke(closes, color || "#5eead4", 1.8);
+    if (pairCloses && pairCloses.length >= 2) stroke(pairCloses, "#fbbf24", 1.2);
+  }
+
+  function renderGlobalSix(pack) {
+    const wrap = $("chart-global-x");
+    const out = $("gx-out");
+    const status = $("gx-status");
+    if (!wrap || !out) return;
+    wrap.hidden = false;
+    if (!pack || !pack.ok || !pack.txf) {
+      if (status) status.textContent = (pack && pack.reason) || "分析暫不可用";
+      out.innerHTML = "";
+      return;
+    }
+    if (status) status.textContent = "";
+    const tx = pack.txf;
+    const phaseHtml = (tx.phases || []).map(function (p) {
+      return '<div class="gx-phase gx-phase-' + esc(p.dir) + '">' +
+        '<span class="gx-phase-label">' + esc(p.label) + "</span>" +
+        '<span class="gx-phase-dates">' + esc(p.fromLabel) + " → " + esc(p.toLabel) + "</span>" +
+        '<span class="gx-phase-px">' + gxFmtPx(p.fromPx, 0) + " → " + gxFmtPx(p.toPx, 0) + "</span>" +
+        "</div>";
+    }).join("");
+
+    const levelsHtml = (tx.levels || []).map(function (lv) {
+      return '<div class="gx-level gx-level-' + esc(lv.id) + '">' +
+        "<strong>" + esc(lv.title) + "</strong>" +
+        '<span class="gx-level-band">' + esc(lv.range) + "</span>" +
+        '<span class="gx-level-note">' + esc(lv.note) + "</span></div>";
+    }).join("");
+
+    const cardsHtml = (pack.markets || []).map(function (m) {
+      const chgCls = m.dayChg > 0 ? "up" : m.dayChg < 0 ? "down" : "flat";
+      const pair = m.extra && m.extra.px != null
+        ? '<span class="gx-card-pair">' + esc(m.extra.name) + " " + gxFmtPx(m.extra.px, m.digits) + "</span>"
+        : "";
+      return '<article class="gx-card" data-gx="' + esc(m.id) + '">' +
+        '<div class="gx-card-top"><h4>' + esc(m.name) + "</h4>" +
+        '<span class="gx-tag ' + gxToneClass(m.tone) + '">' + esc(m.tag) + "</span></div>" +
+        '<div class="gx-card-px"><strong>' + gxFmtPx(m.px, m.digits) + "</strong>" +
+        '<span class="' + chgCls + '">' + gxFmtChg(m.dayChg) + "</span>" + pair + "</div>" +
+        '<canvas class="gx-spark" height="56" aria-hidden="true"></canvas>' +
+        (m.rangeChg != null ? '<p class="gx-card-note">近段 ' + gxFmtChg(m.rangeChg) + "</p>" : "") +
+        "</article>";
+    }).join("");
+
+    out.innerHTML =
+      '<section class="gx-hero card">' +
+        '<div class="gx-metrics">' +
+          '<div class="gx-metric"><span>波段高</span><strong>' + gxFmtPx(tx.waveHi, 0) + "</strong>" +
+            '<em class="down">' + gxFmtChg(tx.chgFromHi) + "</em></div>" +
+          '<div class="gx-metric"><span>波段低</span><strong>' + gxFmtPx(tx.waveLo, 0) + "</strong>" +
+            '<em class="up">' + gxFmtChg(tx.chgFromLo) + "</em></div>" +
+          '<div class="gx-metric"><span>近收</span><strong>' + gxFmtPx(tx.lastClose, 0) + "</strong></div>" +
+        "</div>" +
+        '<canvas id="gx-txf-spark" class="gx-txf-spark" height="120" aria-label="台指期波段"></canvas>' +
+        '<div class="gx-phases">' + phaseHtml + "</div>" +
+        '<div class="gx-levels">' + levelsHtml + "</div>" +
+      "</section>" +
+      '<div class="gx-grid">' + cardsHtml + "</div>";
+
+    const txCanvas = $("gx-txf-spark");
+    drawGxSpark(txCanvas, tx.closes, "#67e8f9");
+    out.querySelectorAll(".gx-card").forEach(function (el) {
+      const id = el.getAttribute("data-gx");
+      const m = (pack.markets || []).find(function (x) { return x.id === id; });
+      if (!m) return;
+      const c = el.querySelector(".gx-spark");
+      const col = m.tone === "down" ? "#f87171" : m.tone === "up" ? "#4ade80" : "#5eead4";
+      drawGxSpark(c, m.closes, col, m.extra && m.extra.closes);
+    });
+  }
+
+  async function loadGlobalSix(opts) {
+    const wrap = $("chart-global-x");
+    const status = $("gx-status");
+    const out = $("gx-out");
+    if (!wrap || !M || !M.globalSixAnalysis) return;
+    if (gxBusy && !(opts && opts.force)) return;
+    gxBusy = true;
+    const gen = ++gxGen;
+    wrap.hidden = false;
+    if (!(opts && opts.quiet)) {
+      if (status) status.textContent = "讀取台指期與全球市場…";
+    }
+    try {
+      const pack = await M.globalSixAnalysis();
+      if (gen !== gxGen || state.view !== "chart") return;
+      renderGlobalSix(pack);
+    } catch (err) {
+      if (gen !== gxGen) return;
+      if (status) status.textContent = (err && err.message) || "全球分析失敗";
+      if (out && !(opts && opts.quiet)) out.innerHTML = "";
+    } finally {
+      gxBusy = false;
+    }
   }
 
   function renderStockLegend(items) {
@@ -8910,6 +9062,9 @@
   }
 
   if ($("us-board-refresh")) $("us-board-refresh").addEventListener("click", loadUsBoard);
+  if ($("gx-refresh")) $("gx-refresh").addEventListener("click", function () {
+    loadGlobalSix({ force: true });
+  });
   if ($("header-bias")) $("header-bias").addEventListener("click", function () {
     setView("pulse");
   });

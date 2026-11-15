@@ -3152,3 +3152,177 @@ button.linkish:hover { color: var(--accent); text-decoration: underline; }
 }
 .tag.up { color: var(--up); }
 .tag.down { color: var(--down); }
+
+/* 台指期 × 全球六大市場 */
+.chart-global-x {
+  margin: 14px 0 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(8, 12, 22, 0.96));
+}
+.gx-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.gx-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.chart-global-x > .status { margin: 0 0 8px; font-size: 12px; }
+.gx-out { display: grid; gap: 12px; }
+.gx-hero {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(2, 8, 23, 0.55);
+}
+.gx-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.gx-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+}
+.gx-metric span { font-size: 11px; color: var(--muted); }
+.gx-metric strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.gx-metric em { font-style: normal; font-size: 12px; font-weight: 700; }
+.gx-txf-spark {
+  display: block;
+  width: 100%;
+  height: 120px;
+  margin: 0 0 10px;
+}
+.gx-phases {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.gx-phase {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.gx-phase-down {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.gx-phase-up {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.gx-phase-flat {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.35);
+}
+.gx-phase-label { font-weight: 800; }
+.gx-phase-dates, .gx-phase-px { color: var(--muted); }
+.gx-levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.gx-level {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.45);
+}
+.gx-level strong { font-size: 13px; }
+.gx-level-band { font-weight: 700; color: #fde68a; font-variant-numeric: tabular-nums; }
+.gx-level-note { color: var(--muted); line-height: 1.35; }
+.gx-level-hold { border-color: rgba(74, 222, 128, 0.35); }
+.gx-level-range { border-color: rgba(96, 165, 250, 0.35); }
+.gx-level-warn { border-color: rgba(248, 113, 113, 0.4); }
+.gx-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.gx-card {
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 8, 23, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.gx-card[data-gx="dxy"] {
+  grid-column: 1 / -1;
+}
+.gx-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gx-card-top h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+.gx-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.gx-tag.up { color: var(--up); border-color: rgba(61, 190, 122, 0.45); }
+.gx-tag.down { color: var(--down); border-color: rgba(255, 31, 31, 0.45); }
+.gx-tag.flat { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
+.gx-card-px {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gx-card-px strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.gx-card-px span { font-size: 12px; font-weight: 700; }
+.gx-card-pair { color: var(--muted); font-weight: 600 !important; }
+.gx-spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+}
+.gx-card-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .gx-metrics,
+  .gx-phases,
+  .gx-levels,
+  .gx-grid {
+    grid-template-columns: 1fr;
+  }
+  .gx-card[data-gx="dxy"] { grid-column: auto; }
+}
