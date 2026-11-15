@@ -593,6 +593,20 @@
     return readCloudPack("/api/watch-universe");
   }
 
+  async function readResearchDaily(code) {
+    if (!canReach()) return null;
+    try {
+      const id = String(code || "").trim().toUpperCase();
+      if (id) {
+        const one = await fetchJson("/api/research-daily/" + encodeURIComponent(id), false);
+        if (one && one.ok !== false && (one.code || one.body || one.detail)) return one;
+      }
+      return await readCloudPack("/api/research-daily");
+    } catch (err) {
+      return null;
+    }
+  }
+
   async function health() {
     if (!canReach()) return null;
     try {
@@ -625,6 +639,7 @@
     readPulseBoard: readPulseBoard,
     readFlowSeries: readFlowSeries,
     readWatchUniverse: readWatchUniverse,
+    readResearchDaily: readResearchDaily,
     health: health,
   };
 })(window);

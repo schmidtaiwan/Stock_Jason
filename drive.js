@@ -842,6 +842,20 @@
     return readNamedPack("watch-universe.json");
   }
 
+  async function readResearchDaily(code) {
+    const pack = await readNamedPack("research-daily.json");
+    if (!pack) return null;
+    const id = String(code || "").trim().toUpperCase();
+    if (!id) return pack;
+    if (pack.byCode && pack.byCode[id]) {
+      const one = pack.byCode[id];
+      if (one && typeof one === "object") {
+        return Object.assign({ source: pack.source || "research-daily", at: pack.at }, one);
+      }
+    }
+    return null;
+  }
+
   /** Live Bridge 上傳的富邦自選備援日Ｋ hist-daily.json。 */
   async function readHistDaily(code) {
     if (!account || !isAllowed(accountEmail())) return null;
@@ -1143,6 +1157,7 @@
     readLevelsDaily: readLevelsDaily,
     readPulseBoard: readPulseBoard,
     readFlowSeries: readFlowSeries,
+    readResearchDaily: readResearchDaily,
     readWatchUniverse: readWatchUniverse,
     uploadIssueScreenshot: uploadIssueScreenshot,
     ensureIssueFolder: ensureIssueFolder,

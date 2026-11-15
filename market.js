@@ -6999,9 +6999,62 @@
    * 個股投資分析表（SOP）：基本面篩選 → 合理價 → 技術買點 → 分批計畫 → 賣出／停損。
    * 規則試算，非投資建議。
    */
+  async function readResearchCloud(stockId) {
+    const id = String(stockId || "").toUpperCase();
+    if (!id) return null;
+    async function fromBridge() {
+      const B = global.SJLiveBridge;
+      if (!B || typeof B.readResearchDaily !== "function") return null;
+      if (B.isOnline && B.isOnline() === false) return null;
+      try {
+        const pack = await B.readResearchDaily(id);
+        if (!pack) return null;
+        if (pack.byCode && pack.byCode[id]) {
+          return Object.assign({ source: pack.source || "research-daily", at: pack.at }, pack.byCode[id]);
+        }
+        if (pack.ok !== false && (pack.code || pack.body)) return pack;
+        return null;
+      } catch (err) {
+        return null;
+      }
+    }
+    async function fromDrive() {
+      const D = global.SJDrive;
+      if (!D || typeof D.readResearchDaily !== "function") return null;
+      if (D.account && !D.account()) return null;
+      try {
+        return await D.readResearchDaily(id);
+      } catch (err) {
+        return null;
+      }
+    }
+    const bridge = await fromBridge();
+    if (bridge && bridge.ok !== false && cloudPackFresh(bridge, 18 * 60 * 60 * 1000)) return bridge;
+    const drive = await fromDrive();
+    if (drive && drive.ok !== false && cloudPackFresh(drive, 18 * 60 * 60 * 1000)) return drive;
+    if (bridge && bridge.ok !== false) return bridge;
+    if (drive && drive.ok !== false) return drive;
+    return null;
+  }
+
   async function stockInvestPlan(secid, code) {
     const stockId = twStockId(secid, code);
     if (!stockId) return { ok: false, reason: "目前僅支援台股。" };
+    // LiveBridge／Drive 已預算：網頁直接讀，不再現場打 FinMind
+    try {
+      const pre = await readResearchCloud(stockId);
+      if (pre && pre.ok !== false && pre.body) {
+        return Object.assign({}, pre, {
+          ok: true,
+          code: pre.code || stockId,
+          name: preferTwName(pre.name, "", stockId),
+          fundNote: pre.fundNote || "來源 LiveBridge 預抓研究報告（證交所＋本機日Ｋ／籌碼）。",
+          dataSource: (pre.dataSource && pre.dataSource.length)
+            ? pre.dataSource
+            : ["livebridge-research"]
+        });
+      }
+    } catch (errPre) { /* fall through */ }
     const advice = await stockAdvice(secid, code).catch(function () { return { ok: false }; });
     if (!advice || !advice.ok) {
       return { ok: false, reason: (advice && advice.reason) || "分析資料不足" };
