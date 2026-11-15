@@ -357,42 +357,55 @@
       }
     }
 
-    // MagicDNS 常把 *.ts.net 指到 100.x；從 github.io fetch 會被 Chrome LNA 擋。
-    // 手機／公開頁：iframe relay 與短直連競速（Funnel 公網 IP 仍可走 relay）。
+    // MagicDNS 常把 *.ts.net 指到 100.x；Funnel 公網則是 103.x。
+    // 競速：public（Funnel）／local（Tailnet）／relay iframe。
     const useRelayRace = !needAuth && (mobile || onPublicGithubPage());
+
+    function raceBridgePaths(relayMs) {
+      return new Promise(function (resolve, reject) {
+        let left = 3;
+        let lastErr = null;
+        let done = false;
+        function win(v, via) {
+          if (done) return;
+          done = true;
+          if (via === "relay") {
+            savePreferRelay(true);
+            _relayReady = true;
+          } else {
+            // 直連成功就清掉 relay 偏好，避免之後卡在壞掉的 iframe
+            savePreferRelay(false);
+            _relayReady = false;
+          }
+          resolve(v);
+        }
+        function lose(err) {
+          lastErr = err;
+          left -= 1;
+          if (left <= 0 && !done) reject(lastErr || new Error("bridge unreachable"));
+        }
+        const short = mobile ? 2200 : 2800;
+        doFetch("public", short).then(function (v) { win(v, "public"); }, lose);
+        doFetch("local", short).then(function (v) { win(v, "local"); }, lose);
+        fetchViaRelay(apiPath, relayMs).then(function (v) { win(v, "relay"); }, lose);
+      });
+    }
 
     try {
       let data;
       if (useRelayRace) {
+        const relayMs = Math.min(Math.max(ms, 8000), 14000);
         if (_preferRelay && Date.now() < _preferRelayUntil) {
-          data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 14000));
-          _relayReady = true;
+          // 先試 relay，失敗必須退回競速（勿鎖死在逾時 iframe）
+          try {
+            data = await fetchViaRelay(apiPath, Math.min(relayMs, 9000));
+            _relayReady = true;
+          } catch (relayOnlyErr) {
+            savePreferRelay(false);
+            data = await raceBridgePaths(relayMs);
+          }
         } else {
-          data = await new Promise(function (resolve, reject) {
-            let left = 2;
-            let lastErr = null;
-            let done = false;
-            function win(v, viaRelay) {
-              if (done) return;
-              done = true;
-              if (viaRelay) {
-                savePreferRelay(true);
-                _relayReady = true;
-              } else {
-                savePreferRelay(false);
-              }
-              resolve(v);
-            }
-            function lose(err) {
-              lastErr = err;
-              left -= 1;
-              if (left <= 0 && !done) reject(lastErr || new Error("bridge unreachable"));
-            }
-            // 直連給短預算；relay 同步開跑，避免卡死在 LNA
-            doFetch("", mobile ? 1800 : 2500).then(function (v) { win(v, false); }, lose);
-            fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 14000))
-              .then(function (v) { win(v, true); }, lose);
-          });
+          data = await raceBridgePaths(relayMs);
         }
       } else {
         try {
@@ -445,6 +458,12 @@
       const known = isOnline();
       if (known != null) return known;
     }
+    // 強制重探時清掉壞掉的 relay 偏好，改走 public／local／relay 競速
+    if (force) {
+      try { savePreferRelay(false); } catch (e) { /* ignore */ }
+      _online = null;
+      _onlineAt = 0;
+    }
     const mobile = isMobileUa();
     // 桌面也給足時間：冷啟／PNA 預檢常超過 3 秒
     const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : 6000);
@@ -454,6 +473,7 @@
         if (i > 0) {
           _online = null;
           _onlineAt = 0;
+          savePreferRelay(false);
           await new Promise(function (r) { setTimeout(r, 500); });
         }
         await fetchJson("/api/health", false, perTry);

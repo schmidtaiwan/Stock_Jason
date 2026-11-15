@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 310;
+  const PAGE_BUILD = 311;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -799,6 +799,15 @@
       if (key === "drive") {
         paintDriveIssueActions(connState.drive._quota || "");
         refreshDriveQuotaInPop().catch(function () { /* ignore */ });
+      } else if (key === "bridge" || key === "fubon" || key === "kgi") {
+        const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
+        actions.hidden = false;
+        actions.innerHTML =
+          (base
+            ? '<button type="button" class="primary" id="conn-bridge-open">開啟 Bridge 網址</button>'
+            : "") +
+          '<button type="button" class="ghost" id="conn-bridge-reprobe">強制重探</button>' +
+          '<p class="fine">手機若紅燈：Tailscale 關閉「使用 Tailscale DNS」後重開網頁；或先開 Bridge 網址允許區域網路。</p>';
       } else {
         actions.hidden = true;
         actions.innerHTML = "";
@@ -850,6 +859,31 @@
         if (ev.target && ev.target.id === "conn-issue-pick") {
           const input = $("conn-issue-file");
           if (input) input.click();
+        }
+        if (ev.target && ev.target.id === "conn-bridge-open") {
+          const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
+          if (base) {
+            try { window.open(base + "/api/health", "_blank", "noopener"); } catch (e) { /* ignore */ }
+          }
+          return;
+        }
+        if (ev.target && ev.target.id === "conn-bridge-reprobe") {
+          try { localStorage.removeItem("sj-bridge-prefer-relay-until"); } catch (e) { /* ignore */ }
+          setConnLampPopStatus("強制重探中…", true);
+          refreshConnLamps({ force: true }).then(function () {
+            const openKey = (document.querySelector(".conn-lamp[aria-pressed], .conn-lamp") || {}).getAttribute
+              ? null
+              : null;
+            setConnLampPopStatus("", false);
+            // 維持目前說明內容
+            const titleEl = $("conn-lamp-pop-title");
+            const which = titleEl && /富邦/.test(titleEl.textContent || "") ? "fubon"
+              : titleEl && /凱基/.test(titleEl.textContent || "") ? "kgi"
+              : "bridge";
+            openConnLampPop(which);
+          }).catch(function () {
+            setConnLampPopStatus("探測失敗", true);
+          });
         }
       });
     }
@@ -1445,6 +1479,7 @@
   function showBridgeAlert(kind, message, opts) {
     opts = opts || {};
     const force = !!opts.force;
+    const soft = !!opts.soft;
     const now = Date.now();
     if (!force && kind && kind === bridgeAlertKind && now - bridgeAlertAt < 90_000) return;
     bridgeAlertAt = now;
@@ -1460,10 +1495,10 @@
     const title = lampKey === "fubon" ? "富邦"
       : lampKey === "mis" ? "MIS（證交所）"
       : "家裡";
-    setConnItem(lampKey, "bad", "連線異常。\n" + msg);
+    // 已有雲端備援時用黃燈，勿把「備援可用」畫成全紅
+    setConnItem(lampKey, soft ? "warn" : "bad", (soft ? "直連不穩，已用備援。\n" : "連線異常。\n") + msg);
     if (connState[lampKey]) connState[lampKey].title = title;
     paintConnLamps();
-    // 紅燈提示；不自動開說明視窗，需使用者點燈
   }
 
   async function probeLiveBridgeOnline(force) {
@@ -1510,23 +1545,25 @@
     const base = (window.SJLiveBridge && SJLiveBridge.baseUrl && SJLiveBridge.baseUrl()) || "";
     const detail = (window.SJLiveBridge && SJLiveBridge.lastError && SJLiveBridge.lastError()) || "";
     const tip = detail ? ("（" + detail + "）") : "";
+    const dnsTip =
+      "重點：Tailscale → 關閉「使用 Tailscale DNS」（VPN 可開著）。" +
+      "MagicDNS 會把 *.ts.net 指到 100.x，Chrome 會擋區域網路。" +
+      "關 DNS 後 Funnel 走公網 IP 即可連。也可先用瀏覽器開一次 " + base + " 並允許區域網路。";
     let msg = "";
     if (!st.configured || !base) {
-      msg = "尚未設定 LiveBridge 網址（Tailscale Serve）。富邦即時報價／庫存無法直連本機。";
+      msg = "尚未設定 LiveBridge 網址（Tailscale Serve／Funnel）。富邦即時報價／庫存無法直連本機。";
     } else if (reason === "fubon") {
-      msg = "已選富邦，但連不到 LiveBridge。請確認手機 Tailscale 已連線且可開 " + base +
-        "；首次連線請先打開 Tailscale App 喚醒。" +
+      msg = "已選富邦，但網頁直連 LiveBridge 失敗。" + dnsTip +
         (driveFresh ? " 目前已用雲端備援報價。" : " 暫改讀雲端備援。") + tip;
     } else if (reason === "livebridge") {
-      msg = "網頁直連 LiveBridge 失敗" + tip +
-        "。手機請到 Tailscale → 關閉「使用 Tailscale DNS」（VPN 可繼續開），或允許 Chrome「區域網路」。" +
-        (driveFresh ? " 目前已用雲端備援報價。" : " 暫改雲端備援。");
+      msg = "網頁直連 LiveBridge 失敗。" + dnsTip +
+        (driveFresh ? " 目前已用雲端備援報價。" : " 暫改雲端備援。") + tip;
     } else if (reason === "holdings") {
-      msg = "連不到 LiveBridge" + tip + "。「富邦庫存」改讀雲端備援。";
+      msg = "連不到 LiveBridge。" + dnsTip + "「富邦庫存」改讀雲端備援。" + tip;
     } else {
-      msg = "連不到 LiveBridge" + tip + "：" + base;
+      msg = "連不到 LiveBridge。" + dnsTip + tip;
     }
-    showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force });
+    showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force, soft: driveFresh });
     return true;
   }
 
