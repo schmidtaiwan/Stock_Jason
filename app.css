@@ -1073,7 +1073,36 @@ canvas {
   font-size: 13px;
   line-height: 1.45;
 }
-.stock-invest .invest-batch { min-width: 280px; font-size: 13px; }
+.stock-invest .invest-batch {
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+}
+/* 勿套用自選表「第2欄起 22px 粗體」；右欄要和左欄（如 EPS／30%）同字級 */
+.stock-invest .invest-batch th,
+.stock-invest .invest-batch td,
+.stock-invest .invest-batch td:nth-child(n+2),
+.stock-invest .research-summary td:nth-child(n+2) {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+}
+.stock-invest .invest-batch th:nth-child(3),
+.stock-invest .invest-batch td:nth-child(3),
+.stock-invest .research-summary th:nth-child(2),
+.stock-invest .research-summary td:nth-child(2) {
+  text-align: left !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.stock-invest .invest-batch td:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stock-invest .research-summary td:nth-child(2) {
+  white-space: normal;
+}
 .stock-invest .research-meta {
   display: flex;
   flex-wrap: wrap;

@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 313;
+  const PAGE_BUILD = 314;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7455,7 +7455,120 @@
     return { done: done, total: RESEARCH_CHECK_ITEMS.length, score: Math.round(score * 10) / 10 };
   }
 
-  function bindStockResearchUi(code) {
+  /** 依研究報告欄位自動判斷檢查表勾選（通過／已覆蓋才勾） */
+  function inferResearchChecks(pack) {
+    const out = {};
+    if (!pack || !pack.ok) return out;
+    const b = pack.body || {};
+    const mg = b.margins || {};
+    const rp = b.report || {};
+    const fair = b.fair || {};
+    const rev = b.revenue || {};
+    const links = (b.publicInfo && b.publicInfo.links) || {};
+    const txt = function (v) { return String(v || ""); };
+    const hasNum = function (v) { return v != null && isFinite(Number(v)); };
+    const posTone = function (v) {
+      const s = txt(v);
+      return /偏多|改善|偏強|優良|正常|上漲|放量|健康|便宜|合理|黃金|站上/.test(s) &&
+        !/惡化|偏弱|偏空|有風險|需注意|下跌/.test(s);
+    };
+    const notBad = function (v) {
+      const s = txt(v);
+      return s && s !== "—" && !/惡化|偏弱|偏空|有風險|需注意/.test(s);
+    };
+
+    // 基本面
+    if (hasNum(mg.gross) || hasNum(mg.op) || hasNum(mg.net)) {
+      if (posTone(mg.bias || mg.trend || rp.margins) ||
+        /持平|普通|偏強/.test(txt(mg.bias || mg.trend || rp.margins)) ||
+        (mg.grossTrend && mg.grossTrend.cls === "up") ||
+        (mg.opTrend && mg.opTrend.cls === "up")) {
+        out.f1 = 1;
+      }
+    }
+    if (rev.tone === "up" || posTone(rev.note) || (rev.streak > 0) ||
+      (rev.rows && rev.rows[0] && Number(rev.rows[0].yoy) > 0)) {
+      out.f2 = 1;
+    }
+    if ((b.eps && b.eps.tone === "up") || posTone(b.eps && b.eps.note) || posTone(rp.eps)) {
+      out.f3 = 1;
+    }
+    if (txt(rp.body) === "優良" || (pack.fund && Number(pack.fund.score) >= 2)) {
+      out.f4 = 1;
+    }
+
+    // 估值
+    if (hasNum(b.pe && b.pe.value) || hasNum(fair.eps)) {
+      if (fair.tone !== "down" && !/過高|偏貴/.test(txt(fair.valuation))) out.v1 = 1;
+    }
+    if (fair.tone === "up" || /便宜|合理|折價/.test(txt(fair.valuation))) out.v2 = 1;
+    if (hasNum(b.pe && b.pe.histMed) && hasNum(b.pe && b.pe.value) &&
+      Number(b.pe.value) <= Number(b.pe.histMed) * 1.05) {
+      out.v3 = 1;
+    }
+    if (hasNum(fair.safetyBuy) && hasNum(pack.close) &&
+      Number(pack.close) <= Number(fair.safetyBuy) * 1.08) {
+      out.v4 = 1;
+    } else if (fair.tone === "up" && /便宜|安全/.test(txt(fair.valuation) + txt(fair.note))) {
+      out.v4 = 1;
+    }
+
+    // 財務健檢
+    if ((b.roe && Number(b.roe.value) >= 10) ||
+      (b.roe && b.roe.grade && /優|良|佳/.test(txt(b.roe.grade.label))) ||
+      posTone(rp.health)) {
+      out.h1 = 1;
+    }
+    if (b.health && b.health.cashNote &&
+      !/請至 MOPS|暫無|不足/.test(txt(b.health.cashNote)) &&
+      !/惡化|疑慮/.test(txt(b.health.cashNote))) {
+      out.h2 = 1;
+    } else if (posTone(rp.health) && txt(rp.health) === "正常") {
+      out.h2 = 1;
+    }
+    if ((b.health && b.health.debtRatio != null && Number(b.health.debtRatio) < 60) ||
+      (b.debt && b.debt.ratio != null && Number(b.debt.ratio) < 60) ||
+      (txt(rp.health) === "正常")) {
+      out.h3 = 1;
+    }
+
+    // 籌碼
+    if (posTone((b.chips && b.chips.bias) || rp.chip) || txt(rp.chip) === "偏多") out.c1 = 1;
+    const chipNotes = ((b.chips && b.chips.notes) || []).join(" ");
+    if (/大股東|董監|內部人/.test(chipNotes) && !/減持|賣超/.test(chipNotes)) out.c2 = 1;
+    if ((b.chips && b.chips.bias && txt(b.chips.bias) !== "偏空") ||
+      (/融資/.test(chipNotes) && !/暴增|過熱/.test(chipNotes)) ||
+      notBad(rp.chip)) {
+      out.c3 = 1;
+    }
+
+    // 技術與量能（截圖重點）
+    if (posTone((b.ma && b.ma.bias) || "") || txt(b.ma && b.ma.bias) === "偏多") out.t1 = 1;
+    if ((b.levels && (hasNum(b.levels.support) || hasNum(b.levels.resist))) ||
+      ((b.ma && b.ma.mas && b.ma.mas.length) > 0)) {
+      out.t2 = 1;
+    }
+    if (posTone((b.volume && (b.volume.tone || b.volume.bias || b.volume.note)) || rp.volume) ||
+      (b.volume && hasNum(b.volume.ratio20))) {
+      out.t3 = 1;
+    }
+
+    // 公開資訊：報告已給 MOPS 連結／結論即視為已覆蓋
+    if (links.ir || /法說|MOPS|展望/.test(txt((b.publicInfo && b.publicInfo.bias) || rp.publicInfo))) {
+      out.p1 = 1;
+    }
+    if (links.material || /重訊|重大|MOPS|新聞/.test(txt((b.publicInfo && b.publicInfo.bias) || rp.publicInfo))) {
+      out.p2 = 1;
+    }
+    if (links.dividend || rp.stopNote || (b.publicInfo && b.publicInfo.tip) ||
+      /風險|股本|MOPS|核對/.test(txt(rp.publicInfo) + txt(b.publicInfo && b.publicInfo.tip))) {
+      out.p3 = 1;
+    }
+
+    return out;
+  }
+
+  function bindStockResearchUi(code, pack) {
     const box = $("stock-invest");
     if (!box || !code) return;
     const store = researchCheckStore(code);
@@ -7472,14 +7585,38 @@
       if (doneEl) doneEl.textContent = sc.done + "/" + sc.total;
       if (scoreEl) scoreEl.textContent = sc.score.toFixed(1) + " / 100";
     }
+    function applyMap(map) {
+      box.querySelectorAll("[data-research-check]").forEach(function (el) {
+        const id = el.getAttribute("data-research-check");
+        el.checked = !!map[id];
+      });
+      paintScore();
+    }
+    // 每次依報告自動勾選；使用者手動改的會蓋在 auto 上（存 _manual）
+    const auto = inferResearchChecks(pack);
+    const prev = store.load();
+    const manual = prev._manual && typeof prev._manual === "object" ? prev._manual : {};
+    const merged = Object.assign({}, auto);
+    Object.keys(manual).forEach(function (id) {
+      if (manual[id] === 0) delete merged[id];
+      else if (manual[id] === 1) merged[id] = 1;
+    });
+    store.save(Object.assign({ _manual: manual, _autoAt: Date.now() }, merged));
+    applyMap(merged);
+
     box.querySelectorAll("[data-research-check]").forEach(function (el) {
-      const id = el.getAttribute("data-research-check");
-      const map = store.load();
-      el.checked = !!map[id];
       el.addEventListener("change", function () {
+        const id = el.getAttribute("data-research-check");
         const next = store.load();
-        if (el.checked) next[id] = 1;
-        else delete next[id];
+        const man = next._manual && typeof next._manual === "object" ? next._manual : {};
+        if (el.checked) {
+          next[id] = 1;
+          man[id] = 1;
+        } else {
+          delete next[id];
+          man[id] = 0;
+        }
+        next._manual = man;
         store.save(next);
         paintScore();
       });
@@ -7498,11 +7635,11 @@
     if (resetBtn) {
       resetBtn.addEventListener("click", function () {
         store.clear();
-        box.querySelectorAll("[data-research-check]").forEach(function (el) { el.checked = false; });
-        paintScore();
+        const again = inferResearchChecks(pack);
+        store.save(Object.assign({ _manual: {}, _autoAt: Date.now() }, again));
+        applyMap(again);
       });
     }
-    paintScore();
   }
 
   function renderStockInvest(pack) {
@@ -7738,12 +7875,12 @@
       "<h4>研究檢查表</h4>" +
       '<p>已完成 <strong data-research-done>0/20</strong> · 加權完成度 <strong data-research-score>0.0 / 100</strong></p>' +
       '<div class="research-check-grid">' + checkHtml + "</div>" +
-      '<p class="fine">分數只代表你已勾選確認的研究完成度，不代表股票品質或預期報酬。' +
+      '<p class="fine">預設依上方研究報告自動勾選並計分；可手動改。分數代表研究覆蓋／通過項，不代表股票品質或預期報酬。' +
       "財報重大疑慮、現金流長期背離、一次性收益、治理問題等，不可用其他高分抵銷。</p>" +
-      '<button type="button" class="ghost" data-research-reset>重設檢查表</button>' +
+      '<button type="button" class="ghost" data-research-reset>重設為報告自動勾選</button>' +
       "</div></details></article>";
 
-    bindStockResearchUi(pack.code);
+    bindStockResearchUi(pack.code, pack);
   }
 
   function renderStockDetail(detail, chipx) {
