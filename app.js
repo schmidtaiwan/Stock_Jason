@@ -3608,6 +3608,7 @@
   async function loadChart() {
     const gen = ++state.chartGen;
     $("chart-status").textContent = "正在讀行情…";
+    prefetchCorePacks().catch(function () { /* ignore */ });
     paintFocus();
     renderForeign();
     try {
