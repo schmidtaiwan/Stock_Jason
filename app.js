@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 286;
+  const PAGE_BUILD = 287;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -658,6 +658,59 @@
     }
   }
 
+  /** 獨立探測證交所 MIS（不跟加權來源綁死） */
+  async function probeMisLamp(meta) {
+    meta = meta || {};
+    const open = !!meta.open;
+    const pref = meta.pref || getTwiiSourcePref();
+    const forceMis = M && M.isMisForceWindow && M.isMisForceWindow();
+    try {
+      let ok = false;
+      let price = null;
+      if (M && M.twiiQuote) {
+        const q = await M.twiiQuote("mis");
+        ok = !!(q && q.price != null && isFinite(q.price) && Number(q.price) > 0);
+        if (ok) price = Number(q.price);
+      }
+      if (!ok && M && M.misQuotes) {
+        const board = await M.misQuotes(["T00"]);
+        const row = board && (board.T00 || board.t00);
+        ok = !!(row && row.price > 0);
+        if (ok) price = Number(row.price);
+      }
+      if (ok) {
+        connState.mis._lastOk = true;
+        connState.mis._lastAt = Date.now();
+        connState.mis._lastErr = "";
+        setConnItem("mis", "ok",
+          "連線正常。\n證交所 MIS 加權／報價讀取成功。" +
+          (price != null ? ("\n目前約 " + Math.round(price) + " 點。") : "") +
+          (connState.mis._lastAt
+            ? ("\n最近成功：" + new Date(connState.mis._lastAt).toLocaleTimeString("zh-TW", { hour12: false }))
+            : "") +
+          (pref === "fubon" ? "\n（目前加權顯示用富邦；MIS 仍獨立檢查）" : "") +
+          (open ? "\n開盤中可持續更新。" : "\n非開盤時段可能僅顯示最近快照。"));
+      } else {
+        connState.mis._lastOk = false;
+        connState.mis._lastErr = "無有效加權報價";
+        setConnItem("mis", "bad",
+          (forceMis ? "連線異常（MIS 重試中）。\n" : "連線異常。\n") +
+          "證交所 MIS 讀取失敗（無有效報價）。" +
+          (pref === "fubon" ? "\n目前加權顯示仍可用富邦。" : "") +
+          "\n可稍後重試。");
+      }
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : String(err || "MIS 探測失敗");
+      connState.mis._lastOk = false;
+      connState.mis._lastErr = msg;
+      setConnItem("mis", "bad",
+        (forceMis ? "連線異常（MIS 重試中）。\n" : "連線異常。\n") +
+        "證交所 MIS 讀取失敗。\n原因：" + msg +
+        (pref === "fubon" ? "\n目前加權顯示仍可用富邦。" : "") +
+        "\n可稍後重試。");
+    }
+  }
+
   function openConnLampPop(key) {
     const item = connState[key];
     const pop = $("conn-lamp-pop");
@@ -820,27 +873,8 @@
           "未使用富邦。\n目前加權來源為證交所 MIS；Bridge 離線時無法切換富邦即時。");
       }
 
-      // MIS：用富邦加權時不要一直黃燈「檢查中」
-      if (pref === "fubon" && connState.mis._lastOk !== true && connState.mis._lastOk !== false) {
-        setConnItem("mis", "warn",
-          "目前加權用富邦，未探測證交所 MIS。\n若要檢查 MIS，可把加權來源改回證交所。");
-      } else if (connState.mis._lastOk === true) {
-        setConnItem("mis", "ok",
-          "連線正常。\n證交所 MIS 加權／報價讀取成功。" +
-          (connState.mis._lastAt
-            ? ("\n最近成功：" + new Date(connState.mis._lastAt).toLocaleTimeString("zh-TW", { hour12: false }))
-            : "") +
-          (open ? "\n開盤中可持續更新。" : "\n非開盤時段可能僅顯示最近快照。"));
-      } else if (connState.mis._lastOk === false) {
-        const forceMis = M && M.isMisForceWindow && M.isMisForceWindow();
-        setConnItem("mis", "bad",
-          (forceMis ? "連線異常（MIS 重試中）。\n" : "連線異常。\n") +
-          "證交所 MIS 讀取失敗。" +
-          (connState.mis._lastErr ? ("\n原因：" + connState.mis._lastErr) : "") +
-          "\n可稍後重試，或改選富邦（需 LiveBridge）。");
-      } else {
-        setConnItem("mis", "warn", "檢查中。\n尚未完成第一次 MIS／加權探測。");
-      }
+      // MIS：不論目前加權是富邦或證交所，都實際探測是否正常
+      await probeMisLamp({ open: open, pref: pref });
 
       // 雲碟：網頁 Google Drive 登入／備援可讀
       try {
