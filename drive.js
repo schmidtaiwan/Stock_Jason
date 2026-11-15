@@ -763,6 +763,18 @@
     return readJsonByFileId(id);
   }
 
+  const KGI_HOLDINGS_NAME = "kgi-holdings.json";
+
+  /** Live Bridge 上傳的凱基庫存（Jason 雲端）；僅 Backy 讀取寫入自選群組。 */
+  async function readKgiHoldings() {
+    if (!account || !isAllowed(accountEmail())) return null;
+    const me = accountEmail();
+    if (me !== "backy2777@gmail.com") return null;
+    const id = await findBookFile(KGI_HOLDINGS_NAME);
+    if (!id) return null;
+    return readJsonByFileId(id);
+  }
+
   async function readHistPackFile(fileName, code, fallbackSource) {
     if (!account || !isAllowed(accountEmail())) return null;
     const idCode = String(code || "").trim().toUpperCase();
@@ -1123,6 +1135,7 @@
     writeMisSnapshot: writeMisSnapshot,
     readFubonLive: readFubonLive,
     readFubonHoldings: readFubonHoldings,
+    readKgiHoldings: readKgiHoldings,
     readFubonTape: readFubonTape,
     readHistMis: readHistMis,
     readHistDaily: readHistDaily,

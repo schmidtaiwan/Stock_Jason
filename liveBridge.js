@@ -3,6 +3,7 @@
   const cfg = global.GOOGLE_CONFIG || {};
   const LS_KEY = "sj-live-bridge-url";
   const JASON_EMAIL = "jason660803@gmail.com";
+  const BACKY_EMAIL = "backy2777@gmail.com";
   const FETCH_MS = 4000;
   const ONLINE_TTL_OK_MS = 20000;
   // 失敗快取短一點：手機 Tailscale 第一跳常慢，勿鎖死太久
@@ -142,6 +143,10 @@
 
   function isJason() {
     return accountEmail() === JASON_EMAIL;
+  }
+
+  function isBacky() {
+    return accountEmail() === BACKY_EMAIL;
   }
 
   function canUse() {
@@ -489,6 +494,15 @@
     }
   }
 
+  async function readKgiHoldings() {
+    if (!canUse() || !(isBacky() || isJason())) return null;
+    try {
+      return await fetchJson("/api/kgi-holdings", true);
+    } catch (err) {
+      return null;
+    }
+  }
+
   function histFromPack(pack, id, fallbackSource) {
     if (!pack) return null;
     if (id && pack.byCode && pack.byCode[id]) {
@@ -599,9 +613,11 @@
     probe: probe,
     lastError: lastError,
     isJason: isJason,
+    isBacky: isBacky,
     readFubonLive: readFubonLive,
     readFubonTape: readFubonTape,
     readFubonHoldings: readFubonHoldings,
+    readKgiHoldings: readKgiHoldings,
     readHistMis: readHistMis,
     readHistDaily: readHistDaily,
     readChipsDaily: readChipsDaily,

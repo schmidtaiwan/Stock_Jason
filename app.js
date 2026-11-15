@@ -1,11 +1,14 @@
 (function () {
-  const PAGE_BUILD = 292;
+  const PAGE_BUILD = 293;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
   const FUBON_GROUP_NAME = "富邦庫存";
+  const KGI_GROUP_ID = "kgi-holdings";
+  const KGI_GROUP_NAME = "凱基庫存";
+  const BACKY_EMAIL = "backy2777@gmail.com";
   /** 虛擬群組：下拉一次看全部群組股票（不寫回任何實體群組） */
   const ALL_WATCH_GROUP_ID = "__all__";
   const TWII_SRC_KEY = "sj-twii-source";
@@ -266,11 +269,27 @@
     return !!(a && String(a.email || "").trim().toLowerCase() === JASON_EMAIL);
   }
 
+  function isBackyAccount() {
+    const a = D.account && D.account();
+    return !!(a && String(a.email || "").trim().toLowerCase() === BACKY_EMAIL);
+  }
+
   function isFubonHoldingsGroup(g) {
     if (!g) return false;
     return g.id === FUBON_GROUP_ID ||
       g.locked === "fubon" ||
       String(g.name || "").trim() === FUBON_GROUP_NAME;
+  }
+
+  function isKgiHoldingsGroup(g) {
+    if (!g) return false;
+    return g.id === KGI_GROUP_ID ||
+      g.locked === "kgi" ||
+      String(g.name || "").trim() === KGI_GROUP_NAME;
+  }
+
+  function isBrokerHoldingsGroup(g) {
+    return isFubonHoldingsGroup(g) || isKgiHoldingsGroup(g);
   }
 
   function ensureFubonHoldingsGroup() {
@@ -289,6 +308,26 @@
     }
     g.name = FUBON_GROUP_NAME;
     g.locked = "fubon";
+    if (!Array.isArray(g.items)) g.items = [];
+    return g;
+  }
+
+  function ensureKgiHoldingsGroup() {
+    if (!isBackyAccount()) return null;
+    if (!Array.isArray(book.watchGroups)) book.watchGroups = [];
+    let g = book.watchGroups.find(function (row) { return row.id === KGI_GROUP_ID; });
+    if (!g) {
+      g = book.watchGroups.find(function (row) {
+        return String(row.name || "").trim() === KGI_GROUP_NAME;
+      });
+      if (g) g.id = KGI_GROUP_ID;
+    }
+    if (!g) {
+      g = { id: KGI_GROUP_ID, name: KGI_GROUP_NAME, locked: "kgi", items: [] };
+      book.watchGroups.push(g);
+    }
+    g.name = KGI_GROUP_NAME;
+    g.locked = "kgi";
     if (!Array.isArray(g.items)) g.items = [];
     return g;
   }
@@ -333,7 +372,7 @@
   /** 全部檢視時新增：落到第一個非富邦庫存群組 */
   function preferredAddWatchGroup() {
     const groups = book.watchGroups || [];
-    const hit = groups.find(function (g) { return g && !isFubonHoldingsGroup(g); });
+    const hit = groups.find(function (g) { return g && !isBrokerHoldingsGroup(g); });
     return hit || groups[0] || null;
   }
 
@@ -358,7 +397,7 @@
     const key = watchItemKey(item);
     const sec = item.secid;
     (book.watchGroups || []).forEach(function (g) {
-      if (!g || isFubonHoldingsGroup(g) || !Array.isArray(g.items)) return;
+      if (!g || isBrokerHoldingsGroup(g) || !Array.isArray(g.items)) return;
       g.items = g.items.filter(function (row) {
         if (key && watchItemKey(row) === key) return false;
         if (sec && row.secid === sec) return false;
@@ -1819,8 +1858,12 @@
         const cur = Number(sheet.dataset.idx);
         if (!(cur >= 0)) return;
         if (action === "delete") {
-          if (!isWatchAllGroups() && isFubonHoldingsGroup(activeWatchGroup())) {
-            flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動刪除個股");
+          if (!isWatchAllGroups() && isBrokerHoldingsGroup(activeWatchGroup())) {
+            flashStatus(
+              isKgiHoldingsGroup(activeWatchGroup())
+                ? "「凱基庫存」只能由 Live Bridge 同步，不能手動刪除個股"
+                : "「富邦庫存」只能由 Live Bridge 同步，不能手動刪除個股"
+            );
             return;
           }
           const row = book.watch[cur];
@@ -2432,10 +2475,11 @@
   function paintWatchGroups() {
     flushWatchToGroup();
     if (isJasonAccount()) ensureFubonHoldingsGroup();
+    if (isBackyAccount()) ensureKgiHoldingsGroup();
     const groups = book.watchGroups || [];
     const allOn = isWatchAllGroups();
     const curGroup = activeWatchGroup();
-    const fubonLocked = !allOn && isFubonHoldingsGroup(curGroup);
+    const fubonLocked = !allOn && isBrokerHoldingsGroup(curGroup);
     const sel = $("watch-group-select");
     if (sel) {
       const cur = book.watchGroupId;
@@ -2453,7 +2497,7 @@
     }
     const panel = $("watch-group-edit-panel");
     if (panel) {
-      const canMerge = groups.filter(function (g) { return g && !isFubonHoldingsGroup(g); }).length > 1;
+      const canMerge = groups.filter(function (g) { return g && !isBrokerHoldingsGroup(g); }).length > 1;
       const wasOpen = !panel.hidden;
       panel.innerHTML =
         '<button type="button" class="ghost" id="watch-group-add-new" role="menuitem">新增群組</button>' +
@@ -2517,10 +2561,10 @@
   function openWatchMergeSheet() {
     flushWatchToGroup();
     const groups = (book.watchGroups || []).filter(function (g) {
-      return g && !isFubonHoldingsGroup(g);
+      return g && !isBrokerHoldingsGroup(g);
     });
     if (groups.length < 2) {
-      flashStatus("至少需要兩個可合併的群組（不含富邦庫存）");
+      flashStatus("至少需要兩個可合併的群組（不含券商庫存群組）");
       return;
     }
     let sheet = $("watch-merge-sheet");
@@ -2616,8 +2660,12 @@
   function renameWatchGroup() {
     const g = activeWatchGroup();
     if (!g) return;
-    if (isFubonHoldingsGroup(g)) {
-      flashStatus("「富邦庫存」名稱固定，只能由 Live Bridge 同步更新");
+    if (isBrokerHoldingsGroup(g)) {
+      flashStatus(
+        isKgiHoldingsGroup(g)
+          ? "「凱基庫存」名稱固定，只能由 Live Bridge 同步更新"
+          : "「富邦庫存」名稱固定，只能由 Live Bridge 同步更新"
+      );
       return;
     }
     const name = window.prompt("群組名稱", g.name || "");
@@ -2632,8 +2680,12 @@
     if (!(book.watchGroups || []).length || book.watchGroups.length <= 1) return;
     const g = activeWatchGroup();
     if (!g) return;
-    if (isFubonHoldingsGroup(g)) {
-      flashStatus("「富邦庫存」不能刪除，只能從 Live Bridge／雲端同步");
+    if (isBrokerHoldingsGroup(g)) {
+      flashStatus(
+        isKgiHoldingsGroup(g)
+          ? "「凱基庫存」不能刪除，只能從 Live Bridge／雲端同步"
+          : "「富邦庫存」不能刪除，只能從 Live Bridge／雲端同步"
+      );
       return;
     }
     if (!window.confirm("刪除群組「" + g.name + "」？群組內標的一併移除。")) return;
@@ -2897,10 +2949,12 @@
       flashStatus("讀取雲端失敗：" + (err.message || err));
     }
     if (isJasonAccount()) ensureFubonHoldingsGroup();
+    if (isBackyAccount()) ensureKgiHoldingsGroup();
     syncMoney();
     renderWatch();
     paintToolMenu();
     syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+    syncKgiHoldingsFromCloud().catch(function () { /* ignore */ });
   }
 
   let liveHoldingsTimer = 0;
@@ -2985,14 +3039,85 @@
     }
   }
 
+  async function syncKgiHoldingsFromCloud() {
+    if (!D.account() || !isBackyAccount()) return;
+    let data = null;
+    let via = "";
+    const LB = window.SJLiveBridge;
+    const bridgeWanted = !!(LB && LB.canReach && LB.canReach() && LB.isBacky && LB.isBacky());
+    let bridgeOnline = false;
+    if (bridgeWanted) {
+      try {
+        const st = await probeLiveBridgeOnline(false);
+        bridgeOnline = !!st.online;
+      } catch (err) { bridgeOnline = false; }
+    }
+    if (bridgeWanted && bridgeOnline && typeof LB.readKgiHoldings === "function") {
+      try {
+        data = await LB.readKgiHoldings();
+        if (data && Array.isArray(data.holdings) && data.holdings.length) via = "LiveBridge";
+        else data = null;
+      } catch (err) { data = null; }
+    }
+    if (!data && D && typeof D.readKgiHoldings === "function") {
+      try {
+        data = await D.readKgiHoldings();
+        if (data && Array.isArray(data.holdings) && data.holdings.length) via = "Drive";
+        else data = null;
+      } catch (err) { data = null; }
+    }
+    if (!data || !Array.isArray(data.holdings) || !data.holdings.length) return;
+    const parsed = M.parseFubonHoldingsJson(data).map(function (row) {
+      return Object.assign({}, row, { note: row.cost > 0 ? "凱基庫存" : "" });
+    });
+    if (!parsed.length) return;
+    const rows = await resolveParsed(parsed);
+    const active = activeWatchGroup();
+    if (active && !isKgiHoldingsGroup(active)) flushWatchToGroup();
+    const g = ensureKgiHoldingsGroup();
+    if (!g) return;
+    const items = [];
+    rows.forEach(function (row) {
+      if (!row.secid) return;
+      const costNum = Number(row.cost);
+      const item = {
+        secid: row.secid,
+        code: row.code,
+        name: twName(row.name || row.code || ""),
+        market: "台股",
+        shares: row.shares == null ? "" : String(row.shares).trim(),
+        cost: costNum > 0 ? String(costNum) : "",
+        fubonPnl: null,
+        pnl: null
+      };
+      items.push(item);
+      syncHolding(item);
+    });
+    g.items = items;
+    g.name = KGI_GROUP_NAME;
+    g.locked = "kgi";
+    if (isKgiHoldingsGroup(activeWatchGroup())) {
+      loadWatchFromGroup();
+      renderWatch(true);
+    } else {
+      paintWatchGroups();
+    }
+    scheduleSave();
+    if (items.length) {
+      flashStatus("已同步「凱基庫存」" + items.length + " 檔（" + via + "）");
+    }
+  }
+
   function ensureLiveHoldingsTimer() {
     if (liveHoldingsTimer) return;
     liveHoldingsTimer = setInterval(function () {
       syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+      syncKgiHoldingsFromCloud().catch(function () { /* ignore */ });
     }, 30000);
     // 進站立刻再抓一次，覆寫雲端舊買價
     setTimeout(function () {
       syncHoldingsFromLiveBridge().catch(function () { /* ignore */ });
+      syncKgiHoldingsFromCloud().catch(function () { /* ignore */ });
     }, 1500);
   }
 
@@ -5942,8 +6067,10 @@
           '<td class="watch-col-shares"><input class="watch-input" data-watch-shares="' + idx +
           '" inputmode="numeric" value="' + esc(shares) + '" placeholder="—" aria-label="股數"></td>' +
           '<td class="watch-col-del">' +
-          (isFubonHoldingsGroup(activeWatchGroup())
-            ? '<span class="fine" title="富邦庫存僅能由 Live Bridge 同步">同步</span>'
+          (isBrokerHoldingsGroup(activeWatchGroup())
+            ? '<span class="fine" title="' +
+              (isKgiHoldingsGroup(activeWatchGroup()) ? "凱基庫存" : "富邦庫存") +
+              '僅能由 Live Bridge 同步">同步</span>'
             : '<button type="button" class="danger" data-del-watch="' + idx + '">移除</button>') +
           "</td>" +
           '<td class="watch-alert-cell"><div class="watch-alert">' +
@@ -8078,8 +8205,12 @@
     else if (t.dataset.watchGroup) switchWatchGroup(t.dataset.watchGroup);
     else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
-      if (!isWatchAllGroups() && isFubonHoldingsGroup(activeWatchGroup())) {
-        flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動移除");
+      if (!isWatchAllGroups() && isBrokerHoldingsGroup(activeWatchGroup())) {
+        flashStatus(
+          isKgiHoldingsGroup(activeWatchGroup())
+            ? "「凱基庫存」只能由 Live Bridge 同步，不能手動移除"
+            : "「富邦庫存」只能由 Live Bridge 同步，不能手動移除"
+        );
         return;
       }
       const removed = book.watch[Number(t.dataset.delWatch)];
