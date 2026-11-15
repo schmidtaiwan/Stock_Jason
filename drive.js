@@ -522,6 +522,114 @@
     if (created.id) fileCache.set(name, created.id);
   }
 
+  const ISSUE_FOLDER = "ISSUE";
+  let issueFolderId = "";
+
+  /** StockJason/ISSUE（Jason 雲端，供 Cursor 下抓判斷） */
+  async function ensureIssueFolder() {
+    if (issueFolderId) return issueFolderId;
+    const parent = await ensureFolder();
+    const q = "mimeType='application/vnd.google-apps.folder' and name='" + qEscape(ISSUE_FOLDER) +
+      "' and '" + parent + "' in parents and trashed=false";
+    const found = await listFiles(q);
+    if (found[0] && found[0].id) {
+      issueFolderId = found[0].id;
+      return issueFolderId;
+    }
+    const res = await driveFetch(
+      "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: ISSUE_FOLDER,
+          mimeType: "application/vnd.google-apps.folder",
+          parents: [parent]
+        })
+      }
+    );
+    if (!res.ok) await readErr(res, "建立 ISSUE 資料夾失敗");
+    const created = await res.json();
+    issueFolderId = created.id || "";
+    if (!issueFolderId) throw new Error("建立 ISSUE 資料夾失敗");
+    return issueFolderId;
+  }
+
+  function issueStamp() {
+    const d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" +
+      p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+
+  /**
+   * 上傳擷圖到 StockJason/ISSUE（僅已登入白名單）。
+   * @returns {{id:string,name:string,webViewLink?:string}}
+   */
+  async function uploadIssueScreenshot(fileOrBlob, opts) {
+    opts = opts || {};
+    if (!account || !isAllowed(accountEmail())) {
+      throw new Error("請先用 Google 登入後再上傳擷圖");
+    }
+    if (!fileOrBlob) throw new Error("沒有可上傳的圖片");
+    const parent = await ensureIssueFolder();
+    const mime = String(fileOrBlob.type || opts.mimeType || "image/png");
+    let ext = "png";
+    if (/jpeg|jpg/i.test(mime)) ext = "jpg";
+    else if (/webp/i.test(mime)) ext = "webp";
+    else if (/gif/i.test(mime)) ext = "gif";
+    const base = String(opts.name || ("issue-" + issueStamp())).replace(/[^\w.\-]+/g, "_");
+    const name = /\.(png|jpe?g|webp|gif)$/i.test(base) ? base : (base + "." + ext);
+    const meta = {
+      name: name,
+      parents: [parent],
+      mimeType: mime,
+      description: "StockJason ISSUE · " + accountEmail() + " · " + new Date().toISOString()
+    };
+    const boundary = "sjimg" + Date.now();
+    const ab = fileOrBlob instanceof Blob
+      ? await fileOrBlob.arrayBuffer()
+      : fileOrBlob;
+    const metaPart = new TextEncoder().encode(
+      "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
+      JSON.stringify(meta) + "\r\n--" + boundary + "\r\nContent-Type: " + mime + "\r\n\r\n"
+    );
+    const endPart = new TextEncoder().encode("\r\n--" + boundary + "--");
+    const bin = ab instanceof ArrayBuffer ? new Uint8Array(ab) : new Uint8Array(ab.buffer || ab);
+    const body = new Uint8Array(metaPart.length + bin.length + endPart.length);
+    body.set(metaPart, 0);
+    body.set(bin, metaPart.length);
+    body.set(endPart, metaPart.length + bin.length);
+    const res = await driveFetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink",
+      {
+        method: "POST",
+        headers: { "Content-Type": "multipart/related; boundary=" + boundary },
+        body: body
+      }
+    );
+    if (!res.ok) await readErr(res, "上傳擷圖失敗");
+    const created = await res.json();
+    // 指標檔方便 Cursor／本機腳本找最新一張
+    try {
+      await writeJsonFile("issue-latest.json", {
+        at: Date.now(),
+        asOf: new Date().toISOString(),
+        email: accountEmail(),
+        fileId: created.id || "",
+        name: created.name || name,
+        webViewLink: created.webViewLink || "",
+        folder: folderName() + "/" + ISSUE_FOLDER
+      });
+    } catch (err) { /* 圖已上，指標失敗不擋 */ }
+    return {
+      id: created.id || "",
+      name: created.name || name,
+      webViewLink: created.webViewLink || "",
+      folder: folderName() + "/" + ISSUE_FOLDER
+    };
+  }
+
   async function writeBookNow(data) {
     const name = bookName(accountEmail());
     const incoming = bookScore(data);
@@ -993,6 +1101,8 @@
     readPulseBoard: readPulseBoard,
     readFlowSeries: readFlowSeries,
     readWatchUniverse: readWatchUniverse,
+    uploadIssueScreenshot: uploadIssueScreenshot,
+    ensureIssueFolder: ensureIssueFolder,
     friendly: friendly,
     restoreSession: restoreSession,
     isEmbeddedBrowser: isEmbeddedBrowser,

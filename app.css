@@ -301,6 +301,27 @@ a.gate-ext[hidden] { display: none !important; }
 .conn-lamp-pop-card .primary {
   width: 100%;
 }
+.conn-lamp-pop-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.conn-lamp-pop-actions[hidden] { display: none !important; }
+.conn-lamp-pop-actions .fine {
+  margin: 0;
+  line-height: 1.4;
+}
+.conn-lamp-pop-actions .secondary,
+.conn-lamp-pop-actions .primary {
+  width: 100%;
+}
+.conn-lamp-pop-status {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.conn-lamp-pop-status[hidden] { display: none !important; }
 .brand { display: flex; gap: 10px; align-items: center; min-width: 0; flex: 0 1 auto; }
 .tools {
   flex: 0 0 auto;

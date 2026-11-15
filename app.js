@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 285;
+  const PAGE_BUILD = 286;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -604,11 +604,66 @@
     syncTwiiMisFlash();
   }
 
+  function setConnLampPopStatus(msg, show) {
+    const el = $("conn-lamp-pop-status");
+    if (!el) return;
+    if (!show) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg || "";
+  }
+
+  function paintDriveIssueActions() {
+    const actions = $("conn-lamp-pop-actions");
+    if (!actions) return;
+    const logged = !!(D && D.account && D.account() && D.isAllowed && D.isAllowed(D.account().email));
+    if (!logged) {
+      actions.hidden = false;
+      actions.innerHTML =
+        '<p class="fine">擷圖上傳需先 Google 登入（寫入 Jason 雲端 StockJason／ISSUE）。</p>' +
+        '<button type="button" class="secondary" id="conn-issue-login">用 Google 登入</button>';
+      return;
+    }
+    actions.hidden = false;
+    actions.innerHTML =
+      '<p class="fine">上傳擷圖到雲端 <strong>StockJason／ISSUE</strong>，供 Cursor 下抓判斷。</p>' +
+      '<button type="button" class="secondary" id="conn-issue-pick">選擇擷圖上傳</button>';
+  }
+
+  async function uploadIssueFile(file) {
+    if (!file) return;
+    if (!(D && D.uploadIssueScreenshot)) {
+      setConnLampPopStatus("雲端上傳模組未載入", true);
+      return;
+    }
+    if (!(D.account && D.account())) {
+      setConnLampPopStatus("請先登入再上傳", true);
+      return;
+    }
+    setConnLampPopStatus("正在上傳「" + (file.name || "擷圖") + "」…", true);
+    try {
+      const hit = await D.uploadIssueScreenshot(file, { name: file.name });
+      setConnLampPopStatus(
+        "已上傳到 " + (hit.folder || "StockJason/ISSUE") + "\n檔名：" + (hit.name || "") +
+        (hit.webViewLink ? ("\n" + hit.webViewLink) : ""),
+        true
+      );
+      flashStatus("擷圖已上傳 ISSUE");
+      refreshConnLamps({ force: true }).catch(function () { /* ignore */ });
+    } catch (err) {
+      setConnLampPopStatus((err && err.message) || "上傳失敗", true);
+    }
+  }
+
   function openConnLampPop(key) {
     const item = connState[key];
     const pop = $("conn-lamp-pop");
     const title = $("conn-lamp-pop-title");
     const body = $("conn-lamp-pop-body");
+    const actions = $("conn-lamp-pop-actions");
     if (!item || !pop || !title || !body) return;
     const stateTxt = item.state === "ok" ? "連線正常"
       : item.state === "bad" ? "連線異常"
@@ -616,12 +671,21 @@
       : "狀態未知";
     title.textContent = item.title + " · " + stateTxt;
     body.textContent = item.detail || "尚無說明";
+    setConnLampPopStatus("", false);
+    if (actions) {
+      if (key === "drive") paintDriveIssueActions();
+      else {
+        actions.hidden = true;
+        actions.innerHTML = "";
+      }
+    }
     pop.hidden = false;
   }
 
   function closeConnLampPop() {
     const pop = $("conn-lamp-pop");
     if (pop) pop.hidden = true;
+    setConnLampPopStatus("", false);
   }
 
   function bindConnLamps() {
@@ -639,7 +703,28 @@
     const pop = $("conn-lamp-pop");
     if (pop) {
       pop.addEventListener("click", function (ev) {
-        if (ev.target === pop) closeConnLampPop();
+        if (ev.target === pop) {
+          closeConnLampPop();
+          return;
+        }
+        if (ev.target && ev.target.id === "conn-issue-login") {
+          closeConnLampPop();
+          if (typeof doLogin === "function") doLogin();
+          else if (D && D.login) D.login().catch(function () { /* ignore */ });
+          return;
+        }
+        if (ev.target && ev.target.id === "conn-issue-pick") {
+          const input = $("conn-issue-file");
+          if (input) input.click();
+        }
+      });
+    }
+    const fileInput = $("conn-issue-file");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        const file = fileInput.files && fileInput.files[0];
+        fileInput.value = "";
+        if (file) uploadIssueFile(file);
       });
     }
   }
