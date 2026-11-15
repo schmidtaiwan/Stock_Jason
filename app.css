@@ -264,16 +264,20 @@ a.gate-ext[hidden] { display: none !important; }
 .conn-lamp-pop {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 10050;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: max(20px, env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
   background: rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
 }
 .conn-lamp-pop[hidden] { display: none !important; }
 .conn-lamp-pop-card {
   width: min(360px, 100%);
+  max-height: min(70vh, 480px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   border-radius: 14px;
   border: 1px solid var(--line);
