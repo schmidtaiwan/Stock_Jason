@@ -1926,6 +1926,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   margin: 0;
 }
 .watch-group-add,
+.watch-group-merge,
 .watch-group-rename,
 .watch-group-export,
 .watch-group-del,
@@ -2102,7 +2103,54 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-#watch-compose-back { margin: 0 0 10px; }
+.watch-compose-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+#watch-compose-back { margin: 0; }
+.watch-compose-top #watch-add {
+  flex: 0 0 auto;
+  min-width: 4.5em;
+  min-height: 32px;
+  padding: 4px 16px;
+  border-radius: 999px;
+}
+.watch-merge-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.watch-merge-name input {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font: inherit;
+}
+.watch-merge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  max-height: 40vh;
+  overflow: auto;
+}
+.watch-merge-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  color: var(--ink);
+  font-size: 14px;
+}
 .watch-add-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 5.8em 4.6em;

@@ -1,11 +1,13 @@
 (function () {
-  const PAGE_BUILD = 280;
+  const PAGE_BUILD = 281;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
   const FUBON_GROUP_NAME = "富邦庫存";
+  /** 虛擬群組：下拉一次看全部群組股票（不寫回任何實體群組） */
+  const ALL_WATCH_GROUP_ID = "__all__";
   const TWII_SRC_KEY = "sj-twii-source";
   const GUEST_VIEW_SECS = 999;
   const GUEST_DEADLINE_KEY = "sj-guest-deadline";
@@ -209,18 +211,26 @@
       groups = groups.map(function (g, i) {
         const items = Array.isArray(g && g.items) ? g.items.map(fixRow)
           : (i === 0 && Array.isArray(src.watch) ? src.watch.map(fixRow) : []);
-        return {
+        const row = {
           id: String((g && g.id) || ("g" + i)),
           name: String((g && g.name) || ("群組" + (i + 1))).trim().slice(0, 16) || ("群組" + (i + 1)),
           items: items
         };
+        if (g && g.locked) row.locked = g.locked;
+        return row;
       });
     }
     let gid = String(src.watchGroupId || groups[0].id);
-    if (!groups.some(function (g) { return g.id === gid; })) gid = groups[0].id;
-    const active = groups.find(function (g) { return g.id === gid; }) || groups[0];
+    if (gid !== ALL_WATCH_GROUP_ID && !groups.some(function (g) { return g.id === gid; })) {
+      gid = groups[0].id;
+    }
+    const active = gid === ALL_WATCH_GROUP_ID
+      ? null
+      : (groups.find(function (g) { return g.id === gid; }) || groups[0]);
     return {
-      watch: active.items,
+      watch: gid === ALL_WATCH_GROUP_ID
+        ? mergeAllWatchItems(groups)
+        : (active ? active.items : []),
       watchGroups: groups,
       watchGroupId: gid,
       watchMode: "full",
@@ -278,22 +288,83 @@
     return g;
   }
 
+  function isWatchAllGroups() {
+    return book.watchGroupId === ALL_WATCH_GROUP_ID;
+  }
+
+  function watchItemKey(item) {
+    const code = String(item && item.code || "").trim().toUpperCase();
+    if (code) return "c:" + code;
+    const sec = String(item && item.secid || "").trim();
+    return sec ? "s:" + sec : "";
+  }
+
+  function mergeAllWatchItems(groups) {
+    const out = [];
+    const seen = Object.create(null);
+    (groups || []).forEach(function (g) {
+      (g && g.items || []).forEach(function (item) {
+        const key = watchItemKey(item);
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        out.push(item);
+      });
+    });
+    return out;
+  }
+
+  function countAllWatchItems() {
+    return mergeAllWatchItems(book.watchGroups || []).length;
+  }
+
   function activeWatchGroup() {
+    if (isWatchAllGroups()) return null;
     const groups = book.watchGroups || [];
     let g = groups.find(function (row) { return row.id === book.watchGroupId; });
     if (!g) g = groups[0];
     return g || null;
   }
 
+  /** 全部檢視時新增：落到第一個非富邦庫存群組 */
+  function preferredAddWatchGroup() {
+    const groups = book.watchGroups || [];
+    const hit = groups.find(function (g) { return g && !isFubonHoldingsGroup(g); });
+    return hit || groups[0] || null;
+  }
+
   function flushWatchToGroup() {
+    if (isWatchAllGroups()) return;
     const g = activeWatchGroup();
     if (!g) return;
     g.items = book.watch || [];
   }
 
   function loadWatchFromGroup() {
+    if (isWatchAllGroups()) {
+      book.watch = mergeAllWatchItems(book.watchGroups || []);
+      return;
+    }
     const g = activeWatchGroup();
     book.watch = g && Array.isArray(g.items) ? g.items : [];
+  }
+
+  function removeWatchItemEverywhere(item) {
+    if (!item) return;
+    const key = watchItemKey(item);
+    const sec = item.secid;
+    (book.watchGroups || []).forEach(function (g) {
+      if (!g || isFubonHoldingsGroup(g) || !Array.isArray(g.items)) return;
+      g.items = g.items.filter(function (row) {
+        if (key && watchItemKey(row) === key) return false;
+        if (sec && row.secid === sec) return false;
+        return true;
+      });
+    });
+    book.watch = book.watch.filter(function (row) {
+      if (key && watchItemKey(row) === key) return false;
+      if (sec && row.secid === sec) return false;
+      return true;
+    });
   }
 
   function isWatchMini() {
@@ -1578,22 +1649,32 @@
         const cur = Number(sheet.dataset.idx);
         if (!(cur >= 0)) return;
         if (action === "delete") {
-          if (isFubonHoldingsGroup(activeWatchGroup())) {
+          if (!isWatchAllGroups() && isFubonHoldingsGroup(activeWatchGroup())) {
             flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動刪除個股");
             return;
           }
           const row = book.watch[cur];
           const label = row ? ((row.name || row.code || "").trim() || "個股") : "個股";
-          if (!window.confirm("從自選刪除「" + label + "」？")) return;
-          const removed = book.watch.splice(cur, 1)[0];
+          const tip = isWatchAllGroups()
+            ? ("從全部群組移除「" + label + "」？")
+            : ("從自選刪除「" + label + "」？");
+          if (!window.confirm(tip)) return;
+          const removed = row;
+          if (isWatchAllGroups()) {
+            removeWatchItemEverywhere(removed);
+          } else {
+            book.watch.splice(cur, 1);
+            flushWatchToGroup();
+          }
           if (removed) {
             book.holdings = book.holdings.filter(function (item) {
               return item.secid !== removed.secid;
             });
           }
-          flushWatchToGroup();
+          if (isWatchAllGroups()) loadWatchFromGroup();
           scheduleSave();
           closeWatchMoveSheet();
+          paintWatchGroups();
           renderWatch(true);
           return;
         }
@@ -2131,7 +2212,7 @@
   function exportWatchGroupFubonJson() {
     flushWatchToGroup();
     const g = activeWatchGroup();
-    const name = (g && g.name) || "自選";
+    const name = isWatchAllGroups() ? "全部" : ((g && g.name) || "自選");
     const holdings = [];
     (book.watch || []).forEach(function (item) {
       const code = String(item.code || "").trim().toUpperCase();
@@ -2182,26 +2263,36 @@
     flushWatchToGroup();
     if (isJasonAccount()) ensureFubonHoldingsGroup();
     const groups = book.watchGroups || [];
+    const allOn = isWatchAllGroups();
     const curGroup = activeWatchGroup();
-    const fubonLocked = isFubonHoldingsGroup(curGroup);
+    const fubonLocked = !allOn && isFubonHoldingsGroup(curGroup);
     const sel = $("watch-group-select");
     if (sel) {
       const cur = book.watchGroupId;
-      sel.innerHTML = groups.map(function (g) {
-        return '<option value="' + esc(g.id) + '"' + (g.id === cur ? " selected" : "") + ">" +
-          esc(g.name) + "（" + (g.items || []).length + "）</option>";
-      }).join("");
-      if (cur) sel.value = cur;
+      const allN = countAllWatchItems();
+      sel.innerHTML =
+        '<option value="' + ALL_WATCH_GROUP_ID + '"' +
+        (cur === ALL_WATCH_GROUP_ID ? " selected" : "") + ">全部（" + allN + "）</option>" +
+        groups.map(function (g) {
+          return '<option value="' + esc(g.id) + '"' + (g.id === cur ? " selected" : "") + ">" +
+            esc(g.name) + "（" + (g.items || []).length + "）</option>";
+        }).join("");
+      sel.value = cur === ALL_WATCH_GROUP_ID || groups.some(function (g) { return g.id === cur; })
+        ? cur
+        : (groups[0] && groups[0].id) || ALL_WATCH_GROUP_ID;
     }
     const box = $("watch-groups");
     if (box) {
       box.innerHTML =
         '<button type="button" class="ghost watch-group-add watch-group-icon" id="watch-group-add" title="新增群組" aria-label="新增群組">+</button>' +
-        (fubonLocked
-          ? ""
-          : '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>') +
-        '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前群組為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
-        (!fubonLocked && groups.length > 1
+        (groups.length > 1
+          ? '<button type="button" class="ghost watch-group-icon watch-group-merge" id="watch-group-merge" title="合併群組成新群組" aria-label="合併群組">合</button>'
+          : "") +
+        (!allOn && !fubonLocked
+          ? '<button type="button" class="ghost watch-group-icon watch-group-rename" id="watch-group-rename" title="重新命名目前群組" aria-label="重新命名">✎</button>'
+          : "") +
+        '<button type="button" class="ghost watch-group-icon watch-group-export" id="watch-group-export" title="匯出目前列表為富邦 JSON" aria-label="匯出富邦 JSON">⬇</button>' +
+        (!allOn && !fubonLocked && groups.length > 1
           ? '<button type="button" class="ghost danger watch-group-icon watch-group-del" id="watch-group-del" title="刪除目前群組" aria-label="刪除群組">🗑</button>'
           : "");
     }
@@ -2219,12 +2310,105 @@
   function switchWatchGroup(id) {
     if (!id || id === book.watchGroupId) return;
     flushWatchToGroup();
-    if (!(book.watchGroups || []).some(function (g) { return g.id === id; })) return;
+    if (id !== ALL_WATCH_GROUP_ID &&
+        !(book.watchGroups || []).some(function (g) { return g.id === id; })) {
+      return;
+    }
     book.watchGroupId = id;
     loadWatchFromGroup();
     scheduleSave();
     paintWatchGroups();
     renderWatch(true);
+  }
+
+  function closeWatchMergeSheet() {
+    const sheet = $("watch-merge-sheet");
+    if (sheet) sheet.hidden = true;
+  }
+
+  function openWatchMergeSheet() {
+    flushWatchToGroup();
+    const groups = (book.watchGroups || []).filter(function (g) {
+      return g && !isFubonHoldingsGroup(g);
+    });
+    if (groups.length < 2) {
+      flashStatus("至少需要兩個可合併的群組（不含富邦庫存）");
+      return;
+    }
+    let sheet = $("watch-merge-sheet");
+    if (!sheet) {
+      sheet = document.createElement("div");
+      sheet.id = "watch-merge-sheet";
+      sheet.className = "watch-move-sheet";
+      sheet.hidden = true;
+      document.body.appendChild(sheet);
+      sheet.addEventListener("click", function (ev) {
+        if (ev.target === sheet) {
+          closeWatchMergeSheet();
+          return;
+        }
+        const btn = ev.target.closest("[data-watch-merge]");
+        if (!btn) return;
+        const action = btn.getAttribute("data-watch-merge");
+        if (action === "close") {
+          closeWatchMergeSheet();
+          return;
+        }
+        if (action === "ok") {
+          commitWatchMerge();
+        }
+      });
+    }
+    const curId = isWatchAllGroups() ? "" : book.watchGroupId;
+    sheet.innerHTML = '<div class="watch-move-card" role="dialog" aria-modal="true" aria-label="合併群組">' +
+      '<p class="watch-move-title">合併成新群組</p>' +
+      '<p class="watch-move-pos">勾選來源群組（同代號只留一檔）</p>' +
+      '<label class="watch-merge-name">新名稱' +
+      '<input id="watch-merge-name" type="text" maxlength="16" value="合併群組" autocomplete="off">' +
+      "</label>" +
+      '<div class="watch-merge-list">' +
+      groups.map(function (g) {
+        const checked = !curId || g.id === curId ? " checked" : "";
+        return '<label class="watch-merge-item"><input type="checkbox" data-merge-id="' +
+          esc(g.id) + '"' + checked + "> " + esc(g.name) +
+          "（" + (g.items || []).length + "）</label>";
+      }).join("") +
+      "</div>" +
+      '<button type="button" class="primary" data-watch-merge="ok">建立合併群組</button>' +
+      '<button type="button" class="secondary" data-watch-merge="close">取消</button>' +
+      "</div>";
+    sheet.hidden = false;
+  }
+
+  function commitWatchMerge() {
+    const sheet = $("watch-merge-sheet");
+    if (!sheet) return;
+    const nameEl = sheet.querySelector("#watch-merge-name");
+    const label = String(nameEl && nameEl.value || "").trim().slice(0, 16) || "合併群組";
+    const ids = [];
+    sheet.querySelectorAll("[data-merge-id]").forEach(function (el) {
+      if (el.checked) ids.push(el.getAttribute("data-merge-id"));
+    });
+    if (ids.length < 2) {
+      flashStatus("請至少勾選兩個群組");
+      return;
+    }
+    flushWatchToGroup();
+    const src = (book.watchGroups || []).filter(function (g) {
+      return g && ids.indexOf(g.id) >= 0;
+    });
+    const items = mergeAllWatchItems(src).map(function (row) {
+      return Object.assign({}, row);
+    });
+    const id = newWatchGroupId();
+    book.watchGroups.push({ id: id, name: label, items: items });
+    book.watchGroupId = id;
+    loadWatchFromGroup();
+    scheduleSave();
+    closeWatchMergeSheet();
+    paintWatchGroups();
+    renderWatch(true);
+    flashStatus("已建立「" + label + "」" + items.length + " 檔");
   }
 
   function addWatchGroup() {
@@ -5374,7 +5558,7 @@
     const box = $("watch-list");
     paintWatchGroups();
     if (!book.watch.length) {
-      box.innerHTML = '<p class="note">這個群組還是空的。按群組列「加入股票」用代號新增，或匯入富邦 JSON。</p>';
+      box.innerHTML = '<p class="note">這個群組還是空的。按上方「加入」用代號新增股票。</p>';
       paintWatchTotal();
       return;
     }
@@ -5630,6 +5814,34 @@
       shares: row.shares == null ? "" : String(row.shares).trim(),
       cost: costOk ? nextCost : ""
     };
+    if (isWatchAllGroups()) {
+      const g = preferredAddWatchGroup();
+      if (!g) {
+        flashStatus("沒有可加入的群組");
+        return;
+      }
+      if (!Array.isArray(g.items)) g.items = [];
+      const found = g.items.find(function (entry) {
+        return entry.secid === item.secid ||
+          (item.code && String(entry.code || "").toUpperCase() === String(item.code).toUpperCase());
+      });
+      if (found) {
+        found.shares = item.shares;
+        if (costOk) found.cost = item.cost;
+        if (item.name) found.name = item.name;
+        found.code = item.code || found.code;
+        found.market = item.market || found.market;
+        syncHolding(found);
+      } else {
+        g.items.push(item);
+        syncHolding(item);
+      }
+      loadWatchFromGroup();
+      scheduleSave();
+      renderWatch(true);
+      flashStatus("已加入「" + (g.name || "群組") + "」");
+      return;
+    }
     const found = book.watch.find(function (entry) {
       return entry.secid === item.secid ||
         (item.code && String(entry.code || "").toUpperCase() === String(item.code).toUpperCase());
@@ -6771,30 +6983,10 @@
   }
 
   async function readFubonHoldingsJson(file) {
-    $("watch-json-btn").disabled = true;
-    $("watch-status").textContent = "正在讀富邦庫存 JSON…";
-    try {
-      const text = await file.text();
-      const parsed = M.parseFubonHoldingsJson(text).map(function (row) {
-        return Object.assign({}, row, { note: row.cost > 0 ? "富邦 JSON 成本" : "" });
-      });
-      if (!parsed.length) {
-        $("watch-status").textContent = "JSON 裡沒有可用的代號與股數。請確認是 StockJason 匯出的富邦庫存檔。";
-        importRows = [];
-        renderImport();
-        return;
-      }
-      const priced = parsed.filter(function (row) { return row.cost > 0; }).length;
-      $("watch-status").textContent = "讀到 " + parsed.length + " 檔" +
-        (priced ? "，其中 " + priced + " 檔有成本。" : "，部分沒有成本請補買價。");
-      importRows = await resolveParsed(parsed);
-      renderImport();
-      $("watch-status").textContent = "確認股數與買價後按匯入。JSON 只在這台裝置讀取，不會上傳。";
-    } catch (err) {
-      $("watch-status").textContent = err.message || "JSON 讀取失敗";
-    } finally {
-      $("watch-json-btn").disabled = false;
-    }
+    // 匯入富邦 JSON 入口已取消；保留函式供匯出對稱／除錯
+    if (!file) return;
+    const status = $("watch-status");
+    if (status) status.textContent = "已取消匯入富邦 JSON，請改用上方「加入」手動新增。";
   }
 
 
@@ -7483,7 +7675,6 @@
     else if (t.id === "watch-open-add") setWatchCompose(true);
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
-    else if (t.id === "watch-json-btn") $("watch-json").click();
     else if (t.id === "watch-view-menu-btn") {
       const panel = $("watch-view-menu-panel");
       setWatchViewMenuOpen(!!(panel && panel.hidden));
@@ -7497,20 +7688,28 @@
     }
     else if (t.id === "watch-wake-toggle") toggleWakeLock();
     else if (t.id === "watch-group-add") addWatchGroup();
+    else if (t.id === "watch-group-merge") openWatchMergeSheet();
     else if (t.id === "watch-group-rename") renameWatchGroup();
     else if (t.id === "watch-group-export") exportWatchGroupFubonJson();
     else if (t.id === "watch-group-del") deleteWatchGroup();
     else if (t.dataset.watchGroup) switchWatchGroup(t.dataset.watchGroup);
     else if (t.id === "import-ok") commitImport();
     else if (t.dataset.delWatch != null) {
-      if (isFubonHoldingsGroup(activeWatchGroup())) {
+      if (!isWatchAllGroups() && isFubonHoldingsGroup(activeWatchGroup())) {
         flashStatus("「富邦庫存」只能由 Live Bridge 同步，不能手動移除");
         return;
       }
-      const removed = book.watch.splice(Number(t.dataset.delWatch), 1)[0];
+      const removed = book.watch[Number(t.dataset.delWatch)];
+      if (isWatchAllGroups()) {
+        removeWatchItemEverywhere(removed);
+        loadWatchFromGroup();
+      } else {
+        book.watch.splice(Number(t.dataset.delWatch), 1);
+        flushWatchToGroup();
+      }
       if (removed) book.holdings = book.holdings.filter(function (item) { return item.secid !== removed.secid; });
-      flushWatchToGroup();
       scheduleSave();
+      paintWatchGroups();
       renderWatch(true);
     } else if (t.dataset.delHold != null) {
       book.holdings.splice(Number(t.dataset.delHold), 1);
@@ -7879,11 +8078,6 @@
     if (idx < 0 || !importRows[idx]) return;
     if (shares != null) importRows[idx].shares = ev.target.value;
     if (cost != null) importRows[idx].cost = ev.target.value;
-  });
-  $("watch-json").addEventListener("change", function () {
-    const file = $("watch-json").files && $("watch-json").files[0];
-    $("watch-json").value = "";
-    if (file) readFubonHoldingsJson(file);
   });
   $("risk-list").addEventListener("change", function (ev) {
     const shares = ev.target.getAttribute("data-shares");
