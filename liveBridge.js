@@ -353,8 +353,18 @@
     }
   }
 
-  async function readChipsDaily() {
-    return readCloudPack("/api/chips-daily");
+  async function readChipsDaily(code) {
+    if (!canReach()) return null;
+    try {
+      const id = String(code || "").trim().toUpperCase();
+      if (id) {
+        const one = await fetchJson("/api/chips-daily/" + encodeURIComponent(id), false);
+        if (one && one.ok !== false && (one.row || one.byCode)) return one;
+      }
+      return await readCloudPack("/api/chips-daily");
+    } catch (err) {
+      return null;
+    }
   }
 
   async function readLevelsDaily() {

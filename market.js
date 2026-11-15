@@ -5636,9 +5636,47 @@
   let latestT86Pack = null;
   let latestT86At = 0;
 
+  function t86FromCloudPack(pack) {
+    if (!pack) return null;
+    var rows = pack.rows;
+    if ((!rows || !rows.length) && pack.byCode) {
+      rows = Object.keys(pack.byCode).map(function (k) {
+        var r = pack.byCode[k];
+        if (!r) return null;
+        if (!r.code) r = Object.assign({ code: k }, r);
+        return r;
+      }).filter(Boolean);
+    }
+    if (!rows || !rows.length) return null;
+    return {
+      ok: true,
+      date: String(pack.date || ""),
+      rows: rows,
+      source: pack.source || "chips-daily",
+      scope: pack.scope || "market",
+      at: pack.at
+    };
+  }
+
   async function latestTwseT86(maxBack) {
     const now = Date.now();
     if (latestT86Pack && latestT86Pack.ok && now - latestT86At < 5 * 60 * 1000) return latestT86Pack;
+
+    // LiveBridge／Drive 全市場籌碼優先（啟動即抓、每 5 分上雲）
+    try {
+      const cloud = await readCloudNamed("readChipsDaily", "readChipsDaily");
+      const hitCloud = t86FromCloudPack(cloud);
+      if (hitCloud && hitCloud.rows.length) {
+        const fresh = cloudPackFresh(cloud, 20 * 60 * 1000) ||
+          (hitCloud.date && String(hitCloud.date).replace(/\D/g, "").length === 8);
+        if (fresh) {
+          latestT86Pack = hitCloud;
+          latestT86At = now;
+          return hitCloud;
+        }
+      }
+    } catch (err) { /* fall through */ }
+
     const candidates = twseWeekdayYmds(taipeiYmd(), Math.max(8, maxBack || 12));
     for (let i = 0; i < candidates.length; i++) {
       const hit = await twseT86(candidates[i]);
