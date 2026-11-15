@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=283">
+  <link rel="stylesheet" href="app.css?v=284">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 283;
+    var PAGE = 284;
     var urls = [
       "build.json?_=" + Date.now() + "&r=" + Math.random(),
       "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now(),
@@ -303,11 +303,14 @@
               <button id="watch-wake-toggle" class="ghost" type="button" role="menuitemcheckbox" aria-pressed="false" title="保持螢幕常亮（需瀏覽器支援）">常亮</button>
             </div>
           </div>
-          <button id="watch-open-add" class="primary" type="button" title="加入股票" aria-label="加入股票">加入</button>
           <label class="watch-group-title-wrap" title="選擇群組">
             <select id="watch-group-select" class="watch-group-title" aria-label="目前群組"></select>
           </label>
-          <div id="watch-groups" class="watch-groups" aria-label="群組操作"></div>
+          <div class="watch-group-edit-menu">
+            <button id="watch-group-edit" class="ghost" type="button" aria-expanded="false" aria-haspopup="true" title="群組編輯">編輯</button>
+            <div id="watch-group-edit-panel" class="watch-group-edit-panel" hidden role="menu"></div>
+          </div>
+          <button id="watch-open-add" class="primary" type="button" title="加入股票" aria-label="加入股票">加入</button>
         </div>
         <div id="watch-board">
           <div class="watch-summary">
@@ -681,7 +684,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本，按「立即更新」才會真的換到新 JS（勿再寫死 v=268）
-    var PAGE = 283;
+    var PAGE = 284;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");
