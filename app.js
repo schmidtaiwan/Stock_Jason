@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 263;
+  const PAGE_BUILD = 264;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -974,25 +974,29 @@
     bridgeAlertKind = "";
   }
 
-  /** 頂部橘條：Tailscale／LiveBridge 未連線（可關閉；同類訊息有節流）。 */
+  /** 連線異常一律進頂部燈號（點燈再看說明）；不再跳出橘條。版次更新條除外。 */
   function showBridgeAlert(kind, message, opts) {
     opts = opts || {};
     const force = !!opts.force;
     const now = Date.now();
     if (!force && kind && kind === bridgeAlertKind && now - bridgeAlertAt < 90_000) return;
-    const bar = $("bridge-alert-bar");
-    if (!bar) {
-      flashStatus(message);
-      return;
-    }
     bridgeAlertAt = now;
-    bridgeAlertKind = kind || "tailscale";
-    bar.innerHTML =
-      "<span>" + esc(message) + "</span>" +
-      '<button type="button" data-bridge-alert-dismiss>知道了</button>';
-    bar.hidden = false;
-    document.body.classList.add("has-bridge-alert");
-    flashStatus(message);
+    bridgeAlertKind = kind || "livebridge";
+    hideBridgeAlert();
+
+    const msg = String(message || "").trim();
+    if (!msg) return;
+
+    const lampKey = (kind === "fubon") ? "fubon"
+      : (kind === "mis") ? "mis"
+      : "bridge";
+    const title = lampKey === "fubon" ? "富邦"
+      : lampKey === "mis" ? "MIS（證交所）"
+      : "LiveBridge";
+    setConnItem(lampKey, "bad", "連線異常。\n" + msg);
+    if (connState[lampKey]) connState[lampKey].title = title;
+    paintConnLamps();
+    // 紅燈提示；不自動開說明視窗，需使用者點燈
   }
 
   async function probeLiveBridgeOnline(force) {
@@ -1015,7 +1019,7 @@
   }
 
   /**
-   * 登入後用富邦／LiveBridge 時：Tailscale 連不上就跳出通知。
+   * 登入後用富邦／LiveBridge 時：Tailscale 連不上 → 寫入燈號（不跳橘條）。
    * reason: "fubon" | "livebridge" | "holdings"
    */
   async function warnIfTailscaleDown(reason, opts) {
@@ -1024,9 +1028,10 @@
     const st = await probeLiveBridgeOnline(!!opts.force);
     if (st.online) {
       if (bridgeAlertKind) hideBridgeAlert();
+      // 恢復時交給 refreshConnLamps 更新綠燈
+      refreshConnLamps().catch(function () { /* ignore */ });
       return false;
     }
-    // 直連被 Chrome 擋時，若雲端 fubon-live 仍新，只輕提示、不重橘條干擾
     let driveFresh = false;
     try {
       if (D.readFubonLive) {
@@ -1041,18 +1046,18 @@
     let msg = "";
     if (!st.configured || !base) {
       msg = "尚未設定 LiveBridge 網址（Tailscale Serve）。富邦即時報價／庫存無法直連本機。";
-    } else if (reason === "fubon" || reason === "livebridge") {
+    } else if (reason === "fubon") {
+      msg = "已選富邦，但連不到 LiveBridge。請確認手機 Tailscale 已連線且可開 " + base +
+        "；首次連線請先打開 Tailscale App 喚醒。" +
+        (driveFresh ? " 目前已用雲端備援報價。" : " 暫改讀雲端備援。") + tip;
+    } else if (reason === "livebridge") {
       msg = "網頁直連 LiveBridge 失敗" + tip +
-        "。手機請到 Tailscale → 關閉「使用 Tailscale DNS」（VPN 可繼續開），讓網址走 Funnel 公網；或允許 Chrome「區域網路」。" +
+        "。手機請到 Tailscale → 關閉「使用 Tailscale DNS」（VPN 可繼續開），或允許 Chrome「區域網路」。" +
         (driveFresh ? " 目前已用雲端備援報價。" : " 暫改雲端備援。");
     } else if (reason === "holdings") {
       msg = "連不到 LiveBridge" + tip + "。「富邦庫存」改讀雲端備援。";
     } else {
       msg = "連不到 LiveBridge" + tip + "：" + base;
-    }
-    if (driveFresh && reason !== "holdings" && !opts.force) {
-      flashStatus(msg);
-      return true;
     }
     showBridgeAlert(reason || "livebridge", msg, { force: !!opts.force });
     return true;
