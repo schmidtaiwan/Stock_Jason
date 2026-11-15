@@ -2246,7 +2246,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 }
 .watch-table {
   width: max-content;
-  min-width: 900px;
+  min-width: 943px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
@@ -2430,9 +2430,9 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   z-index: 6;
 }
 .watch-name {
-  width: 86px;
-  min-width: 86px;
-  max-width: 86px;
+  width: 129px;
+  min-width: 129px;
+  max-width: 129px;
   text-align: left !important;
   white-space: normal;
   overflow: hidden;
@@ -2730,7 +2730,7 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
 @media (max-width: 720px) {
   .gate, .app { width: 100%; }
   .watch-table {
-    min-width: 900px;
+    min-width: 943px;
   }
 }
 .badge {
