@@ -211,29 +211,30 @@ a.gate-ext[hidden] { display: none !important; }
 .conn-lamps {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: max-content max-content;
   grid-template-rows: auto auto;
   align-items: center;
   justify-items: start;
-  gap: 2px 8px;
-  min-width: 96px;
-  max-width: 120px;
+  column-gap: 4px;
+  row-gap: 0;
+  min-width: 0;
+  max-width: none;
   margin: 0 2px;
 }
 .conn-lamp {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   margin: 0;
-  padding: 1px 4px;
+  padding: 0 2px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1;
   cursor: pointer;
 }
 .conn-lamp:hover,
