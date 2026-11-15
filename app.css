@@ -2204,6 +2204,25 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   width: 100%;
   min-height: 44px;
 }
+.watch-th-help {
+  cursor: help;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+.watch-col-help-card .watch-move-pos {
+  margin-bottom: 10px;
+}
+.watch-col-help-list {
+  margin: 0 0 14px;
+  padding-left: 1.15em;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text, #e8eef7);
+}
+.watch-col-help-list li {
+  margin: 0 0 8px;
+}
 .watch-pin {
   position: sticky;
   left: 0;

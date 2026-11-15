@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 255;
+  const PAGE_BUILD = 256;
   const PAGE_DATE = "2026-11-15";
   const JASON_EMAIL = "jason660803@gmail.com";
   const FUBON_GROUP_ID = "fubon-holdings";
@@ -1284,6 +1284,8 @@
           closeWatchMoveSheet();
           return;
         }
+        // 欄位說明卡只有「知道了」
+        if (!(Number(sheet.dataset.idx) >= 0)) return;
         const cur = Number(sheet.dataset.idx);
         if (!(cur >= 0)) return;
         if (action === "delete") {
@@ -1314,6 +1316,11 @@
         const next = moveWatchAt(cur, to);
         paintWatchMoveSheet(next);
       });
+    }
+    // idx < 0：只確保 sheet DOM 存在（給欄位說明用）
+    if (!(idx >= 0)) {
+      sheet.hidden = true;
+      return;
     }
     const item = book.watch[idx];
     if (!item) {
@@ -1348,10 +1355,162 @@
     try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignore */ }
   }
 
+  const WATCH_COL_HELP = {
+    name: {
+      title: "商品",
+      lines: [
+        "顯示股票名稱與代號。",
+        "名稱下方色條＝三大法人買賣超相對強弱（綠買／紅賣）。",
+        "點整列進入個股；長按名稱可調整順序或刪除。"
+      ]
+    },
+    price: {
+      title: "成交",
+      lines: [
+        "最新成交價（富邦／MIS 即時或最近快照）。",
+        "盤後為收盤價。"
+      ]
+    },
+    chg: {
+      title: "漲跌",
+      lines: [
+        "相對前一交易日收盤的價差（元）。",
+        "紅＝上漲、綠＝下跌。"
+      ]
+    },
+    tape: {
+      title: "足跡（判斷邏輯）",
+      lines: [
+        "依分時成交「時間、價格、張數、漲跌方向」規則試算，不是券商分點歸戶。",
+        "勿追：早盤大單急拉後已離高點，或近端連續大單偏賣 → 不宜追高。",
+        "偏空：位於當日均價（VWAP）下方且近端偏弱。",
+        "觀望：特徵未一面倒，等更明確價量轉折。",
+        "偏多／可買：站上均價、低檔有大單承接，且非早盤沖高出貨型態。",
+        "進入個股可看完整推演、10:00 時點快照與逐筆樣本。僅供參考，非投資建議。"
+      ]
+    },
+    pct: {
+      title: "幅度",
+      lines: [
+        "漲跌幅％＝漲跌 ÷ 昨收 × 100。",
+        "與「漲跌」同向上色。"
+      ]
+    },
+    pnl: {
+      title: "損益",
+      lines: [
+        "依你填的買價、股數估算未實現損益。",
+        "富邦庫存群組優先對齊券商未實現損益欄位。"
+      ]
+    },
+    lamp: {
+      title: "動向（判斷邏輯）",
+      lines: [
+        "看「盤後三大法人合計買賣超」相對強度，不是逐筆大單。",
+        "計算：法人淨買賣超 ÷ 參考量能門檻 → 比例。",
+        "大買：比例 ≥ 8%；小買：≥ 2%。",
+        "中立：約 −2%～+2%。",
+        "小賣：≤ −2%；大賣：≤ −8%。",
+        "商品下方色條也是同一套法人流向示意。"
+      ]
+    },
+    foreign: {
+      title: "外資",
+      lines: [
+        "盤後證交所／公開資料的外資買賣超（張）。",
+        "＋＝買超、−＝賣超；非盤中即時逐筆。"
+      ]
+    },
+    trust: {
+      title: "投信",
+      lines: [
+        "盤後投信買賣超（張）。",
+        "＋＝買超、−＝賣超。"
+      ]
+    },
+    dealer: {
+      title: "自營商",
+      lines: [
+        "盤後自營商買賣超（張，含自行／避險合計視資料來源）。",
+        "＋＝買超、−＝賣超。"
+      ]
+    },
+    brk: {
+      title: "突破",
+      lines: [
+        "日線推估的上方壓力／突破參考價。",
+        "多取近高、箱型上緣或均線附近；游標可看計算理由。",
+        "規則試算，不是保證會過關。"
+      ]
+    },
+    sup: {
+      title: "支撐",
+      lines: [
+        "日線推估的下方支撐參考價。",
+        "多取近低、箱型下緣或均線附近；游標可看計算理由。",
+        "破支撐需自行控管風險。"
+      ]
+    },
+    cost: {
+      title: "買價",
+      lines: [
+        "你的成本價（可編輯）。",
+        "用來算損益；富邦庫存會由 Live Bridge 同步。"
+      ]
+    },
+    shares: {
+      title: "股數",
+      lines: [
+        "持股股數（可編輯）。",
+        "1 張＝1,000 股。"
+      ]
+    },
+    del: {
+      title: "移除",
+      lines: [
+        "從目前自選群組移除該股。",
+        "「富邦庫存」群組只能同步、不能手動刪。"
+      ]
+    },
+    notify: {
+      title: "通知",
+      lines: [
+        "開＝啟用條件通知（漲跌％、價格等）。",
+        "達門檻時於瀏覽器／系統權限允許下提醒。"
+      ]
+    }
+  };
+
+  function openWatchColHelp(key) {
+    const pack = WATCH_COL_HELP[key];
+    if (!pack) return;
+    let sheet = $("watch-move-sheet");
+    if (!sheet) {
+      // 先建共用 sheet（與調整個股同一層）
+      paintWatchMoveSheet(-1);
+      sheet = $("watch-move-sheet");
+    }
+    if (!sheet) return;
+    const lines = (pack.lines || []).map(function (line) {
+      return "<li>" + esc(line) + "</li>";
+    }).join("");
+    sheet.dataset.idx = "";
+    sheet.innerHTML = '<div class="watch-move-card watch-col-help-card" role="dialog" aria-modal="true" aria-label="欄位說明">' +
+      '<p class="watch-move-title">' + esc(pack.title) + "</p>" +
+      '<p class="watch-move-pos">長壓標題列可看說明</p>' +
+      '<ul class="watch-col-help-list">' + lines + "</ul>" +
+      '<button type="button" class="primary watch-move-done" data-watch-move="close">知道了</button>' +
+      "</div>";
+    sheet.hidden = false;
+    try { if (navigator.vibrate) navigator.vibrate(10); } catch (err) { /* ignore */ }
+  }
+
   function bindWatchReorder() {
     const box = $("watch-list");
     if (!box || box.dataset.reorderBound) return;
     box.dataset.reorderBound = "1";
+
+    let colHelpPress = null;
 
     function clearLongPress() {
       if (!watchLongPress) return;
@@ -1360,7 +1519,15 @@
       box.classList.remove("is-longpress");
     }
 
+    function clearColHelpPress() {
+      if (!colHelpPress) return;
+      clearTimeout(colHelpPress.timer);
+      colHelpPress = null;
+      box.classList.remove("is-longpress");
+    }
+
     function watchLongPressTarget(ev) {
+      if (ev.target.closest("thead th[data-col-help]")) return null;
       if (ev.target.closest("input, select, textarea, button.danger, label, .watch-alert")) return null;
       const row = ev.target.closest("[data-watch-row]");
       if (!row || !box.contains(row)) return null;
@@ -1369,15 +1536,50 @@
       return { row: row, idx: idx };
     }
 
+    function colHelpTarget(ev) {
+      const th = ev.target.closest("thead th[data-col-help]");
+      if (!th || !box.contains(th)) return null;
+      const key = th.getAttribute("data-col-help");
+      if (!key || !WATCH_COL_HELP[key]) return null;
+      return { th: th, key: key };
+    }
+
     box.addEventListener("contextmenu", function (ev) {
+      const col = colHelpTarget(ev);
+      if (col) {
+        ev.preventDefault();
+        openWatchColHelp(col.key);
+        return;
+      }
       if (!watchLongPressTarget(ev) && !box.classList.contains("is-longpress")) return;
       ev.preventDefault();
     });
 
     box.addEventListener("pointerdown", function (ev) {
       if (ev.button != null && ev.button !== 0) return;
+      const col = colHelpTarget(ev);
+      if (col) {
+        clearLongPress();
+        const pointerId = ev.pointerId;
+        box.classList.add("is-longpress");
+        colHelpPress = {
+          key: col.key,
+          pointerId: pointerId,
+          x: ev.clientX,
+          y: ev.clientY,
+          timer: setTimeout(function () {
+            if (!colHelpPress || colHelpPress.pointerId !== pointerId) return;
+            const k = colHelpPress.key;
+            colHelpPress = null;
+            openWatchColHelp(k);
+            box.classList.remove("is-longpress");
+          }, 420)
+        };
+        return;
+      }
       const hit = watchLongPressTarget(ev);
       if (!hit) return;
+      clearColHelpPress();
       const pointerId = ev.pointerId;
       watchDragMoved = false;
       box.classList.add("is-longpress");
@@ -1404,6 +1606,12 @@
     });
 
     box.addEventListener("pointermove", function (ev) {
+      if (colHelpPress) {
+        if (Math.abs(ev.clientX - colHelpPress.x) > 14 ||
+            Math.abs(ev.clientY - colHelpPress.y) > 14) {
+          clearColHelpPress();
+        }
+      }
       if (!watchLongPress) return;
       if (Math.abs(ev.clientX - watchLongPress.x) > 14 ||
           Math.abs(ev.clientY - watchLongPress.y) > 14) {
@@ -1411,22 +1619,27 @@
       }
     });
 
-    box.addEventListener("pointerup", clearLongPress);
+    box.addEventListener("pointerup", function () {
+      clearLongPress();
+      clearColHelpPress();
+    });
     box.addEventListener("pointercancel", function (ev) {
       // Chrome 若仍觸發選取取消，已打開選單就不要清掉操作狀態
       if (watchLongPress && watchLongPress.opened) return;
       if (watchDragMoved) return;
       clearLongPress();
+      clearColHelpPress();
     });
 
     // 非 passive：長按過程擋掉瀏覽器預設選取／callout
     box.addEventListener("touchstart", function (ev) {
-      if (!watchLongPressTarget(ev)) return;
-      box.classList.add("is-longpress");
+      if (colHelpTarget(ev) || watchLongPressTarget(ev)) {
+        box.classList.add("is-longpress");
+      }
     }, { passive: true });
 
     box.addEventListener("selectstart", function (ev) {
-      if (box.classList.contains("is-longpress") || watchLongPressTarget(ev)) {
+      if (box.classList.contains("is-longpress") || watchLongPressTarget(ev) || colHelpTarget(ev)) {
         ev.preventDefault();
       }
     });
@@ -4649,13 +4862,28 @@
   }
 
   function renderWatchFull(box) {
+    function th(cls, key, label, aria) {
+      return '<th class="' + (cls || "") + ' watch-th-help" data-col-help="' + key +
+        '" title="長壓看說明"' + (aria ? ' aria-label="' + esc(aria) + '"' : "") + ">" +
+        esc(label) + "</th>";
+    }
     box.innerHTML = '<div class="watch-table-wrap"><table class="watch-table"><thead><tr>' +
-      '<th class="watch-pin">商品</th><th class="watch-col-price">成交</th>' +
-      '<th class="watch-col-chg">漲跌</th><th class="watch-col-tape">足跡</th>' +
-      '<th class="watch-col-pct">幅度</th><th class="watch-col-pnl">損益</th>' +
-      '<th class="watch-col-lamp">動向</th><th>外資</th><th>投信</th><th>自營商</th><th>突破</th><th>支撐</th>' +
-      '<th class="watch-col-cost">買價</th><th class="watch-col-shares">股數</th>' +
-      '<th class="watch-col-del" aria-label="移除"></th><th>通知</th>' +
+      th("watch-pin", "name", "商品") +
+      th("watch-col-price", "price", "成交") +
+      th("watch-col-chg", "chg", "漲跌") +
+      th("watch-col-tape", "tape", "足跡") +
+      th("watch-col-pct", "pct", "幅度") +
+      th("watch-col-pnl", "pnl", "損益") +
+      th("watch-col-lamp", "lamp", "動向") +
+      th("", "foreign", "外資") +
+      th("", "trust", "投信") +
+      th("", "dealer", "自營商") +
+      th("", "brk", "突破") +
+      th("", "sup", "支撐") +
+      th("watch-col-cost", "cost", "買價") +
+      th("watch-col-shares", "shares", "股數") +
+      th("watch-col-del", "del", "", "移除") +
+      th("", "notify", "通知") +
       "</tr></thead><tbody>" + book.watch.map(function (item, idx) {
         const shares = item.shares == null ? "" : item.shares;
         const cost = item.cost == null ? "" : item.cost;
