@@ -3168,8 +3168,11 @@
 
     if (sessionOpen) {
       if (bridgeKnown === false) return fromDriveCloud();
-      // 手機未知／在線都給短預算，避免自選卡 >1 分鐘
-      const budget = bridgeKnown === true ? 4500 : 2500;
+      // 手機 relay 競速需要較長預算；桌面保持短
+      const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "");
+      const budget = mobile
+        ? (bridgeKnown === true ? 10000 : 8000)
+        : (bridgeKnown === true ? 4500 : 2500);
       const n = await bridgeWithBudget(budget);
       if (n > 0) return n;
       return fromDriveCloud();

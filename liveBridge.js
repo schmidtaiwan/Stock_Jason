@@ -17,6 +17,28 @@
   let _preferRelayUntil = 0;
   let _fubonLiveCache = null;
   let _fubonLiveCacheAt = 0;
+  const PREFER_RELAY_LS = "sj-bridge-prefer-relay-until";
+
+  function loadPreferRelay() {
+    try {
+      const until = Number(localStorage.getItem(PREFER_RELAY_LS) || 0);
+      if (until > Date.now()) {
+        _preferRelay = true;
+        _preferRelayUntil = until;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function savePreferRelay(on) {
+    _preferRelay = !!on;
+    _preferRelayUntil = on ? Date.now() + 24 * 3600 * 1000 : 0;
+    try {
+      if (on) localStorage.setItem(PREFER_RELAY_LS, String(_preferRelayUntil));
+      else localStorage.removeItem(PREFER_RELAY_LS);
+    } catch (e) { /* ignore */ }
+  }
+
+  loadPreferRelay();
 
   function baseUrl() {
     let raw = "";
@@ -290,76 +312,93 @@
       headers.Authorization = "Bearer " + token;
     }
     const mobile = isMobileUa();
-    const ms = timeoutMs > 0 ? timeoutMs : (mobile ? 8000 : FETCH_MS);
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    let timer = null;
-    if (ctrl) {
-      timer = setTimeout(function () {
-        try { ctrl.abort(); } catch (e) { /* ignore */ }
-      }, ms);
-    }
+    loadPreferRelay();
+    const ms = timeoutMs > 0 ? timeoutMs : (mobile ? 10000 : FETCH_MS);
 
-    async function doFetch(addressSpace) {
-      const fetchOpts = {
-        method: "GET",
-        headers: headers,
-        cache: "no-store",
-        mode: "cors",
-        signal: ctrl ? ctrl.signal : undefined
-      };
-      if (addressSpace) {
-        try { fetchOpts.targetAddressSpace = addressSpace; } catch (e) { /* ignore */ }
+    async function doFetch(addressSpace, budgetMs) {
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      let timer = null;
+      if (ctrl) {
+        timer = setTimeout(function () {
+          try { ctrl.abort(); } catch (e) { /* ignore */ }
+        }, budgetMs > 0 ? budgetMs : ms);
       }
-      const res = await fetch(root + apiPath, fetchOpts);
-      if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
-      if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
-      if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
-      return res.json();
-    }
-
-    function shouldPreferRelay() {
-      return !!(mobile && !needAuth && _preferRelay && Date.now() < _preferRelayUntil);
+      try {
+        const fetchOpts = {
+          method: "GET",
+          headers: headers,
+          cache: "no-store",
+          mode: "cors",
+          signal: ctrl ? ctrl.signal : undefined
+        };
+        if (addressSpace) {
+          try { fetchOpts.targetAddressSpace = addressSpace; } catch (e) { /* ignore */ }
+        }
+        const res = await fetch(root + apiPath, fetchOpts);
+        if (res.status === 401) throw new Error("Live Bridge 拒絕（非白名單或 token 過期）");
+        if (res.status === 403) throw new Error("Live Bridge 拒絕（無權限）");
+        if (!res.ok) throw new Error("Live Bridge HTTP " + res.status);
+        return res.json();
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     }
 
     try {
       let data;
-      if (shouldPreferRelay()) {
-        try {
+      if (mobile && !needAuth) {
+        // 手機：已知需 relay 就直走 relay；否則短直連與 relay 競速（避免直連卡滿逾時才改走）
+        if (_preferRelay && Date.now() < _preferRelayUntil) {
           data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
           _relayReady = true;
-        } catch (relayErr) {
-          _preferRelay = false;
-          data = await doFetch("");
+        } else {
+          data = await new Promise(function (resolve, reject) {
+            let left = 2;
+            let lastErr = null;
+            let done = false;
+            function win(v, viaRelay) {
+              if (done) return;
+              done = true;
+              if (viaRelay) {
+                savePreferRelay(true);
+                _relayReady = true;
+              } else {
+                savePreferRelay(false);
+              }
+              resolve(v);
+            }
+            function lose(err) {
+              lastErr = err;
+              left -= 1;
+              if (left <= 0 && !done) reject(lastErr || new Error("bridge unreachable"));
+            }
+            doFetch("", 1800).then(function (v) { win(v, false); }, lose);
+            fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000))
+              .then(function (v) { win(v, true); }, lose);
+          });
         }
       } else {
         try {
-          data = await doFetch("");
-          // 直連成功：清掉 relay 偏好
-          if (mobile) {
-            _preferRelay = false;
-            _preferRelayUntil = 0;
-          }
+          data = await doFetch("", ms);
         } catch (firstErr) {
           const msg = String((firstErr && firstErr.message) || firstErr || "");
-          const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local|abort|逾時/i.test(msg + " " + ((firstErr && firstErr.name) || ""));
+          const useRelay = !needAuth && /Failed to fetch|NetworkError|Load failed|Permission|local|abort/i.test(
+            msg + " " + ((firstErr && firstErr.name) || "")
+          );
           if (useRelay) {
             try {
               data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
               _relayReady = true;
-              if (mobile) {
-                _preferRelay = true;
-                _preferRelayUntil = Date.now() + 60_000;
-              }
             } catch (relayErr) {
               try {
-                data = await doFetch("local");
+                data = await doFetch("local", Math.min(ms, 4000));
               } catch (e2) {
                 throw firstErr;
               }
             }
           } else {
             try {
-              data = await doFetch("local");
+              data = await doFetch("local", Math.min(ms, 4000));
             } catch (e2) {
               throw firstErr;
             }
@@ -376,8 +415,6 @@
       if (name === "AbortError") _lastError = "逾時 " + ms + "ms";
       else _lastError = msg.slice(0, 160);
       throw err;
-    } finally {
-      if (timer) clearTimeout(timer);
     }
   }
 
@@ -391,7 +428,7 @@
       if (known != null) return known;
     }
     const mobile = isMobileUa();
-    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 6000 : 3000);
+    const perTry = timeoutMs > 0 ? timeoutMs : (mobile ? 12000 : 3000);
     const tries = mobile ? 2 : 2;
     for (let i = 0; i < tries; i++) {
       try {
@@ -414,7 +451,7 @@
     if (_fubonLiveCache && now - _fubonLiveCacheAt < 3000) return _fubonLiveCache;
     try {
       // 自選要快：手機直連短逾時，失敗才 relay
-      const data = await fetchJson("/api/fubon-live", false, isMobileUa() ? 5000 : FETCH_MS);
+      const data = await fetchJson("/api/fubon-live", false, isMobileUa() ? 10000 : FETCH_MS);
       if (data) {
         _fubonLiveCache = data;
         _fubonLiveCacheAt = Date.now();
@@ -536,7 +573,7 @@
   async function health() {
     if (!canReach()) return null;
     try {
-      const ms = isMobileUa() ? 6000 : 3000;
+      const ms = isMobileUa() ? 12000 : 3000;
       return await fetchJson("/api/health", false, ms);
     } catch (err) {
       return null;
