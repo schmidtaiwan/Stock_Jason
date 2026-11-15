@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 305;
+  const PAGE_BUILD = 306;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7419,11 +7419,14 @@
 
     box.innerHTML =
       '<article class="card stock-invest-card" data-research-code="' + esc(pack.code || "") + '">' +
-      "<h3>個股研究報告 · " + esc(pack.name || "") + " " + esc(pack.code || "") +
-      ' · <span class="' + adviceCls + '">' + esc(pack.advice || "觀望") + "</span></h3>" +
-      "<p>現價 " + fmt(pack.close) +
+      '<details class="session-fold stock-invest-fold">' +
+      "<summary><span class=\"session-fold-title\">個股研究報告 · " + esc(pack.name || "") + " " +
+      esc(pack.code || "") + '</span> <span class="tag ' + adviceCls + '">' +
+      esc(pack.advice || "觀望") + "</span>" +
+      '<span class="fine">現價 ' + fmt(pack.close) +
       (pack.atr != null ? " · ATR " + fmt(pack.atr) : "") +
-      " · 綜合分 " + esc(String(pack.score)) + "</p>" +
+      " · 分 " + esc(String(pack.score)) + "</span></summary>" +
+      '<div class="stock-invest-body">' +
       '<div class="research-meta">' +
       '<label>投資時間 <select data-research-horizon>' +
       '<option value="short">短線（1～10 日）</option>' +
@@ -7575,7 +7578,7 @@
       '<p class="fine">分數只代表你已勾選確認的研究完成度，不代表股票品質或預期報酬。' +
       "財報重大疑慮、現金流長期背離、一次性收益、治理問題等，不可用其他高分抵銷。</p>" +
       '<button type="button" class="ghost" data-research-reset>重設檢查表</button>' +
-      "</article>";
+      "</div></details></article>";
 
     bindStockResearchUi(pack.code);
   }

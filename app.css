@@ -1045,6 +1045,21 @@ canvas {
 }
 .stock-invest.chart-details-collapsed { display: none !important; }
 .stock-invest-card h3 { margin: 0 0 8px; font-size: 17px; }
+.stock-invest-fold > summary {
+  gap: 8px;
+  align-items: baseline;
+}
+.stock-invest-fold > summary .tag {
+  font-size: 13px;
+  font-weight: 700;
+}
+.stock-invest-fold > summary .fine {
+  font-weight: 500;
+  margin-left: 2px;
+}
+.stock-invest-body {
+  margin-top: 10px;
+}
 .stock-invest-card h4 {
   margin: 14px 0 6px;
   font-size: 14px;
