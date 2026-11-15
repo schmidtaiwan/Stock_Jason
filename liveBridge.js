@@ -349,12 +349,23 @@
       }
     }
 
+    function onPublicGithubPage() {
+      try {
+        return /\.github\.io$/i.test(String(location.hostname || ""));
+      } catch (e) {
+        return false;
+      }
+    }
+
+    // MagicDNS 常把 *.ts.net 指到 100.x；從 github.io fetch 會被 Chrome LNA 擋。
+    // 手機／公開頁：iframe relay 與短直連競速（Funnel 公網 IP 仍可走 relay）。
+    const useRelayRace = !needAuth && (mobile || onPublicGithubPage());
+
     try {
       let data;
-      if (mobile && !needAuth) {
-        // 手機：已知需 relay 就直走 relay；否則短直連與 relay 競速（避免直連卡滿逾時才改走）
+      if (useRelayRace) {
         if (_preferRelay && Date.now() < _preferRelayUntil) {
-          data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
+          data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 14000));
           _relayReady = true;
         } else {
           data = await new Promise(function (resolve, reject) {
@@ -377,8 +388,9 @@
               left -= 1;
               if (left <= 0 && !done) reject(lastErr || new Error("bridge unreachable"));
             }
-            doFetch("", 1800).then(function (v) { win(v, false); }, lose);
-            fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000))
+            // 直連給短預算；relay 同步開跑，避免卡死在 LNA
+            doFetch("", mobile ? 1800 : 2500).then(function (v) { win(v, false); }, lose);
+            fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 14000))
               .then(function (v) { win(v, true); }, lose);
           });
         }
@@ -392,7 +404,8 @@
           );
           if (useRelay) {
             try {
-              data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 12000));
+              data = await fetchViaRelay(apiPath, Math.min(Math.max(ms, 8000), 14000));
+              savePreferRelay(true);
               _relayReady = true;
             } catch (relayErr) {
               try {
