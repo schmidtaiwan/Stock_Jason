@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 267;
+  const PAGE_BUILD = 268;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -502,6 +502,14 @@
     connState[key].detail = detail || "";
   }
 
+  function syncTwiiMisFlash() {
+    const twii = $("twii-box");
+    if (!twii) return;
+    const misBad = !!(connState.mis && connState.mis.state === "bad");
+    const useMis = getTwiiSourcePref() !== "fubon";
+    twii.classList.toggle("twii-mis-flash", useMis && misBad);
+  }
+
   function paintConnLamps() {
     const box = $("conn-lamps");
     if (!box) return;
@@ -515,6 +523,7 @@
       btn.title = item.title + "：" + label + "（點擊看說明）";
       btn.setAttribute("aria-label", item.title + " " + label);
     });
+    syncTwiiMisFlash();
   }
 
   function openConnLampPop(key) {
@@ -1166,12 +1175,14 @@
       srcEl.title = actualFubon
         ? "目前富邦 API（點擊可改證交所 MIS）"
         : "已選富邦 API（點擊可改證交所 MIS）";
+      syncTwiiMisFlash();
       return;
     }
     srcEl.textContent = "證交所";
     srcEl.title = canPickTwiiSource()
       ? "目前證交所 MIS（點擊可改富邦 API）"
       : "台灣證交所 MIS";
+    syncTwiiMisFlash();
   }
 
   function formatTwiiLag(q) {

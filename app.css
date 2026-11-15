@@ -375,6 +375,24 @@ a.gate-ext[hidden] { display: none !important; }
 .twii-box.twii-pickable:focus-visible {
   background: rgba(255, 255, 255, 0.06);
 }
+/* 選證交所但 MIS 紅燈：加權外框閃爍警示 */
+.twii-box.twii-mis-flash {
+  border-radius: 8px;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(255, 77, 77, 0.85);
+  animation: twii-mis-flash 1s ease-in-out infinite;
+}
+@keyframes twii-mis-flash {
+  0%, 100% {
+    border-color: rgba(255, 77, 77, 0.95);
+    box-shadow: 0 0 0 1px rgba(255, 77, 77, 0.35), 0 0 10px rgba(255, 80, 80, 0.35);
+  }
+  50% {
+    border-color: rgba(255, 180, 180, 0.35);
+    box-shadow: 0 0 0 1px rgba(255, 77, 77, 0.08);
+  }
+}
 .twii-src-menu {
   position: fixed;
   z-index: 90;
