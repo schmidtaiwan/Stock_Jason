@@ -4413,18 +4413,16 @@
     });
     if (!need.length) return out;
 
-    // 非開盤只吃雲端／Bridge／快取
+    // 非開盤：先用快取；仍缺的繼續打 MIS 取最近一盤（新加入自選常還不在 Bridge）
     if (!open) {
       ids.forEach(function (id) {
         if (out[id]) return;
         const hit = misCacheGet(id) || (misQuoteCache.get(id) && misQuoteCache.get(id).quote) || null;
         if (hit && hit.price > 0) out[id] = hit;
       });
-      return out;
+      need = ids.filter(function (id) { return !(out[id] && out[id].price > 0); });
+      if (!need.length) return out;
     }
-
-    // 開盤且 Bridge 已補齊大部分：缺的再直連 MIS；Bridge 在線時少打 MIS
-    if (bridgeOn && need.length === 0) return out;
 
     let fetched = false;
     const run = misQueue.then(async function () {
@@ -4572,9 +4570,8 @@
     }
     fillFromCache(codes);
     let missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
-    // Bridge／富邦已齊：休市直接回傳，避免再跑 MIS／Drive 拖到 watchBoard 逾時整批空白
-    const sessionOpen = isTwSessionOpen();
-    if (missing.length && !wantFubon && !forceMis && (sessionOpen || !bridgeOn)) {
+    // Bridge 可能尚未含「剛加入」的代號：缺的一律補 MIS／Drive（不要因 bridgeOn 就整批跳過）
+    if (missing.length && !wantFubon && !forceMis) {
       try {
         await hydrateMisFromDrive(missing, {
           maxAgeMs: MIS_DRIVE_SEED_MAX_AGE_MS,
@@ -4585,7 +4582,7 @@
       fillFromCache(missing);
       missing = codes.filter(function (id) { return !(byCode[id] && byCode[id].price > 0); });
     }
-    if (missing.length && (wantFubon || forceMis || sessionOpen || !bridgeOn)) {
+    if (missing.length) {
       if (wantFubon) {
         try {
           const mis = await misQuotes(missing) || {};

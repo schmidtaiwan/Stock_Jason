@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 300;
+  const PAGE_BUILD = 301;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -5819,7 +5819,7 @@
     return any;
   }
 
-  /** 背景一次抓齊所有群組個股；切群組只吃快取 */
+  /** 背景一次抓齊所有群組個股；切群組只吃快取。大量新股時分段抓、邊抓邊畫。 */
   async function refreshWatchUniverse(opts) {
     opts = opts || {};
     const universe = allWatchUniverseItems();
@@ -5827,14 +5827,25 @@
     if (watchUniverseBusy && !opts.force) return null;
     watchUniverseBusy = true;
     const gen = ++watchUniverseGen;
+    const CHUNK = 12;
     try {
       prefetchCorePacks().catch(function () { /* ignore */ });
-      const rows = await withWatchTimeout(M.watchBoard(universe), 28000, null);
-      if (gen !== watchUniverseGen) return null;
-      if (rows && rows.length) {
-        universe.forEach(function (item, i) {
-          rememberWatchQuoteForItem(item, rows[i]);
-        });
+      const rows = new Array(universe.length);
+      for (let i = 0; i < universe.length; i += CHUNK) {
+        if (gen !== watchUniverseGen) return null;
+        const slice = universe.slice(i, i + CHUNK);
+        const part = await withWatchTimeout(M.watchBoard(slice), 14000, null);
+        if (gen !== watchUniverseGen) return null;
+        if (part && part.length) {
+          slice.forEach(function (item, j) {
+            rows[i + j] = part[j];
+            rememberWatchQuoteForItem(item, part[j]);
+          });
+          if (opts.paint !== false && state.view === "watch") {
+            const box = $("watch-list");
+            if (box) paintCurrentWatchFromCache(box);
+          }
+        }
       }
       withWatchTimeout(M.watchLevels ? M.watchLevels(universe) : Promise.resolve(null), 28000, null)
         .then(function (levels) {
@@ -5886,15 +5897,19 @@
     }
     paintCurrentWatchFromCache(box);
     try {
-      const quick = await withWatchTimeout(M.watchBoard(book.watch), 14000, null);
-      if (quick && quick.length) {
-        book.watch.forEach(function (item, i) {
-          rememberWatchQuoteForItem(item, quick[i]);
-        });
-        paintCurrentWatchFromCache(box);
+      const CHUNK = 12;
+      for (let i = 0; i < book.watch.length; i += CHUNK) {
+        const slice = book.watch.slice(i, i + CHUNK);
+        const quick = await withWatchTimeout(M.watchBoard(slice), 12000, null);
+        if (quick && quick.length) {
+          slice.forEach(function (item, j) {
+            rememberWatchQuoteForItem(item, quick[j]);
+          });
+          paintCurrentWatchFromCache(box);
+        }
       }
     } catch (errQuick) { /* ignore */ }
-    await refreshWatchUniverse({ paint: true });
+    await refreshWatchUniverse({ paint: true, force: true });
   }
 
   function renderWatchMini(box) {
@@ -6396,7 +6411,9 @@
     });
   }
 
-  function savePosition(row) {
+  function savePosition(row, opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
     const nextCost = row.cost == null ? "" : String(row.cost).trim();
     const costOk = Number(nextCost) > 0;
     const item = {
@@ -6410,8 +6427,8 @@
     if (isWatchAllGroups()) {
       const g = preferredAddWatchGroup();
       if (!g) {
-        flashStatus("沒有可加入的群組");
-        return;
+        if (!silent) flashStatus("沒有可加入的群組");
+        return false;
       }
       if (!Array.isArray(g.items)) g.items = [];
       const found = g.items.find(function (entry) {
@@ -6431,9 +6448,11 @@
       }
       loadWatchFromGroup();
       scheduleSave();
-      renderWatch(true);
-      flashStatus("已加入「" + (g.name || "群組") + "」");
-      return;
+      if (!silent) {
+        renderWatch(true);
+        flashStatus("已加入「" + (g.name || "群組") + "」");
+      }
+      return true;
     }
     const found = book.watch.find(function (entry) {
       return entry.secid === item.secid ||
@@ -6450,7 +6469,8 @@
     syncHolding(found || item);
     flushWatchToGroup();
     scheduleSave();
-    renderWatch(true);
+    if (!silent) renderWatch(true);
+    return true;
   }
 
   function lotsText(n) {
@@ -7374,6 +7394,7 @@
             miss.push(parts[i]);
             continue;
           }
+          // 批次加入：先不重繪，避免 20 次 refresh 互搶／只刷到半套
           savePosition({
             secid: hit.secid,
             code: hit.code,
@@ -7381,7 +7402,7 @@
             market: hit.market || "台股",
             shares: shares,
             cost: cost
-          });
+          }, { silent: true });
           ok.push(hit.code || parts[i]);
         }
         state.picks.watch = null;
@@ -7395,9 +7416,16 @@
           $("watch-status").textContent = "找不到：" + miss.join("、");
           return;
         }
-        $("watch-status").textContent = "已加入 " + ok.join("、") +
-          (miss.length ? ("；找不到 " + miss.join("、")) : "");
+        $("watch-status").textContent = "已加入 " + ok.length + " 檔" +
+          (miss.length ? ("；找不到 " + miss.join("、")) : "") + "，正在抓股價…";
         setWatchCompose(false);
+        renderWatch(true);
+        paintWatchQuotes().then(function () {
+          if ($("watch-status")) {
+            $("watch-status").textContent = "已加入 " + ok.length + " 檔" +
+              (miss.length ? ("；找不到 " + miss.join("、")) : "");
+          }
+        }).catch(function () { /* ignore */ });
         return;
       }
 
