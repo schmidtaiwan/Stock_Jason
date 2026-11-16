@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 319;
+  const PAGE_BUILD = 320;
   const PAGE_DATE = "2026-11-16";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -7188,16 +7188,28 @@
       let fubonTape = null;
       let tapeTried = false;
 
+      function tapeOpenOk(tape) {
+        if (!(tape && Array.isArray(tape.ticks) && tape.ticks.length >= 4)) return false;
+        if (!preferLiveQuotesAndTape()) return true;
+        if (tape.session === "last-session" ||
+            String(tape.source || "").indexOf("last-session") >= 0) {
+          return false;
+        }
+        const day = String(tape.date || "").trim();
+        if (day && day !== taipeiDay()) return false;
+        return true;
+      }
+
       function tapeFromLiveSnap(live, idCode) {
         if (!live || !idCode) return null;
         const id = String(idCode).toUpperCase();
         const ft = live.focusTape;
         if (ft && Array.isArray(ft.ticks) && ft.ticks.length >= 4) {
           const fc = String(live.focus || ft.code || "").toUpperCase();
-          if (!fc || fc === id) return ft;
+          if ((!fc || fc === id) && tapeOpenOk(ft)) return ft;
         }
         if (live.tapes && live.tapes[id] && Array.isArray(live.tapes[id].ticks) && live.tapes[id].ticks.length >= 4) {
-          return live.tapes[id];
+          return tapeOpenOk(live.tapes[id]) ? live.tapes[id] : null;
         }
         return null;
       }
@@ -7271,14 +7283,19 @@
           try { await Promise.all(liveTasks); } catch (err) { /* ignore */ }
         }
 
-        // 直連／Drive 扁平檔（並行；Bridge 離線時只打 Drive）
-        if ((!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length)) {
+        // 開盤：即使 live 內嵌有舊日足跡也要強制打 Bridge／Drive 重抓今日
+        const needFreshTape = preferLiveQuotesAndTape()
+          ? !tapeOpenOk(fubonTape)
+          : (!fubonTape || !fubonTape.ticks || !fubonTape.ticks.length);
+        if (needFreshTape) {
           tapeTried = true;
+          if (preferLiveQuotesAndTape()) fubonTape = null;
           if (M.fetchFubonTapeFromDrive) {
             try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
           } else if (LB && LB.readFubonTape && bridgeOnline) {
             try { fubonTape = await LB.readFubonTape(code); } catch (err) { fubonTape = null; }
           }
+          if (fubonTape && !tapeOpenOk(fubonTape) && preferLiveQuotesAndTape()) fubonTape = null;
         }
         if (fubonTape && fubonTape.ticks && fubonTape.ticks.length) tapeTried = true;
       }
@@ -7294,9 +7311,13 @@
           } catch (err) { /* ignore */ }
         }
       }
-      if (!fubonTape && M.fetchFubonTapeFromDrive) {
+      if ((!fubonTape || (preferLiveQuotesAndTape() && !tapeOpenOk(fubonTape))) &&
+          M.fetchFubonTapeFromDrive) {
         tapeTried = true;
-        try { fubonTape = await M.fetchFubonTapeFromDrive(code); } catch (err) { fubonTape = null; }
+        try {
+          const t = await M.fetchFubonTapeFromDrive(code);
+          fubonTape = (t && (!preferLiveQuotesAndTape() || tapeOpenOk(t))) ? t : null;
+        } catch (err) { fubonTape = null; }
       }
 
       if (fubonTape && Array.isArray(fubonTape.ticks) && fubonTape.ticks.length) {

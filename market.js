@@ -3551,14 +3551,38 @@
   }
 
   async function fetchFubonTapeFromDrive(code, dateYmd) {
+    function todayTw() {
+      try {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit"
+        }).format(new Date());
+      } catch (e) {
+        return "";
+      }
+    }
     function usable(tape) {
-      return !!(tape && Array.isArray(tape.ticks) && tape.ticks.length >= 4);
+      if (!(tape && Array.isArray(tape.ticks) && tape.ticks.length >= 4)) return false;
+      // 開盤：拒收 last-session／非今日（否則會一直顯示 11/13）
+      if (isTwSessionOpen()) {
+        if (tape.session === "last-session" ||
+            String(tape.source || "").indexOf("last-session") >= 0) {
+          return false;
+        }
+        const day = String(tape.date || "").trim();
+        const today = todayTw();
+        if (day && today && day !== today) return false;
+      }
+      return true;
     }
     const B = fubonLiveBridgeApi();
     const D = fubonDriveApi();
     const bridgeKnownOnline = B && B.isOnline ? B.isOnline() : null;
-    // 手機常連不到 Tailscale：已知離線或未知時先／並行打 Drive，避免卡死
-    const driveFirst = bridgeKnownOnline === false;
+    // 開盤優先 Bridge 現抓；手機離線才先 Drive
+    const open = isTwSessionOpen();
+    const driveFirst = !open && bridgeKnownOnline === false;
 
     async function fromBridge() {
       if (!B || !B.readFubonTape) return null;
@@ -3580,6 +3604,11 @@
       }
     }
 
+    if (open) {
+      const b = await fromBridge();
+      if (b) return b;
+      return fromDrive();
+    }
     if (driveFirst) {
       const d = await fromDrive();
       if (d) return d;
