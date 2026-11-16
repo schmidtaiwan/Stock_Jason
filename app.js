@@ -1,6 +1,6 @@
 (function () {
-  const PAGE_BUILD = 317;
-  const PAGE_DATE = "2026-11-15";
+  const PAGE_BUILD = 319;
+  const PAGE_DATE = "2026-11-16";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
@@ -3734,6 +3734,11 @@
     return c.mins >= 9 * 60 && c.mins <= 13 * 60 + 30;
   }
 
+  /** 開盤：網頁只抓即時股價／盤中足跡，其餘包延後到盤後 */
+  function preferLiveQuotesAndTape(now) {
+    return isTwMarketOpen(now);
+  }
+
   /** 足跡判斷時段：平日 08:30–13:30（含開盤前準備） */
   function isTapeJudgeWindow(now) {
     const c = taipeiClockParts(now);
@@ -3864,7 +3869,8 @@
       if (!document.hidden && state.view === "watch") paintWatchQuotes();
       // 燈號改由 20s heartbeat 更新，避免每次自選都卡 probe
       if (!open) return;
-      if (!document.hidden && state.view === "chart") await loadChart();
+      // 開盤：略過走勢圖歷史刷新，專心股價／足跡
+      if (!document.hidden && state.view === "chart" && !preferLiveQuotesAndTape()) await loadChart();
       else if (!document.hidden && state.view === "stock" && state.stock) await loadStockLive(state.stock, true);
       else if (alertOn) await pollWatchAlerts();
     } catch (err) {
@@ -4156,6 +4162,7 @@
     stopUsBoardClock();
     usBoardTimer = setInterval(function () {
       if (document.hidden || state.view !== "pulse") return;
+      if (preferLiveQuotesAndTape()) return;
       loadUsBoard({ quiet: true });
     }, 30000);
   }
@@ -4190,7 +4197,9 @@
         paintTwii(false);
         liveTick();
       } else if (document.hidden && hasWatchAlerts() && open) liveTick();
-      if (!document.hidden && state.view === "pulse") loadUsBoard({ quiet: true });
+      if (!document.hidden && state.view === "pulse" && !preferLiveQuotesAndTape()) {
+        loadUsBoard({ quiet: true });
+      }
       if (!document.hidden && isTapeJudgeWindow()) runTapeJudgeIfDue(false);
     });
   }
@@ -6006,24 +6015,26 @@
           }
         }
       }
-      withWatchTimeout(M.watchLevels ? M.watchLevels(universe) : Promise.resolve(null), 28000, null)
-        .then(function (levels) {
-          if (gen !== watchUniverseGen || !levels) return;
-          rememberWatchLevelsForUniverse(universe, levels);
-          if (opts.paint !== false && state.view === "watch") {
-            const box = $("watch-list");
-            if (box) paintCurrentWatchFromCache(box);
-          }
-        });
-      withWatchTimeout(M.watchChips ? M.watchChips(universe) : Promise.resolve(null), 20000, null)
-        .then(function (chips) {
-          if (gen !== watchUniverseGen || !chips) return;
-          watchLastChips = chips;
-          if (opts.paint !== false && state.view === "watch") {
-            const box = $("watch-list");
-            if (box) paintWatchChipRows(box, chips);
-          }
-        });
+      if (!preferLiveQuotesAndTape()) {
+        withWatchTimeout(M.watchLevels ? M.watchLevels(universe) : Promise.resolve(null), 28000, null)
+          .then(function (levels) {
+            if (gen !== watchUniverseGen || !levels) return;
+            rememberWatchLevelsForUniverse(universe, levels);
+            if (opts.paint !== false && state.view === "watch") {
+              const box = $("watch-list");
+              if (box) paintCurrentWatchFromCache(box);
+            }
+          });
+        withWatchTimeout(M.watchChips ? M.watchChips(universe) : Promise.resolve(null), 20000, null)
+          .then(function (chips) {
+            if (gen !== watchUniverseGen || !chips) return;
+            watchLastChips = chips;
+            if (opts.paint !== false && state.view === "watch") {
+              const box = $("watch-list");
+              if (box) paintWatchChipRows(box, chips);
+            }
+          });
+      }
       // 足跡：對全宇宙缺的補抓（顯示仍依目前群組）
       if (opts.tape !== false) {
         const box = $("watch-list");
@@ -9598,31 +9609,36 @@
       '<p class="fine">來源：FinMind 整體市場融資融券（MarginPurchaseMoney／ShortSale）。當沖欄位暫無免費對應資料。</p></div>';
   }
 
-  /** 核心頁：先暖機 Bridge／Drive packs，畫面可立刻吃到預處理。 */
+  /** 核心頁：先暖機 Bridge／Drive packs；開盤只暖 live，其餘盤後再抓。 */
   async function prefetchCorePacks() {
     const tasks = [];
     function add(fn) {
       if (typeof fn === "function") tasks.push(Promise.resolve().then(fn).catch(function () { return null; }));
     }
+    const liveOnly = preferLiveQuotesAndTape();
     const B = window.SJLiveBridge;
     if (B && B.canReach && B.canReach()) {
       add(function () { return B.readFubonLive && B.readFubonLive(); });
-      add(function () { return B.readChipsDaily && B.readChipsDaily(); });
-      add(function () { return B.readLevelsDaily && B.readLevelsDaily(); });
-      add(function () { return B.readPulseBoard && B.readPulseBoard(); });
-      add(function () { return B.readFlowSeries && B.readFlowSeries(); });
-      add(function () { return B.readHistMis && B.readHistMis(); });
-      add(function () { return B.readHistDaily && B.readHistDaily(); });
-      add(function () { return B.readWatchUniverse && B.readWatchUniverse(); });
+      if (!liveOnly) {
+        add(function () { return B.readChipsDaily && B.readChipsDaily(); });
+        add(function () { return B.readLevelsDaily && B.readLevelsDaily(); });
+        add(function () { return B.readPulseBoard && B.readPulseBoard(); });
+        add(function () { return B.readFlowSeries && B.readFlowSeries(); });
+        add(function () { return B.readHistMis && B.readHistMis(); });
+        add(function () { return B.readHistDaily && B.readHistDaily(); });
+        add(function () { return B.readWatchUniverse && B.readWatchUniverse(); });
+      }
     }
     if (D && D.account && D.account()) {
       add(function () { return D.readFubonLive && D.readFubonLive(); });
-      add(function () { return D.readChipsDaily && D.readChipsDaily(); });
-      add(function () { return D.readLevelsDaily && D.readLevelsDaily(); });
-      add(function () { return D.readPulseBoard && D.readPulseBoard(); });
-      add(function () { return D.readFlowSeries && D.readFlowSeries(); });
-      add(function () { return D.readHistMis && D.readHistMis(); });
-      add(function () { return D.readWatchUniverse && D.readWatchUniverse(); });
+      if (!liveOnly) {
+        add(function () { return D.readChipsDaily && D.readChipsDaily(); });
+        add(function () { return D.readLevelsDaily && D.readLevelsDaily(); });
+        add(function () { return D.readPulseBoard && D.readPulseBoard(); });
+        add(function () { return D.readFlowSeries && D.readFlowSeries(); });
+        add(function () { return D.readHistMis && D.readHistMis(); });
+        add(function () { return D.readWatchUniverse && D.readWatchUniverse(); });
+      }
     }
     if (!tasks.length) return null;
     await Promise.all(tasks);
@@ -9636,6 +9652,11 @@
       if (status) status.textContent = "動向模組未載入。";
       return;
     }
+    if (preferLiveQuotesAndTape()) {
+      if (status) status.textContent = "開盤優先即時股價／足跡，動向改盤後更新。";
+      prefetchCorePacks().catch(function () { /* ignore */ });
+      return;
+    }
     if (status) status.textContent = "先載雲端動向包…";
     // 美股觀察先吃 pulse-board；完整動向再打外部
     try { loadUsBoard(); } catch (e) { /* ignore */ }
@@ -9646,8 +9667,7 @@
       renderPulse(pack);
       if (status) status.textContent = "更新完成。";
     } catch (err) {
-      if (box) box.innerHTML = "";
-      if (status) status.textContent = err.message || "動向讀取失敗";
+      if (box) box.innerHTML = "";      if (status) status.textContent = err.message || "動向讀取失敗";
     }
   }
 

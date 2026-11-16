@@ -3485,8 +3485,9 @@
     const applyOpts = {
       forceOverwrite: !!(opts.forceOverwrite || preferFubonQuotes() || (sessionOpen && bridgeOn))
     };
+    // 開盤：Bridge 偶發卡住時仍接受近 2 分鐘內的富邦包（勿用 20s 整批拒收變空白）
     const defaultAge = sessionOpen
-      ? (bridgeOn ? 20_000 : Math.max(FUBON_DRIVE_MAX_AGE_MS, 3 * 60_000))
+      ? (bridgeOn ? 120_000 : Math.max(FUBON_DRIVE_MAX_AGE_MS, 3 * 60_000))
       : Math.max(FUBON_DRIVE_MAX_AGE_MS, 6 * 60 * 60 * 1000);
     const maxAge = opts.maxAgeMs != null ? opts.maxAgeMs : defaultAge;
 
@@ -4900,7 +4901,7 @@
     // 休市可接受較舊的富邦最後一盤；Bridge 在線時強制寫入 cache
     const fubonMaxAge = isTwSessionOpen()
       ? (wantFubon || bridgeOn
-        ? Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 5 * 60_000)
+        ? Math.max(FUBON_DRIVE_MAX_AGE_MS, 120_000)
         : FUBON_DRIVE_SEED_MAX_AGE_MS)
       : Math.max(FUBON_DRIVE_SEED_MAX_AGE_MS, 7 * 86400000);
     try {
