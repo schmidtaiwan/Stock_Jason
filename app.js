@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 316;
+  const PAGE_BUILD = 317;
   const PAGE_DATE = "2026-11-15";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -9513,11 +9513,27 @@
       "</small></div>" +
       '<div class="pulse-cell"><span>籌碼格局</span><strong>' + esc(chips.bias || "—") +
       "</strong><small>" + esc(chips.note || "") + "</small></div>" +
-      '<div class="pulse-cell"><span>融資餘額</span><strong>' +
-      (chips.marginBalance != null ? Math.round(chips.marginBalance / 1e8) + " 億股" : "—") +
-      "</strong><small class=\"" + pulseCls(chips.marginChg) + '">' +
-      (chips.marginChg != null ? pulsePct(chips.marginChg * 100) : "") +
-      " · " + esc(chips.marginBias || "") + "</small></div>" +
+      '<div class="pulse-cell"><span>融資</span><strong class="' +
+      pulseCls(chips.marginDeltaYi) + '">' +
+      (chips.marginYi != null
+        ? Number(chips.marginYi).toLocaleString("zh-Hant", { maximumFractionDigits: 2 }) + " 億"
+        : (chips.marginBalance != null
+          ? Number(chips.marginBalance / 1e8).toLocaleString("zh-Hant", { maximumFractionDigits: 2 }) + " 億"
+          : "—")) +
+      "</strong><small class=\"" + pulseCls(chips.marginDeltaYi) + '">' +
+      (chips.marginDeltaYi != null
+        ? ((chips.marginDeltaYi > 0 ? "+" : "") + Number(chips.marginDeltaYi).toFixed(2) + " 億")
+        : "") +
+      (chips.marginBias ? (" · " + esc(chips.marginBias)) : "") + "</small></div>" +
+      '<div class="pulse-cell"><span>融券</span><strong class="' +
+      pulseCls(chips.shortDelta) + '">' +
+      (chips.shortLots != null ? Math.round(chips.shortLots).toLocaleString("zh-Hant") + " 張" : "—") +
+      "</strong><small class=\"" + pulseCls(chips.shortDelta) + '">' +
+      (chips.shortDelta != null
+        ? ((chips.shortDelta > 0 ? "+" : "") + Math.round(chips.shortDelta).toLocaleString("zh-Hant") + " 張")
+        : "") +
+      (chips.ratioPct != null ? (" · 券資比 " + Number(chips.ratioPct).toFixed(2) + "%") : "") +
+      "</small></div>" +
       '<div class="pulse-cell wide"><span>融資解讀</span><strong class="pulse-note">' +
       esc(chips.marginNote || "") + "</strong></div>";
 
@@ -9539,7 +9555,47 @@
       foldCard("chips",
         "三、盤後籌碼 <span class=\"fine\">" + esc(chips.date || "") + "</span>",
         '<p class="fine">' + esc(chips.tip || "") + '</p><div class="pulse-grid">' + chipsHtml + "</div>" +
-        '<p class="fine">' + esc(pack.note || "") + "</p>");
+        '<p class="fine">' + esc(pack.note || "") + "</p>") +
+      foldCard("marginTable", "四、融資／融券（市場）",
+        renderMarginShortTable(chips.marginShortTable || []));
+  }
+
+  function renderMarginShortTable(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) {
+      return '<p class="fine">尚無融資／融券市場資料（FinMind TaiwanStockTotalMarginPurchaseShortSale）。</p>';
+    }
+    const head =
+      '<div class="margin-short-wrap"><table class="margin-short-table">' +
+      "<thead><tr>" +
+      "<th rowspan=\"2\">日期</th>" +
+      "<th colspan=\"2\">融資</th>" +
+      "<th colspan=\"2\">融券</th>" +
+      "<th rowspan=\"2\">券資比</th>" +
+      "</tr><tr>" +
+      "<th>增減(億)</th><th>餘額(億)</th>" +
+      "<th>增減(張)</th><th>餘額(張)</th>" +
+      "</tr></thead><tbody>";
+    const body = list.map(function (r) {
+      const d = String(r.date || "").replace(/-/g, "/");
+      const md = r.marginDeltaYi;
+      const my = r.marginYi;
+      const sd = r.shortDelta;
+      const sl = r.shortLots;
+      const ratio = r.ratioPct;
+      return "<tr>" +
+        "<td>" + esc(d) + "</td>" +
+        '<td class="' + pulseCls(md) + '">' +
+        (md == null ? "—" : ((md > 0 ? "+" : "") + Number(md).toFixed(2))) + "</td>" +
+        "<td>" + (my == null ? "—" : Number(my).toLocaleString("zh-Hant", { maximumFractionDigits: 2 })) + "</td>" +
+        '<td class="' + pulseCls(sd) + '">' +
+        (sd == null ? "—" : ((sd > 0 ? "+" : "") + Math.round(sd).toLocaleString("zh-Hant"))) + "</td>" +
+        "<td>" + (sl == null ? "—" : Math.round(sl).toLocaleString("zh-Hant")) + "</td>" +
+        "<td>" + (ratio == null ? "—" : (Number(ratio).toFixed(2) + "%")) + "</td>" +
+        "</tr>";
+    }).join("");
+    return head + body + "</tbody></table>" +
+      '<p class="fine">來源：FinMind 整體市場融資融券（MarginPurchaseMoney／ShortSale）。當沖欄位暫無免費對應資料。</p></div>';
   }
 
   /** 核心頁：先暖機 Bridge／Drive packs，畫面可立刻吃到預處理。 */
@@ -9672,8 +9728,17 @@
           unitTxt = "口" + (row.pct == null ? "" : (" · " + (row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%"));
           cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
         } else if (row.flow === "margin") {
-          priceTxt = Number(row.price).toFixed(0);
-          unitTxt = "億股" + (row.pct == null ? "" : (" · " + (row.pct > 0 ? "+" : "") + row.pct.toFixed(2) + "%"));
+          // price＝餘額（億）；pct 欄位暫存當日增減（億）
+          priceTxt = Number(row.price).toLocaleString("zh-Hant", { maximumFractionDigits: 2 });
+          unitTxt = "億" + (row.pct == null
+            ? ""
+            : (" · " + (row.pct > 0 ? "+" : "") + Number(row.pct).toFixed(2) + " 億"));
+          cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
+        } else if (row.flow === "shortsale") {
+          priceTxt = Math.round(row.price).toLocaleString("zh-Hant");
+          unitTxt = "張" + (row.pct == null
+            ? ""
+            : (" · " + (row.pct > 0 ? "+" : "") + Math.round(row.pct).toLocaleString("zh-Hant")));
           cls = row.pct > 0 ? "up" : row.pct < 0 ? "down" : "";
         } else if (row.flow === "buy") {
           priceTxt = (row.price > 0 ? "+" : "") + Number(row.price).toFixed(1);

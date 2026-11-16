@@ -14,6 +14,7 @@
     { symbol: "^IXIC", name: "那斯達克", key: "ixic" },
     { symbol: "AAPL", name: "蘋果", key: "aapl" },
     { symbol: "MARGIN", name: "融資", key: "margin", special: "margin" },
+    { symbol: "SHORTSALE", name: "融券", key: "shortsale", special: "shortsale" },
     { symbol: "FLOWSHORT", name: "空單", key: "flowshort", special: "flowshort" },
     { symbol: "FLOWBUY", name: "外資買超", key: "flowbuy", special: "flowbuy" },
     { symbol: "FLOWSELL", name: "外資賣超", key: "flowsell", special: "flowsell" },
@@ -546,23 +547,41 @@
   async function usBoardOne(item) {
     const M = global.SJMarket;
     try {
-      if (item.special === "margin") {
-        const series = M && M.marginSeries
-          ? await M.marginSeries(10).catch(function () { return []; })
-          : [];
+      if (item.special === "margin" || item.special === "shortsale") {
+        const series = M && M.marginShortMarketSeries
+          ? await M.marginShortMarketSeries(12).catch(function () { return []; })
+          : (M && M.marginSeries ? await M.marginSeries(12).catch(function () { return []; }) : []);
         const last = series && series.length ? series[series.length - 1] : null;
-        const bal = last && last.balance != null ? last.balance : null;
-        const chgPct = last && last.chg != null ? last.chg * 100 : null;
+        if (item.special === "shortsale") {
+          const lots = last && last.shortLots != null ? last.shortLots : null;
+          const delta = last && last.shortDelta != null ? last.shortDelta : null;
+          return {
+            symbol: item.symbol,
+            name: item.name,
+            key: item.key,
+            core: !!item.core,
+            price: lots,
+            pct: delta,
+            ok: lots != null && isFinite(lots),
+            flow: "shortsale",
+            flowUnit: "張",
+            meta: last || null
+          };
+        }
+        const yi = last && last.marginYi != null
+          ? last.marginYi
+          : (last && last.balance != null ? last.balance / 1e8 : null);
+        const deltaYi = last && last.marginDeltaYi != null ? last.marginDeltaYi : null;
         return {
           symbol: item.symbol,
           name: item.name,
           key: item.key,
           core: !!item.core,
-          price: bal != null ? bal / 1e8 : null,
-          pct: chgPct,
-          ok: bal != null && isFinite(bal),
+          price: yi,
+          pct: deltaYi,
+          ok: yi != null && isFinite(yi),
           flow: "margin",
-          flowUnit: "億股",
+          flowUnit: "億",
           meta: last || null
         };
       }
@@ -684,8 +703,10 @@
       const mapped = US_BOARD.map(function (item) {
         const hit = byKey[item.key];
         if (!hit) return null;
-        // 台指期雲端列失敗時不硬吃空值，交給下方 live 補抓
+        // 台指期／融資／融券雲端列失敗或舊單位錯值時，交給下方 live 補抓
         if (item.special === "txnight" && !(hit.ok && hit.price > 0)) return null;
+        if (item.special === "margin" && !(hit.ok && hit.price > 100)) return null;
+        if (item.special === "shortsale" && !(hit.ok && hit.price > 0)) return null;
         return {
           symbol: item.symbol,
           name: hit.name || item.name,

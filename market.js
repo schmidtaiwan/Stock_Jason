@@ -5557,28 +5557,87 @@
     return out;
   }
 
-  // 整體市場融資餘額
-  async function marginSeries(days) {
-    const key = "margin|total|" + days;
+  // 整體市場融資／融券（對齊 Yahoo 股市「融資融券」表）
+  // MarginPurchaseMoney.TodayBalance＝元 → 億；ShortSale.TodayBalance＝張
+  async function marginShortMarketSeries(days) {
+    const key = "margin|short|market|" + days;
     if (cache.has(key)) return cache.get(key);
-    const rows = await finMindRaw("TaiwanStockTotalMarginPurchaseShortSale", isoDaysAgo(Math.max(60, days + 40)));
+    const rows = await finMindRaw(
+      "TaiwanStockTotalMarginPurchaseShortSale",
+      isoDaysAgo(Math.max(60, days + 40))
+    );
     const byDay = {};
     rows.forEach(function (row) {
-      if (row.name !== "MarginPurchase") return;
+      const day = row.date;
+      if (!day) return;
+      if (!byDay[day]) {
+        byDay[day] = {
+          date: day,
+          marginMoney: null,
+          marginMoneyPrev: null,
+          marginLots: null,
+          shortLots: null,
+          shortLotsPrev: null
+        };
+      }
       const bal = num(row.TodayBalance);
-      if (!(bal > 0)) return;
-      byDay[row.date] = bal;
+      const yes = num(row.YesBalance);
+      if (row.name === "MarginPurchaseMoney" && bal > 0) {
+        byDay[day].marginMoney = bal;
+        byDay[day].marginMoneyPrev = yes > 0 ? yes : null;
+      } else if (row.name === "MarginPurchase" && bal > 0) {
+        byDay[day].marginLots = bal;
+      } else if (row.name === "ShortSale" && bal > 0) {
+        byDay[day].shortLots = bal;
+        byDay[day].shortLotsPrev = yes > 0 ? yes : null;
+      }
     });
     const daysSorted = Object.keys(byDay).sort();
     const out = [];
-    let prev = null;
     daysSorted.forEach(function (d) {
-      const bal = byDay[d];
-      out.push({ date: d, balance: bal, chg: prev > 0 ? bal / prev - 1 : null });
-      prev = bal;
+      const row = byDay[d];
+      if (!(row.marginMoney > 0) && !(row.shortLots > 0)) return;
+      const marginYi = row.marginMoney > 0 ? row.marginMoney / 1e8 : null;
+      const marginPrevYi = row.marginMoneyPrev > 0 ? row.marginMoneyPrev / 1e8 : null;
+      const marginDeltaYi = marginYi != null && marginPrevYi != null
+        ? marginYi - marginPrevYi
+        : null;
+      const shortDelta = row.shortLots != null && row.shortLotsPrev != null
+        ? row.shortLots - row.shortLotsPrev
+        : null;
+      const ratioPct = row.shortLots > 0 && row.marginLots > 0
+        ? (row.shortLots / row.marginLots) * 100
+        : null;
+      out.push({
+        date: d,
+        // 融資（億）
+        marginYi: marginYi,
+        marginDeltaYi: marginDeltaYi,
+        marginChg: marginYi != null && marginPrevYi > 0 ? marginYi / marginPrevYi - 1 : null,
+        marginLots: row.marginLots,
+        // 融券（張）
+        shortLots: row.shortLots,
+        shortDelta: shortDelta,
+        shortChg: row.shortLots != null && row.shortLotsPrev > 0
+          ? row.shortLots / row.shortLotsPrev - 1
+          : null,
+        // 券資比％（融券張／融資張）
+        ratioPct: ratioPct,
+        // 相容舊欄位（誤用張數當金額處改讀 marginYi）
+        balance: row.marginMoney,
+        chg: marginYi != null && marginPrevYi > 0 ? marginYi / marginPrevYi - 1 : null
+      });
     });
     cache.set(key, out);
     return out;
+  }
+
+  /** @deprecated 請改 marginShortMarketSeries；仍回傳融資金額序列（balance＝元）。 */
+  async function marginSeries(days) {
+    const rows = await marginShortMarketSeries(days);
+    return rows.map(function (r) {
+      return { date: r.date, balance: r.balance, chg: r.chg, marginYi: r.marginYi, marginDeltaYi: r.marginDeltaYi };
+    });
   }
 
   // 廣度代理：櫃買報酬指數相對加權（上漲擴散）
@@ -8052,7 +8111,7 @@
       yahooQuote("fx.USDTWD").catch(function () { return null; }),
       latestTwseT86(12).catch(function () { return { ok: false }; }),
       txForeignFutSeries(40).catch(function () { return []; }),
-      marginSeries(40).catch(function () { return []; }),
+      marginShortMarketSeries(40).catch(function () { return []; }),
       (async function () {
         const end = taipeiYmd();
         const candidates = twseWeekdayYmds(end, 8);
@@ -8089,9 +8148,8 @@
 
     const lastFut = futOi.length ? futOi[futOi.length - 1] : null;
     const lastMargin = margins.length ? margins[margins.length - 1] : null;
-    const prevMargin = margins.length > 1 ? margins[margins.length - 2] : null;
-    const marginDeltaAmt = lastMargin && prevMargin
-      ? lastMargin.balance - prevMargin.balance
+    const marginDeltaAmt = lastMargin && lastMargin.marginDeltaYi != null
+      ? lastMargin.marginDeltaYi * 1e8
       : null;
 
     const amount = mi.amount;
@@ -8193,10 +8251,17 @@
         bias: chipBias,
         note: chipNote,
         marginBalance: lastMargin && lastMargin.balance,
+        marginYi: lastMargin && lastMargin.marginYi,
         marginChg: lastMargin && lastMargin.chg,
         marginDelta: marginDeltaAmt,
+        marginDeltaYi: lastMargin && lastMargin.marginDeltaYi,
         marginBias: marginBias,
         marginNote: marginNote,
+        shortLots: lastMargin && lastMargin.shortLots,
+        shortDelta: lastMargin && lastMargin.shortDelta,
+        shortChg: lastMargin && lastMargin.shortChg,
+        ratioPct: lastMargin && lastMargin.ratioPct,
+        marginShortTable: margins.slice(-20).reverse(),
         tip: "雙多（現貨買＋期貨淨多）最穩；現貨買但淨空單擴大＝避險警訊。"
       },
       note: "規則試算，非投資建議。夜盤／法人以 FinMind／證交所為主；盤中櫃買若 Yahoo 代號異動可能暫缺。"
@@ -9065,6 +9130,7 @@
     flowBars: flowBars,
     txForeignFutSeries: txForeignFutSeries,
     marginSeries: marginSeries,
+    marginShortMarketSeries: marginShortMarketSeries,
     stockDetail: stockDetail,
     stockDisclose: stockDisclose,
     stockNews: stockNews,

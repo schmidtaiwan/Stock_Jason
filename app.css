@@ -3026,6 +3026,38 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
   .pulse-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+.margin-short-wrap {
+  margin-top: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.margin-short-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.margin-short-table th,
+.margin-short-table td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+.margin-short-table th {
+  background: #10161e;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+}
+.margin-short-table td:first-child,
+.margin-short-table th:first-child {
+  text-align: left;
+}
+.margin-short-table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .mops-spec {
   margin: 0 0 10px;
   padding: 10px;
