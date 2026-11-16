@@ -1,5 +1,5 @@
 (function () {
-  const PAGE_BUILD = 320;
+  const PAGE_BUILD = 321;
   const PAGE_DATE = "2026-11-16";
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -6722,6 +6722,123 @@
     });
   }
 
+  /** 目前群組完整資料 → 可貼到 Google／Gemini 詢問 */
+  function buildWatchGroupCopyText() {
+    const g = activeWatchGroup();
+    const groupName = isWatchAllGroups()
+      ? "全部群組"
+      : ((g && g.name) || "預設");
+    const items = book.watch || [];
+    const nowTw = new Intl.DateTimeFormat("zh-Hant", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date());
+    const twiiEl = $("twii-price");
+    const twiiChg = $("twii-chg");
+    const twiiLine = [
+      twiiEl && twiiEl.textContent ? twiiEl.textContent.trim() : "",
+      twiiChg && twiiChg.textContent ? twiiChg.textContent.trim() : ""
+    ].filter(Boolean).join(" ");
+    const chipBy = (watchLastChips && watchLastChips.byCode) || {};
+    const chipDate = watchLastChips && watchLastChips.date
+      ? String(watchLastChips.date)
+      : "";
+    const lines = [];
+    lines.push("請依下列台股自選群組資料，幫我整理盤勢重點、相對強弱與可留意風險（僅供討論，非投資建議）：");
+    lines.push("");
+    lines.push("群組：" + groupName + "（共 " + items.length + " 檔）");
+    lines.push("時間：" + nowTw + "（台北）");
+    if (twiiLine) lines.push("加權：" + twiiLine);
+    if (chipDate) {
+      const d = chipDate.length === 8
+        ? chipDate.slice(0, 4) + "/" + chipDate.slice(4, 6) + "/" + chipDate.slice(6, 8)
+        : chipDate;
+      lines.push("法人資料日：" + d);
+    }
+    lines.push("");
+    if (!items.length) {
+      lines.push("（此群組目前沒有股票）");
+      return lines.join("\n");
+    }
+    items.forEach(function (item, idx) {
+      const code = watchCodeOf(item) || String(item.code || "").toUpperCase();
+      const name = (item.name || "").trim() || code || ("#" + (idx + 1));
+      const q = (code && watchQuoteCache[code]) || watchLastQuotes[idx] || null;
+      const lv = (code && watchLevelsCache[code]) || { breakout: null, support: null };
+      const tape = code && watchTapeCache[code] && watchTapeCache[code].hint
+        ? watchTapeCache[code].hint
+        : null;
+      const chip = code && chipBy[code] ? chipBy[code] : null;
+      const px = q && q.price != null && isFinite(q.price) ? fmtPx(q.price) : "—";
+      let chg = "—";
+      if (q && q.change != null && isFinite(q.change)) chg = signedPx(q.change);
+      else if (q && q.pct != null && isFinite(q.pct) && q.pct !== -100 && q.price > 0) {
+        chg = signedPx(q.price - q.price / (1 + q.pct / 100));
+      }
+      const pct = q && q.pct != null && isFinite(q.pct)
+        ? ((q.pct > 0 ? "+" : "") + Number(q.pct).toFixed(2) + "%")
+        : "—";
+      const tapeText = tape
+        ? ((tape.text || "—") + (tape.title ? "（" + tape.title + "）" : ""))
+        : "—";
+      function netTxt(n) {
+        if (n == null || !isFinite(Number(n))) return "—";
+        const v = Math.round(Number(n) / 1000);
+        return (v > 0 ? "+" : "") + v + "張";
+      }
+      let lamp = "—";
+      if (chip) {
+        const net = chip.instNet != null
+          ? chip.instNet
+          : ((chip.foreignNet || 0) + (chip.trustNet || 0) + (chip.dealerNet || 0));
+        if (C && C.chipTone) {
+          const t = C.chipTone(net, Math.max(Math.abs(net) * 8, 1));
+          if (t && t.label) lamp = t.label;
+        }
+      }
+      const brk = lv && lv.breakout != null && isFinite(lv.breakout) ? fmtPx(lv.breakout) : "—";
+      const sup = lv && lv.support != null && isFinite(lv.support) ? fmtPx(lv.support) : "—";
+      lines.push((idx + 1) + ". " + name + (code ? " " + code : ""));
+      lines.push("   成交 " + px + "｜漲跌 " + chg + "｜幅度 " + pct);
+      lines.push("   足跡：" + tapeText);
+      lines.push("   法人動向：" + lamp +
+        "｜外資 " + netTxt(chip && chip.foreignNet) +
+        "｜投信 " + netTxt(chip && chip.trustNet) +
+        "｜自營 " + netTxt(chip && chip.dealerNet));
+      lines.push("   突破 " + brk + "／支撐 " + sup);
+      if (item.cost != null && item.cost !== "" && isFinite(Number(item.cost))) {
+        lines.push("   成本 " + fmtPx(Number(item.cost)) +
+          (item.shares != null && item.shares !== "" ? ("｜股數 " + item.shares) : ""));
+      }
+      lines.push("");
+    });
+    lines.push("請用條列回答：1) 群組整體偏多／偏空／震盪 2) 相對強弱前幾名與理由 3) 需留意的風險或關鍵價位。");
+    return lines.join("\n").trim() + "\n";
+  }
+
+  function copyWatchGroupForAsk() {
+    const btn = $("watch-copy-group");
+    const text = buildWatchGroupCopyText();
+    return copyTextToClipboard(text).then(function () {
+      flashStatus("已複製群組資料，可貼到 Google 詢問");
+      if (btn) {
+        btn.classList.add("is-copied");
+        btn.textContent = "已複製";
+        setTimeout(function () {
+          btn.classList.remove("is-copied");
+          btn.textContent = "複製";
+        }, 1600);
+      }
+    }).catch(function () {
+      flashStatus("複製失敗，請再試一次");
+    });
+  }
+
   function tapeSampleTsv(ticks, meta) {
     meta = meta || {};
     const list = Array.isArray(ticks) ? ticks : [];
@@ -9018,6 +9135,9 @@
     else if (t.id === "watch-open-add") setWatchCompose(true);
     else if (t.id === "watch-compose-back") setWatchCompose(false);
     else if (t.id === "watch-add") addFromForm();
+    else if (t.id === "watch-copy-group") {
+      copyWatchGroupForAsk();
+    }
     else if (t.id === "watch-view-menu-btn") {
       const panel = $("watch-view-menu-panel");
       setWatchViewMenuOpen(!!(panel && panel.hidden));

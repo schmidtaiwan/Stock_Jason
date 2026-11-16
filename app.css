@@ -1793,6 +1793,7 @@ textarea { min-height: 120px; resize: vertical; }
   display: none !important;
 }
 .watch-toolbar #watch-view-menu-btn,
+.watch-toolbar #watch-copy-group,
 .watch-toolbar #watch-group-edit,
 .watch-toolbar #watch-open-add {
   flex: 0 0 auto;
@@ -1808,6 +1809,18 @@ textarea { min-height: 120px; resize: vertical; }
   padding-left: 18px;
   padding-right: 18px;
   min-width: 4.5em;
+}
+.watch-toolbar #watch-copy-group {
+  padding-left: 10px;
+  padding-right: 10px;
+  min-width: 0;
+  color: #c5d0da;
+  border: 1px solid var(--line);
+}
+.watch-toolbar #watch-copy-group:active,
+.watch-toolbar #watch-copy-group.is-copied {
+  color: #ffeb3b;
+  border-color: #ffeb3b;
 }
 .watch-view-menu {
   position: relative;
