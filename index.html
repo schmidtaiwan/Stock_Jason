@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=322&i=322">
+  <link rel="stylesheet" href="app.css?v=323&i=323">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 322;
+    var PAGE = 323;
     function go(remote) {
       try {
         var u = new URL(location.href);
@@ -97,28 +97,31 @@
             <span id="twii-src" class="twii-src">證交所</span>
           </div>
         </div>
-        <div id="conn-lamps" class="conn-lamps" role="group" aria-label="連線燈號">
-          <button type="button" class="conn-lamp" data-conn="fubon" aria-label="富邦連線狀態">
-            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
-            <span class="conn-name">富邦</span>
-          </button>
-          <button type="button" class="conn-lamp" data-conn="mis" aria-label="MIS 連線狀態">
-            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
-            <span class="conn-name">MIS</span>
-          </button>
-          <button type="button" class="conn-lamp" data-conn="kgi" aria-label="凱基連線狀態">
-            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
-            <span class="conn-name">凱基</span>
-          </button>
-          <button type="button" class="conn-lamp" data-conn="bridge" aria-label="家裡連線狀態">
-            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
-            <span class="conn-name">家裡</span>
-          </button>
-          <button type="button" class="conn-lamp" data-conn="drive" aria-label="谷歌連線狀態">
-            <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
-            <span class="conn-name">谷歌</span>
-          </button>
-        </div>
+        <details class="conn-disclosure">
+          <summary class="conn-toggle">連線</summary>
+          <div id="conn-lamps" class="conn-lamps" role="group" aria-label="連線燈號">
+            <button type="button" class="conn-lamp" data-conn="fubon" aria-label="富邦連線狀態">
+              <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+              <span class="conn-name">富邦</span>
+            </button>
+            <button type="button" class="conn-lamp" data-conn="mis" aria-label="MIS 連線狀態">
+              <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+              <span class="conn-name">MIS</span>
+            </button>
+            <button type="button" class="conn-lamp" data-conn="kgi" aria-label="凱基連線狀態">
+              <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+              <span class="conn-name">凱基</span>
+            </button>
+            <button type="button" class="conn-lamp" data-conn="bridge" aria-label="家裡連線狀態">
+              <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+              <span class="conn-name">家裡</span>
+            </button>
+            <button type="button" class="conn-lamp" data-conn="drive" aria-label="谷歌連線狀態">
+              <span class="conn-dot" data-state="unknown" aria-hidden="true"></span>
+              <span class="conn-name">谷歌</span>
+            </button>
+          </div>
+        </details>
         <div class="tools">
           <button id="login" type="button">登入</button>
           <button id="account-btn" class="account-btn" type="button" hidden aria-label="Gmail 帳號（點擊登出）">
@@ -684,7 +687,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
-    var PAGE = 322;
+    var PAGE = 323;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");

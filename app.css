@@ -199,7 +199,8 @@ a.gate-ext[hidden] { display: none !important; }
   padding: max(12px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 8px max(14px, env(safe-area-inset-left, 0px));
   border-bottom: 1px solid var(--line);
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 .brand-row, .row, .tools { display: flex; align-items: center; gap: 8px; }
 .brand-row {
@@ -208,18 +209,42 @@ a.gate-ext[hidden] { display: none !important; }
   max-width: 100%;
   gap: 4px;
 }
-.conn-lamps {
+.conn-disclosure {
+  position: relative;
   flex: 0 0 auto;
+}
+.conn-toggle {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.conn-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.conn-disclosure:not([open]) > .conn-lamps {
+  display: none;
+}
+.conn-lamps {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  right: 0;
   display: grid;
   grid-template-columns: max-content max-content;
   grid-template-rows: auto auto auto;
   align-items: center;
   justify-items: start;
-  column-gap: 4px;
-  row-gap: 0;
-  min-width: 0;
-  max-width: none;
-  margin: 0;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #182028;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 /* 左欄：富邦／凱基／家裡；右欄：MIS／（空）／谷歌 */
 .conn-lamp[data-conn="fubon"] { grid-column: 1; grid-row: 1; }
@@ -233,7 +258,7 @@ a.gate-ext[hidden] { display: none !important; }
   align-items: center;
   gap: 3px;
   margin: 0;
-  padding: 0 2px;
+  padding: 5px 3px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -241,6 +266,7 @@ a.gate-ext[hidden] { display: none !important; }
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 .conn-lamp:hover,

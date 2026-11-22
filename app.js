@@ -1,7 +1,10 @@
 (function () {
-  const PAGE_BUILD = 322;
+  const PAGE_BUILD = 323;
   const PAGE_DATE = "2026-11-22";
-  const PAGE_UPDATE_NOTES = { 322: "自選股新增融資維持率（估）與融資餘額。" };
+  const PAGE_UPDATE_NOTES = {
+    322: "自選股新增融資維持率（估）與融資餘額。",
+    323: "點頁首「連線」即可展開五個連線燈號。"
+  };
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
