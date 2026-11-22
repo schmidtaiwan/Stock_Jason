@@ -16,19 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=321&i=321">
+  <link rel="stylesheet" href="app.css?v=322&i=322">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 321;
-    var urls = [
-      // 優先同源／raw；jsDelivr @main 常慢半拍，放最後且僅作參考
-      "build.json?_=" + Date.now() + "&r=" + Math.random(),
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json?_=" + Date.now(),
-      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json?_=" + Date.now(),
-      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json?_=" + Date.now()
-    ];
+    var PAGE = 322;
     function go(remote) {
       try {
         var u = new URL(location.href);
@@ -51,26 +44,13 @@
         location.reload();
       }
     }
-    // 取所有來源的最大 build（CDN 舊檔不可擋新版）
-    var left = urls.length;
-    var best = 0;
-    function done() {
-      if (!(best > PAGE)) return;
-      go(best);
-    }
-    urls.forEach(function (url) {
-      fetch(url, { cache: "no-store", mode: "cors" })
-        .then(function (r) { return r && r.ok ? r.json() : null; })
-        .then(function (j) {
-          var remote = j && Number(j.build);
-          if (remote > best) best = remote;
-        })
-        .catch(function () { /* ignore */ })
-        .then(function () {
-          left -= 1;
-          if (left <= 0) done();
-        });
-    });
+    fetch("build.json?_=" + Date.now() + "&r=" + Math.random(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var remote = Number(j && j.build);
+        if (Number.isSafeInteger(remote) && remote > PAGE) go(remote);
+      })
+      .catch(function () { /* offline */ });
   })();
   </script>
 </head>
@@ -704,7 +684,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
-    var PAGE = 321;
+    var PAGE = 322;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");

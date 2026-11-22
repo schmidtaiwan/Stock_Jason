@@ -2755,6 +2755,15 @@ html.sj-privacy.sj-privacy-same .account-avatar-fallback {
   min-width: 2.5em;
   text-align: center !important;
 }
+.watch-table th.watch-col-margin {
+  width: 4.5em;
+  white-space: normal;
+}
+.watch-table td.watch-col-margin {
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .watch-lv-brk.up { color: #d49292; }
 .watch-lv-sup.down { color: #6eae8e; }
 .watch-lv {

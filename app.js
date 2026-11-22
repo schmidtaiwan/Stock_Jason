@@ -1,6 +1,7 @@
 (function () {
-  const PAGE_BUILD = 321;
-  const PAGE_DATE = "2026-11-16";
+  const PAGE_BUILD = 322;
+  const PAGE_DATE = "2026-11-22";
+  const PAGE_UPDATE_NOTES = { 322: "自選股新增融資維持率（估）與融資餘額。" };
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
   const JASON_EMAIL = "jason660803@gmail.com";
@@ -602,7 +603,11 @@
     if ($("pageVer")) $("pageVer").textContent = text;
     checkFreshBuild();
     if (!showVer._poll) {
+      showBuildReleaseNotice();
       showVer._poll = setInterval(checkFreshBuild, 15000);
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) checkFreshBuild();
+      });
     }
   }
 
@@ -1212,6 +1217,23 @@
     Promise.all([clearCaches, unreg]).then(go, go);
   }
 
+  function showBuildReleaseNotice() {
+    const bar = $("build-update-bar");
+    const note = PAGE_UPDATE_NOTES[PAGE_BUILD];
+    if (!bar || !note) return;
+    const key = "sj-build-notice-dismissed-" + PAGE_BUILD;
+    try {
+      if (localStorage.getItem(key)) return;
+    } catch (err) { /* ignore */ }
+    bar.innerHTML = '<span role="status"></span><button type="button">知道了</button>';
+    bar.querySelector("span").textContent = "已更新至 " + PAGE_BUILD + " 版 · " + note;
+    bar.querySelector("button").onclick = function () {
+      bar.hidden = true;
+      try { localStorage.setItem(key, "1"); } catch (err) { /* ignore */ }
+    };
+    bar.hidden = false;
+  }
+
   function showUpdateBanner(remote) {
     let bar = $("build-update-bar");
     if (!bar) {
@@ -1222,7 +1244,7 @@
     }
     bar.hidden = false;
     bar.innerHTML =
-      "<span>發現新版 " + remote + "（目前 " + PAGE_BUILD + "）</span>" +
+      '<span role="status">發現新版 ' + remote + "（目前 " + PAGE_BUILD + "）</span>" +
       '<button type="button" id="build-update-btn">立即更新</button>';
     const btn = $("build-update-btn");
     if (btn) {
@@ -1256,53 +1278,21 @@
 
   function fetchBuildJson() {
     const bust = "?_=" + Date.now() + "&r=" + Math.random();
-    // jsDelivr @main 常落後，不納入「最大版次」以免誤導；仍可當備援讀不到時用
-    const primary = [
-      "build.json" + bust,
-      "https://schmidtaiwan.github.io/Stock_Jason/build.json" + bust,
-      "https://raw.githubusercontent.com/schmidtaiwan/Stock_Jason/main/build.json" + bust
-    ];
-    const fallback = [
-      "https://cdn.jsdelivr.net/gh/schmidtaiwan/Stock_Jason@main/build.json" + bust
-    ];
-    function readOne(url) {
-      return fetch(url, { cache: "no-store", mode: "cors", credentials: "omit" })
-        .then(function (res) { return res && res.ok ? res.json() : null; })
-        .then(function (j) {
-          const remote = j && Number(j.build);
-          return remote > 0 ? remote : 0;
-        })
-        .catch(function () { return 0; });
-    }
-    return Promise.all(primary.map(readOne)).then(function (nums) {
-      const best = nums.reduce(function (a, b) { return a > b ? a : b; }, 0);
-      if (best > 0) return best;
-      return Promise.all(fallback.map(readOne)).then(function (fb) {
-        return fb.reduce(function (a, b) { return a > b ? a : b; }, 0) || null;
+    return fetch("build.json" + bust, { cache: "no-store", credentials: "omit" })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (json) {
+        const build = Number(json && json.build);
+        return Number.isSafeInteger(build) && build > 0 ? build : 0;
       });
-    });
   }
 
-  // 手機常快取舊檔：多來源讀 build.json → 頂部紅條＋可點更新（不依賴 alert）
+  let notifiedBuild = PAGE_BUILD;
+
   function checkFreshBuild() {
     fetchBuildJson().then(function (remote) {
-      if (!(remote > PAGE_BUILD)) return;
+      if (!(remote > notifiedBuild)) return;
+      notifiedBuild = remote;
       paintStaleBuild(remote);
-      const alertKey = "sj-build-alert";
-      const token = String(remote) + "@" + PAGE_BUILD;
-      let didAlert = false;
-      try {
-        didAlert = sessionStorage.getItem(alertKey) === token;
-        if (!didAlert) sessionStorage.setItem(alertKey, token);
-      } catch (err) { /* ignore */ }
-      // 只自動重整一次；若 URL 已是目標 v 仍載入舊腳本，改等使用者點「立即更新」
-      if (!didAlert) {
-        try {
-          const curV = String(new URL(location.href).searchParams.get("v") || "");
-          if (curV === String(remote)) return;
-        } catch (err) { /* ignore */ }
-        hardReloadToBuild(remote);
-      }
     }).catch(function () { /* offline */ });
   }
 
@@ -2165,6 +2155,14 @@
         "盤中 08:30–13:30 每 15 分鐘更新一次判斷（對齊 :00／:15／:30／:45）。",
         "進入個股可看完整推演、10:00 時點快照與逐筆樣本。僅供參考，非投資建議。"
       ]
+    },
+    marginRate: {
+      title: "融資維持率（估）",
+      lines: ["FinMind 依盤後收盤價、估算融資成本與融資成數計算。", "需具 FinMind 贊助會員權限。未取得當日估算時顯示 —。"]
+    },
+    marginBalance: {
+      title: "融資餘額",
+      lines: ["最新已公布的個股融資餘額，單位為張。"]
     },
     pct: {
       title: "幅度",
@@ -5987,12 +5985,43 @@
     return any;
   }
 
+  const watchMarginLoads = new WeakSet();
+
+  async function refreshWatchMargins(box) {
+    const table = box && box.querySelector(".watch-table");
+    if (!table || watchMarginLoads.has(table)) return;
+    watchMarginLoads.add(table);
+    const items = book.watch.slice();
+    try {
+      for (let start = 0; start < items.length && table.isConnected; start += 4) {
+        await Promise.all(items.slice(start, start + 4).map(async function (item, offset) {
+          const code = watchCodeOf(item);
+          if (!/^\d{4,6}[A-Z]?$/.test(code)) return;
+          const data = await C.watchMargin(code);
+          if (!table.isConnected) return;
+          const row = table.rows[start + offset + 1];
+          const rate = row.querySelector("[data-watch-margin-rate]");
+          const balance = row.querySelector("[data-watch-margin-balance]");
+          rate.textContent = data && data.rate != null ? data.rate.toFixed(1) + "%" : "—";
+          rate.title = data && data.rate != null ? data.date + " · FinMind 估算" : "未取得融資維持率估算";
+          balance.textContent = data && data.balance != null ? data.balance.toLocaleString("zh-Hant") + "張" : "—";
+          balance.title = data && data.balance != null ? data.date + " · 融資餘額" : "未取得融資餘額";
+        }));
+      }
+    } finally {
+      watchMarginLoads.delete(table);
+    }
+  }
+
   /** 背景一次抓齊所有群組個股；切群組只吃快取。大量新股時分段抓、邊抓邊畫。 */
   async function refreshWatchUniverse(opts) {
     opts = opts || {};
     const universe = allWatchUniverseItems();
     if (!universe.length) return null;
     if (watchUniverseBusy && !opts.force) return null;
+    if (opts.paint !== false && state.view === "watch") {
+      refreshWatchMargins($("watch-list")).catch(function () { /* ignore */ });
+    }
     watchUniverseBusy = true;
     const gen = ++watchUniverseGen;
     const CHUNK = 12;
@@ -6285,6 +6314,8 @@
       th("watch-col-chg", "chg", "漲跌") +
       th("watch-col-tape", "tape", "足跡") +
       th("watch-col-pct", "pct", "幅度") +
+      th("watch-col-margin", "marginRate", "融資維持率（估）") +
+      th("watch-col-margin", "marginBalance", "融資餘額") +
       th("watch-col-pnl", "pnl", "損益") +
       th("watch-col-lamp", "lamp", "動向") +
       th("", "foreign", "外資") +
@@ -6329,6 +6360,8 @@
           '<td class="watch-num watch-col-tape"><span class="watch-tape-chip" data-watch-tape="' +
           idx + '" title="分時足跡判讀">…</span></td>' +
           '<td class="watch-num watch-col-pct" data-watch-pct="' + idx + '">—</td>' +
+          '<td class="watch-num watch-col-margin" data-watch-margin-rate>—</td>' +
+          '<td class="watch-num watch-col-margin" data-watch-margin-balance>—</td>' +
           '<td class="watch-num watch-col-pnl" data-watch-pnl="' + idx + '">—</td>' +
           '<td class="watch-num watch-col-lamp"><span class="watch-lamp-chip" data-watch-lamp="' +
           idx + '">—</span></td>' +
@@ -6388,6 +6421,7 @@
     else {
       renderWatchFull(box);
       fitWatchNameFonts(box);
+      refreshWatchMargins(box).catch(function () { /* ignore */ });
     }
     // 先套用全宇宙快取，切群組可瞬間顯示
     paintCurrentWatchFromCache(box);

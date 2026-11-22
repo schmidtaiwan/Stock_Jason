@@ -105,14 +105,14 @@
       String(d.getDate()).padStart(2, "0");
   }
 
-  async function finMind(dataset, stockId, start, end) {
+  async function finMind(dataset, stockId, start, end, signal) {
     let url = "https://api.finmindtrade.com/api/v4/data?dataset=" + encodeURIComponent(dataset) +
       "&start_date=" + encodeURIComponent(start);
     if (stockId) url += "&data_id=" + encodeURIComponent(stockId);
     if (end) url += "&end_date=" + encodeURIComponent(end);
     const tok = getToken();
     if (tok) url += "&token=" + encodeURIComponent(tok);
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: signal });
     if (!res.ok) throw new Error(dataset + " 讀取失敗");
     const json = await res.json();
     if (json && json.status === 400) {
@@ -121,6 +121,45 @@
       throw err;
     }
     return Array.isArray(json.data) ? json.data : [];
+  }
+
+  const watchMarginCache = new Map();
+
+  function watchMargin(code) {
+    const token = getToken();
+    const cached = watchMarginCache.get(code);
+    if (cached && cached.token === token && Date.now() < cached.expires) return cached.result;
+
+    const entry = { token: token, expires: Infinity };
+    entry.result = (async function () {
+      const controller = new AbortController();
+      const timer = setTimeout(function () { controller.abort(); }, 10000);
+      try {
+        const start = isoDaysAgo(14);
+        const end = isoDaysAgo(0);
+        const rows = await finMind("TaiwanStockMarginPurchaseShortSale", code, start, end, controller.signal);
+        const latest = rows.reduce(function (last, row) {
+          return row.date && (!last || row.date > last.date) ? row : last;
+        }, null);
+        if (!latest) return null;
+        const balance = num(latest.MarginPurchaseTodayBalance);
+        let rate = null;
+        if (balance > 0 && token) {
+          const estimates = await finMind("TaiwanStockMarginMaintenance", code, latest.date, latest.date, controller.signal)
+            .catch(function () { return []; });
+          const estimate = estimates.find(function (row) { return row.date === latest.date; });
+          rate = estimate ? num(estimate.margin_maintenance) : null;
+        }
+        return { date: latest.date, balance: balance, rate: rate };
+      } catch (err) {
+        return null;
+      } finally {
+        clearTimeout(timer);
+        entry.expires = Date.now() + 15 * 60 * 1000;
+      }
+    })();
+    watchMarginCache.set(code, entry);
+    return entry.result;
   }
 
   function chipTone(net, vol) {
@@ -988,6 +1027,7 @@
   }
 
   global.SJChips = {
+    watchMargin: watchMargin,
     getToken: getToken,
     setToken: setToken,
     analyzeChip: analyzeChip,
