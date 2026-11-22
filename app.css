@@ -3368,6 +3368,9 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 .watch-table.directory-table td:nth-child(n+2) {
   text-align: left;
 }
+.watch-table.directory-table td:nth-child(2) {
+  font-size: inherit;
+}
 .watch-table.directory-table td:nth-child(2),
 .watch-table.directory-table td:last-child {
   white-space: normal;
