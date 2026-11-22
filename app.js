@@ -1,9 +1,10 @@
 (function () {
-  const PAGE_BUILD = 323;
+  const PAGE_BUILD = 324;
   const PAGE_DATE = "2026-11-22";
   const PAGE_UPDATE_NOTES = {
     322: "自選股新增融資維持率（估）與融資餘額。",
-    323: "點頁首「連線」即可展開五個連線燈號。"
+    323: "點頁首「連線」即可展開五個連線燈號。",
+    324: "「分析」新增台股代號查詢，可依產業、ETF 類型及 AI 概念篩選。"
   };
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -61,6 +62,7 @@
   const C = window.SJChips;
 
   const TOOL_MENU = [
+    { id: "directory", title: "台股代號查詢", desc: "查詢上市股票、上市與上櫃 ETF，依產業與概念篩選" },
     { id: "mops", title: "公開資訊觀測", desc: "重訊／營收／財報／法說／內部人／除權息；FinMind＋MOPS" },
     { id: "chipx", title: "籌碼健檢與分點", desc: "集中度／主力成本／紅綠燈；有 FinMind token 可看分點" },
     { id: "screen", title: "籌碼選股", desc: "外資連買、投信首買、主力急買，可交集站上月線" },
@@ -2423,8 +2425,101 @@
     });
   }
 
+  const electronicIndustries = new Set([
+    "半導體業", "電腦及週邊設備業", "光電業", "通信網路業",
+    "電子零組件業", "電子通路業", "資訊服務業", "其他電子業"
+  ]);
+  const directoryPageSize = 40;
+  let stockDirectory = null;
+  let directoryPage = 0;
+  let directoryLoading = false;
+
+  function directorySearchText(value) {
+    return value.normalize("NFKC").toLowerCase().replace(/臺/g, "台").replace(/\s+/g, "");
+  }
+
+  function paintStockDirectory() {
+    const query = directorySearchText($("directory-query").value);
+    const filter = $("directory-filter").value;
+    const rows = stockDirectory.filter(function (row) {
+      return (!filter || row.tags.includes(filter)) &&
+        (!query || row.searchFields.some(function (field) { return field.includes(query); }));
+    });
+    const start = directoryPage * directoryPageSize;
+    const visible = rows.slice(start, start + directoryPageSize);
+    $("directory-status").textContent = rows.length
+      ? "共 " + rows.length.toLocaleString("zh-TW") + " 筆，顯示第 " + (start + 1) + "–" + (start + visible.length) + " 筆"
+      : "找不到符合條件的商品";
+    $("directory-table").hidden = !visible.length;
+    $("directory-rows").innerHTML = visible.map(function (row) {
+      return "<tr><td>" + esc(row.code) + "</td><td>" + esc(row.name) + "</td><td>" +
+        esc(row.market) + "</td><td>" + esc(row.tags.filter(function (tag) {
+          return tag !== "上市股票" && tag !== "電子" && tag !== "ETF";
+        }).join("、")) + "</td></tr>";
+    }).join("");
+    $("directory-pages").hidden = rows.length <= directoryPageSize;
+    $("directory-prev").disabled = directoryPage === 0;
+    $("directory-next").disabled = start + directoryPageSize >= rows.length;
+  }
+
+  async function loadStockDirectory() {
+    if (stockDirectory || directoryLoading) return;
+    directoryLoading = true;
+    $("directory-status").textContent = "讀取台股清單…";
+    $("directory-retry").hidden = true;
+    try {
+      const response = await fetch("data/stock-directory.json?v=" + PAGE_BUILD);
+      if (!response.ok) throw new Error("Directory unavailable");
+      const data = await response.json();
+      const ai = new Set(data.ai);
+      const categories = new Set();
+      const rows = data.rows.map(function ([code, name, market, type, category]) {
+        const tags = type === "ETF" ? ["ETF", category] : ["上市股票", category];
+        if (type !== "ETF") {
+          categories.add(category);
+          if (electronicIndustries.has(category)) tags.push("電子");
+          if (type !== "股票") tags.push(type);
+          if (ai.has(code)) tags.push("AI 概念股");
+        }
+        return { code, name, market, tags, searchFields: [code, name, market].concat(tags).map(directorySearchText) };
+      });
+      const industryGroup = $("directory-industries");
+      Array.from(categories).sort(function (a, b) { return a.localeCompare(b, "zh-TW"); }).forEach(function (category) {
+        if (category !== "半導體業") industryGroup.appendChild(new Option(category, category));
+      });
+      $("directory-source").textContent = "證券清單：上市 " + data.listedDate + "、上櫃 ETF " +
+        data.otcDate + "。AI 概念股參考台新 00962 持股（" + data.aiDate + "），僅列其中的上市股票。";
+      stockDirectory = rows;
+      paintStockDirectory();
+    } catch (err) {
+      $("directory-status").textContent = "台股清單讀取失敗。";
+      $("directory-retry").hidden = false;
+    } finally {
+      directoryLoading = false;
+    }
+  }
+
+  function bindStockDirectory() {
+    function resetPage() {
+      directoryPage = 0;
+      if (stockDirectory) paintStockDirectory();
+    }
+    $("directory-query").addEventListener("input", resetPage);
+    $("directory-filter").addEventListener("change", resetPage);
+    $("directory-prev").addEventListener("click", function () {
+      directoryPage -= 1;
+      paintStockDirectory();
+    });
+    $("directory-next").addEventListener("click", function () {
+      directoryPage += 1;
+      paintStockDirectory();
+    });
+    $("directory-retry").addEventListener("click", loadStockDirectory);
+  }
+
   function openTool(id) {
     const titles = {
+      directory: "台股代號查詢",
       mops: "公開資訊觀測",
       chipx: "籌碼健檢與分點",
       screen: "籌碼選股",
@@ -2456,6 +2551,13 @@
       if (panel) panel.hidden = key !== id;
     });
     setView("tool");
+    if (id === "directory") {
+      if (!openTool.directoryBound) {
+        bindStockDirectory();
+        openTool.directoryBound = true;
+      }
+      loadStockDirectory();
+    }
     if (id === "risk") renderHoldings();
     if (id === "journal") renderJournal();
     if (id === "predict") syncPredictStockBox();

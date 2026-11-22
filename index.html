@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=323&i=323">
+  <link rel="stylesheet" href="app.css?v=324&i=324">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 323;
+    var PAGE = 324;
     function go(remote) {
       try {
         var u = new URL(location.href);
@@ -367,6 +367,42 @@
           <span id="tool-note" class="tool-note" hidden></span>
         </div>
 
+        <div id="panel-directory" class="panel" hidden>
+          <div class="grid2">
+            <div>
+              <label for="directory-query">名稱或代號</label>
+              <input id="directory-query" type="search" placeholder="例如 2330、台積電、00980A" autocomplete="off">
+            </div>
+            <div>
+              <label for="directory-filter">分類</label>
+              <select id="directory-filter">
+                <option value="">全部</option>
+                <option>上市股票</option>
+                <option>ETF</option>
+                <option>電子</option>
+                <option value="半導體業">半導體</option>
+                <option>主動 ETF</option>
+                <option>被動 ETF</option>
+                <option>AI 概念股</option>
+                <optgroup id="directory-industries" label="其他產業"></optgroup>
+              </select>
+            </div>
+          </div>
+          <p id="directory-status" class="status" role="status"></p>
+          <button id="directory-retry" class="secondary" type="button" hidden>重新讀取</button>
+          <div id="directory-table" class="watch-table-wrap mops-table-wrap" hidden>
+            <table class="watch-table mops-table directory-table" aria-label="台股代號查詢結果">
+              <thead><tr><th scope="col">代號</th><th scope="col">名稱</th><th scope="col">市場</th><th scope="col">分類</th></tr></thead>
+              <tbody id="directory-rows"></tbody>
+            </table>
+          </div>
+          <div id="directory-pages" class="row directory-pages" hidden>
+            <button id="directory-prev" class="secondary" type="button">上一頁</button>
+            <button id="directory-next" class="secondary" type="button">下一頁</button>
+          </div>
+          <p id="directory-source" class="fine"></p>
+        </div>
+
         <div id="panel-ideas" class="panel" hidden>
           <p class="fine">掃固定池裡的台股（約 20 檔藍籌，不是全市場），每檔拉日 K，用均線／RSI／MACD／突破／回檔打分；分數夠且是突破或回檔才標「可進場」，並依資金與風險％算股數。做多、收盤價試算，不含手續費。</p>
           <p class="fine">會上網：每次按掃描拉 K 線（同頁同檔有記憶體快取可不重抓），再補本益比等報價。</p>
@@ -687,7 +723,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
-    var PAGE = 323;
+    var PAGE = 324;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");
