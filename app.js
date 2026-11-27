@@ -1,12 +1,13 @@
 (function () {
-  const PAGE_BUILD = 326;
+  const PAGE_BUILD = 327;
   const PAGE_DATE = "2026-11-27";
   const PAGE_UPDATE_NOTES = {
     322: "自選股新增融資維持率（估）與融資餘額。",
     323: "點頁首「連線」即可展開五個連線燈號。",
     324: "「分析」新增台股代號查詢，可依產業、ETF 類型及 AI 概念篩選。",
     325: "台股代號查詢的股票名稱與代號字體同大小。",
-    326: "個股頁新增均價換算，即時計算加買後均價與總股數。"
+    326: "個股頁新增均價換算，即時計算加買後均價與總股數。",
+    327: "均價換算自動帶入個股庫存股數與成本均價。"
   };
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -3799,6 +3800,30 @@
     if ($("focus-bar")) $("focus-bar").hidden = true;
   }
 
+  function fillStockAverageHoldings() {
+    const row = state.stock;
+    if (!row) return;
+    const groups = book.watchGroups || [];
+    // 優先使用目前檢視的持股，避免同一股票在不同帳戶的庫存互相覆蓋。
+    const candidates = [row].concat(book.watch || [],
+      groups.filter(function (group) {
+        return group.id === FUBON_GROUP_ID || group.id === KGI_GROUP_ID;
+      }).flatMap(function (group) { return group.items || []; }),
+      book.holdings || [],
+      groups.flatMap(function (group) { return group.items || []; }));
+    const holding = candidates.find(function (item) {
+      const matches = row.secid && item.secid
+        ? row.secid === item.secid
+        : row.code && String(row.code).toUpperCase() === String(item.code || "").toUpperCase() &&
+          (!row.market || !item.market || row.market === item.market);
+      return matches && Number.isSafeInteger(Number(item.shares)) && Number(item.shares) > 0 &&
+        Number.isFinite(Number(item.cost)) && Number(item.cost) > 0;
+    });
+    $("average-held").value = holding ? String(holding.shares) : "";
+    $("average-cost").value = holding ? String(holding.cost) : "";
+    updateStockAverage();
+  }
+
   function updateStockAverage() {
     const inputs = ["average-held", "average-cost", "average-added", "average-price"].map(function (id) { return $(id); });
     const result = $("stock-average-result");
@@ -3834,7 +3859,7 @@
       average.hidden = true;
       $("stock-average-toggle").setAttribute("aria-expanded", "false");
       average.querySelectorAll("input").forEach(function (input) { input.value = ""; });
-      updateStockAverage();
+      fillStockAverageHoldings();
     }
     title.textContent = row
       ? (row.name + " " + row.code + " · " + (row.market || "台股"))
@@ -9298,7 +9323,10 @@
       const panel = $("stock-average");
       panel.hidden = !panel.hidden;
       t.setAttribute("aria-expanded", String(!panel.hidden));
-      if (!panel.hidden) $("average-held").focus();
+      if (!panel.hidden) {
+        fillStockAverageHoldings();
+        $( $("average-held").value ? "average-added" : "average-held" ).focus();
+      }
     } else if (t.id === "stock-detail-toggle") {
       stockDetailsOn = !stockDetailsOn;
       syncStockDetailsUi();
