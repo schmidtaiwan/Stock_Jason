@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=325&i=325">
+  <link rel="stylesheet" href="app.css?v=326&i=326">
   <!-- 舊版快取 index 時，仍靠這段比 build.json 強制換頁（勿依賴 alert） -->
   <script>
   (function () {
     // 必須與 app.js PAGE_BUILD 同步；過舊會誤判而無限 location.replace 閃頁
-    var PAGE = 325;
+    var PAGE = 326;
     function go(remote) {
       try {
         var u = new URL(location.href);
@@ -197,8 +197,19 @@
         <div class="stock-top">
           <div class="focus-bar stock-focus">
             <strong id="stock-title">個股</strong>
+            <button id="stock-average-toggle" class="ghost" type="button" aria-expanded="false" aria-controls="stock-average">均價換算</button>
             <button id="stock-back" class="ghost" type="button">回自選</button>
           </div>
+          <section id="stock-average" class="stock-average" hidden aria-label="均價換算">
+            <div class="stock-average-fields">
+              <label>原持股數（股）<input id="average-held" type="number" min="0" step="1" inputmode="numeric" placeholder="例如 50"></label>
+              <label>原均價（元）<input id="average-cost" type="number" min="0" step="any" inputmode="decimal" placeholder="例如 904"></label>
+              <label>加買股數（股）<input id="average-added" type="number" min="1" step="1" inputmode="numeric" placeholder="例如 10"></label>
+              <label>加買價格（元）<input id="average-price" type="number" min="0" step="any" inputmode="decimal" placeholder="例如 775"></label>
+            </div>
+            <p id="stock-average-result" role="status" aria-live="polite">填入四個欄位，即時計算新均價與總股數。</p>
+            <p class="fine">以股為單位（1 張＝1,000 股），不含手續費。</p>
+          </section>
           <div id="stock-session" class="stock-session stock-session-top" hidden></div>
           <div id="stock-k-patterns" class="k-patterns stock-k-patterns-foot stock-horizon-top" hidden></div>
           <div id="stock-live" class="stock-live stock-live-top" hidden></div>
@@ -723,7 +734,7 @@
   <script>
   (function () {
     // 用網址 ?v= 載入腳本；同時帶 index 寫死的 i=PAGE，避免 Fastly 把舊 app.js 當 ?v=311 回傳
-    var PAGE = 325;
+    var PAGE = 326;
     var v = String(PAGE);
     try {
       var q = new URLSearchParams(location.search).get("v");

@@ -1,11 +1,12 @@
 (function () {
-  const PAGE_BUILD = 325;
-  const PAGE_DATE = "2026-11-22";
+  const PAGE_BUILD = 326;
+  const PAGE_DATE = "2026-11-27";
   const PAGE_UPDATE_NOTES = {
     322: "自選股新增融資維持率（估）與融資餘額。",
     323: "點頁首「連線」即可展開五個連線燈號。",
     324: "「分析」新增台股代號查詢，可依產業、ETF 類型及 AI 概念篩選。",
-    325: "台股代號查詢的股票名稱與代號字體同大小。"
+    325: "台股代號查詢的股票名稱與代號字體同大小。",
+    326: "個股頁新增均價換算，即時計算加買後均價與總股數。"
   };
   /** 足跡判斷：盤中 08:30–13:30 每 15 分鐘更新一次 */
   const TAPE_JUDGE_INTERVAL_MS = 15 * 60_000;
@@ -3798,10 +3799,43 @@
     if ($("focus-bar")) $("focus-bar").hidden = true;
   }
 
+  function updateStockAverage() {
+    const inputs = ["average-held", "average-cost", "average-added", "average-price"].map(function (id) { return $(id); });
+    const result = $("stock-average-result");
+    if (inputs.some(function (input) { return input.value.trim() === ""; })) {
+      result.textContent = "填入四個欄位，即時計算新均價與總股數。";
+      return;
+    }
+    const values = inputs.map(function (input) { return Number(input.value); });
+    const [held, cost, added, price] = values;
+    const total = held + added;
+    const amount = held * cost + added * price;
+    if (inputs.some(function (input) { return !input.validity.valid; }) ||
+        values.some(function (value) { return !Number.isFinite(value) || value < 0; }) ||
+        !Number.isSafeInteger(held) || !Number.isSafeInteger(added) || added <= 0 ||
+        !Number.isSafeInteger(total) || !Number.isFinite(amount)) {
+      result.textContent = "請輸入有效的股數與價格；股數須為整數，加買股數須大於 0。";
+      return;
+    }
+    result.textContent = "新均價 " + (amount / total).toLocaleString("zh-TW", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+      " 元 · 總股數 " + total.toLocaleString("zh-TW") + " 股";
+  }
+
+  $("stock-average").addEventListener("input", updateStockAverage);
+
   function paintStockHeader() {
     const title = $("stock-title");
     const row = state.stock;
     if (!title) return;
+    const average = $("stock-average");
+    const stockKey = row ? String(row.secid || row.code) : "";
+    if (average.dataset.stockKey !== stockKey) {
+      average.dataset.stockKey = stockKey;
+      average.hidden = true;
+      $("stock-average-toggle").setAttribute("aria-expanded", "false");
+      average.querySelectorAll("input").forEach(function (input) { input.value = ""; });
+      updateStockAverage();
+    }
     title.textContent = row
       ? (row.name + " " + row.code + " · " + (row.market || "台股"))
       : "個股";
@@ -9260,6 +9294,11 @@
     } else if (t.id === "chart-detail-toggle") {
       chartDetailsOn = !chartDetailsOn;
       syncChartDetailsUi();
+    } else if (t.id === "stock-average-toggle") {
+      const panel = $("stock-average");
+      panel.hidden = !panel.hidden;
+      t.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) $("average-held").focus();
     } else if (t.id === "stock-detail-toggle") {
       stockDetailsOn = !stockDetailsOn;
       syncStockDetailsUi();
